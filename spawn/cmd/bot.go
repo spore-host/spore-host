@@ -260,6 +260,186 @@ var botListCmd = &cobra.Command{
 	},
 }
 
+// ── workspace-add / workspace-remove / workspace-list ────────────────────────
+
+const defaultBotWorkspacesTable = "spore-bot-workspaces"
+
+var (
+	botWorkspaceName   string
+	botBotToken        string
+	botSigningSecret   string
+	botWorkspacesTable string
+)
+
+type botWorkspace struct {
+	WorkspaceKey  string `dynamodbav:"workspace_key" json:"workspace_key"`
+	BotToken      string `dynamodbav:"bot_token" json:"bot_token"`
+	SigningSecret string `dynamodbav:"signing_secret" json:"signing_secret"`
+	Platform      string `dynamodbav:"platform" json:"platform"`
+	WorkspaceName string `dynamodbav:"workspace_name,omitempty" json:"workspace_name,omitempty"`
+	InstalledBy   string `dynamodbav:"installed_by" json:"installed_by"`
+	InstalledAt   string `dynamodbav:"installed_at" json:"installed_at"`
+}
+
+var botWorkspaceAddCmd = &cobra.Command{
+	Use:   "workspace-add",
+	Short: "Register a Slack/Teams workspace's bot token and signing secret",
+	Long: `Store the Slack bot token and signing secret for a workspace so the
+prism-bot Lambda can verify incoming slash command requests.
+
+Run this once after installing the Slack app in a workspace:
+
+  spawn bot workspace-add \
+    --platform slack \
+    --workspace-id T03NE3GTY \
+    --workspace-name "My Workspace" \
+    --bot-token xoxb-... \
+    --signing-secret abc123...`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if botPlatform == "" || botWorkspaceID == "" {
+			return fmt.Errorf("--platform and --workspace-id are required")
+		}
+		if botSigningSecret == "" {
+			return fmt.Errorf("--signing-secret is required")
+		}
+		ctx := context.Background()
+		cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("load AWS config: %w", err)
+		}
+		stsClient := sts.NewFromConfig(cfg)
+		identity, err := stsClient.GetCallerIdentity(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("get caller identity: %w", err)
+		}
+		ws := botWorkspace{
+			WorkspaceKey:  botPlatform + "#" + botWorkspaceID,
+			BotToken:      botBotToken,
+			SigningSecret: botSigningSecret,
+			Platform:      botPlatform,
+			WorkspaceName: botWorkspaceName,
+			InstalledBy:   *identity.Arn,
+			InstalledAt:   time.Now().UTC().Format(time.RFC3339),
+		}
+		tableName := botWorkspacesTable
+		if tableName == "" {
+			tableName = defaultBotWorkspacesTable
+		}
+		client := dynamodb.NewFromConfig(cfg)
+		item, err := attributevalue.MarshalMap(ws)
+		if err != nil {
+			return fmt.Errorf("marshal workspace: %w", err)
+		}
+		_, err = client.PutItem(ctx, &dynamodb.PutItemInput{
+			TableName: aws.String(tableName),
+			Item:      item,
+		})
+		if err != nil {
+			return fmt.Errorf("write workspace: %w", err)
+		}
+		if botJSONOutput {
+			return json.NewEncoder(os.Stdout).Encode(ws)
+		}
+		fmt.Printf("Registered workspace: %s/%s", botPlatform, botWorkspaceID)
+		if botWorkspaceName != "" {
+			fmt.Printf(" (%s)", botWorkspaceName)
+		}
+		fmt.Println()
+		return nil
+	},
+}
+
+var botWorkspaceRemoveCmd = &cobra.Command{
+	Use:   "workspace-remove",
+	Short: "Remove a workspace registration",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if botPlatform == "" || botWorkspaceID == "" {
+			return fmt.Errorf("--platform and --workspace-id are required")
+		}
+		ctx := context.Background()
+		cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("load AWS config: %w", err)
+		}
+		tableName := botWorkspacesTable
+		if tableName == "" {
+			tableName = defaultBotWorkspacesTable
+		}
+		client := dynamodb.NewFromConfig(cfg)
+		_, err = client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+			TableName: aws.String(tableName),
+			Key: map[string]dynamodbtypes.AttributeValue{
+				"workspace_key": &dynamodbtypes.AttributeValueMemberS{Value: botPlatform + "#" + botWorkspaceID},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("delete workspace: %w", err)
+		}
+		fmt.Printf("Removed workspace: %s/%s\n", botPlatform, botWorkspaceID)
+		return nil
+	},
+}
+
+var botWorkspaceListCmd = &cobra.Command{
+	Use:   "workspace-list",
+	Short: "List registered workspaces",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("load AWS config: %w", err)
+		}
+		tableName := botWorkspacesTable
+		if tableName == "" {
+			tableName = defaultBotWorkspacesTable
+		}
+		client := dynamodb.NewFromConfig(cfg)
+		input := &dynamodb.ScanInput{TableName: aws.String(tableName)}
+		if botPlatform != "" {
+			input.FilterExpression = aws.String("platform = :p")
+			input.ExpressionAttributeValues = map[string]dynamodbtypes.AttributeValue{
+				":p": &dynamodbtypes.AttributeValueMemberS{Value: botPlatform},
+			}
+		}
+		result, err := client.Scan(ctx, input)
+		if err != nil {
+			return fmt.Errorf("scan workspaces: %w", err)
+		}
+		if botJSONOutput {
+			var wss []botWorkspace
+			for _, item := range result.Items {
+				var ws botWorkspace
+				if err := attributevalue.UnmarshalMap(item, &ws); err == nil {
+					ws.BotToken = "(redacted)"
+					ws.SigningSecret = "(redacted)"
+					wss = append(wss, ws)
+				}
+			}
+			return json.NewEncoder(os.Stdout).Encode(wss)
+		}
+		if len(result.Items) == 0 {
+			fmt.Println("No workspaces registered.")
+			return nil
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "PLATFORM\tWORKSPACE ID\tNAME\tINSTALLED BY\tINSTALLED AT")
+		for _, item := range result.Items {
+			var ws botWorkspace
+			if err := attributevalue.UnmarshalMap(item, &ws); err != nil {
+				continue
+			}
+			parts := strings.SplitN(ws.WorkspaceKey, "#", 2)
+			wsID := ""
+			if len(parts) == 2 {
+				wsID = parts[1]
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				ws.Platform, wsID, ws.WorkspaceName, ws.InstalledBy, ws.InstalledAt)
+		}
+		return w.Flush()
+	},
+}
+
 // ── types ────────────────────────────────────────────────────────────────────
 
 type botRegistration struct {
@@ -280,14 +460,31 @@ type botRegistration struct {
 
 func init() {
 	rootCmd.AddCommand(botCmd)
-	botCmd.AddCommand(botRegisterCmd, botDeregisterCmd, botListCmd)
+	botCmd.AddCommand(botRegisterCmd, botDeregisterCmd, botListCmd,
+		botWorkspaceAddCmd, botWorkspaceRemoveCmd, botWorkspaceListCmd)
 
-	// Shared flags
-	for _, sub := range []*cobra.Command{botRegisterCmd, botDeregisterCmd, botListCmd} {
+	// Shared flags across all subcommands
+	allSubs := []*cobra.Command{
+		botRegisterCmd, botDeregisterCmd, botListCmd,
+		botWorkspaceAddCmd, botWorkspaceRemoveCmd, botWorkspaceListCmd,
+	}
+	for _, sub := range allSubs {
 		sub.Flags().StringVar(&botPlatform, "platform", "", "Chat platform: slack or teams")
-		sub.Flags().StringVar(&botTable, "table", "", "Override DynamoDB registry table name")
 		sub.Flags().BoolVar(&botJSONOutput, "json", false, "Output as JSON")
 	}
+
+	// Registry table override (register/deregister/list)
+	for _, sub := range []*cobra.Command{botRegisterCmd, botDeregisterCmd, botListCmd} {
+		sub.Flags().StringVar(&botTable, "table", "", "Override DynamoDB registry table name")
+	}
+
+	// Workspaces table override + workspace-id for workspace commands
+	for _, sub := range []*cobra.Command{botWorkspaceAddCmd, botWorkspaceRemoveCmd, botWorkspaceListCmd} {
+		sub.Flags().StringVar(&botWorkspacesTable, "table", "", "Override DynamoDB workspaces table name")
+	}
+	botWorkspaceAddCmd.Flags().StringVar(&botWorkspaceName, "workspace-name", "", "Human-friendly workspace name")
+	botWorkspaceAddCmd.Flags().StringVar(&botBotToken, "bot-token", "", "Slack bot token (xoxb-...)")
+	botWorkspaceAddCmd.Flags().StringVar(&botSigningSecret, "signing-secret", "", "Slack signing secret (required)")
 
 	// Register-specific flags
 	botRegisterCmd.Flags().StringVar(&botUser, "user", "", "User email address (resolved to platform user ID)")
@@ -306,4 +503,8 @@ func init() {
 
 	// List flags
 	botListCmd.Flags().StringVar(&botWorkspaceID, "workspace-id", "", "Platform workspace ID")
+
+	// workspace-add/remove share workspace-id
+	botWorkspaceAddCmd.Flags().StringVar(&botWorkspaceID, "workspace-id", "", "Platform workspace ID")
+	botWorkspaceRemoveCmd.Flags().StringVar(&botWorkspaceID, "workspace-id", "", "Platform workspace ID")
 }

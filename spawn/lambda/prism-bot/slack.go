@@ -22,6 +22,27 @@ type SlashCommand struct {
 	TriggerID   string
 }
 
+// extractURLVerificationChallenge detects Slack's one-time endpoint verification
+// request and returns the challenge string if present, otherwise empty string.
+// Slack sends {"type":"url_verification","challenge":"..."} as JSON when you
+// configure a new slash command endpoint — no HMAC required for this event.
+func extractURLVerificationChallenge(body string) string {
+	if !strings.HasPrefix(strings.TrimSpace(body), "{") {
+		return ""
+	}
+	var v struct {
+		Type      string `json:"type"`
+		Challenge string `json:"challenge"`
+	}
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		return ""
+	}
+	if v.Type == "url_verification" {
+		return v.Challenge
+	}
+	return ""
+}
+
 // parseSlackCommand parses a URL-encoded Slack slash command body.
 func parseSlackCommand(body string) (*SlashCommand, error) {
 	vals, err := url.ParseQuery(body)

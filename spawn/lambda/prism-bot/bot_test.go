@@ -360,6 +360,30 @@ func TestFormatSlackStatus_WithIPAndDNS(t *testing.T) {
 	}
 }
 
+// ── URL verification challenge ────────────────────────────────────────────────
+
+func TestExtractURLVerificationChallenge_Valid(t *testing.T) {
+	body := `{"type":"url_verification","token":"abc","challenge":"3eZbrw1aCnBI3Gu"}`
+	got := extractURLVerificationChallenge(body)
+	if got != "3eZbrw1aCnBI3Gu" {
+		t.Errorf("expected challenge, got %q", got)
+	}
+}
+
+func TestExtractURLVerificationChallenge_NotVerification(t *testing.T) {
+	body := `{"type":"message","text":"hello"}`
+	if got := extractURLVerificationChallenge(body); got != "" {
+		t.Errorf("expected empty for non-verification, got %q", got)
+	}
+}
+
+func TestExtractURLVerificationChallenge_FormEncoded(t *testing.T) {
+	body := "command=/prism&text=stop&user_id=U123"
+	if got := extractURLVerificationChallenge(body); got != "" {
+		t.Errorf("expected empty for form-encoded body, got %q", got)
+	}
+}
+
 // ── Slack command parsing ─────────────────────────────────────────────────────
 
 func TestParseSlackCommand(t *testing.T) {

@@ -166,6 +166,9 @@ func crossAccountEC2(ctx context.Context, cfg aws.Config, roleARN, instanceID st
 	stsClient := sts.NewFromConfig(cfg)
 	creds := stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(o *stscreds.AssumeRoleOptions) {
 		o.RoleSessionName = "prism-bot-" + instanceID
+		// ExternalId matches what bot-cross-account-role.yaml sets in the trust policy
+		externalID := getEnv("BOT_EXTERNAL_ID", "spawn-bot")
+		o.ExternalID = aws.String(externalID)
 	})
 	ec2Cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithCredentialsProvider(creds))
 	if err != nil {

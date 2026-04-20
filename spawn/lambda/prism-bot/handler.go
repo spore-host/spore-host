@@ -18,6 +18,14 @@ func handleWebhook(ctx context.Context, cfg aws.Config, reg *Registry, request e
 	var platform string
 	var err error
 
+	// Handle Slack URL verification challenge before any signature checking.
+	// Slack sends this once when a slash command endpoint is configured.
+	if strings.HasSuffix(path, "/slack") {
+		if challenge := extractURLVerificationChallenge(request.Body); challenge != "" {
+			return jsonResp(200, fmt.Sprintf(`{"challenge":%q}`, challenge)), nil
+		}
+	}
+
 	switch {
 	case strings.HasSuffix(path, "/slack"):
 		platform = "slack"
