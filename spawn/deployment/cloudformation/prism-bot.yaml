@@ -83,6 +83,45 @@ Resources:
         - Key: Application
           Value: prism-bot
 
+  # ── Audit Log Table ───────────────────────────────────────────────────────────
+
+  BotAuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: prism-bot-audit
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: audit_id
+          AttributeType: S
+        - AttributeName: user_key
+          AttributeType: S
+        - AttributeName: ts
+          AttributeType: S
+      KeySchema:
+        - AttributeName: audit_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_key-ts-index
+          KeySchema:
+            - AttributeName: user_key
+              KeyType: HASH
+            - AttributeName: ts
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: prism-bot
+        - Key: Component
+          Value: audit
+
   # ── Lambda ────────────────────────────────────────────────────────────────────
 
   PrismBotFunction:
@@ -102,11 +141,14 @@ Resources:
         Variables:
           BOT_REGISTRY_TABLE: !Ref BotRegistryTable
           BOT_WORKSPACES_TABLE: !Ref BotWorkspacesTable
+          BOT_AUDIT_TABLE: !Ref BotAuditTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref BotRegistryTable
         - DynamoDBCrudPolicy:
             TableName: !Ref BotWorkspacesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BotAuditTable
         - Statement:
             - Effect: Allow
               Action:
@@ -155,6 +197,11 @@ Outputs:
     Value: !Ref BotWorkspacesTable
     Export:
       Name: !Sub '${AWS::StackName}-workspaces-table'
+
+  BotAuditTableName:
+    Value: !Ref BotAuditTable
+    Export:
+      Name: !Sub '${AWS::StackName}-audit-table'
 
   LambdaFunctionUrl:
     Condition: DeployLambda
