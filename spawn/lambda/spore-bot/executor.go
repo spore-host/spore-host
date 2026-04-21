@@ -79,11 +79,10 @@ func executeAction(ctx context.Context, cfg aws.Config, reg *Registry, action *B
 		auditor.Log(ctx, newAuditEvent(action, auditResult, detail))
 	}
 
-	// For action commands (start/stop/hibernate), the Phase 1 ACK IS the user-facing
-	// message. Phase 2 only posts back if something went wrong — posting "Stopping..."
-	// again would produce a duplicate.
-	actionOnly := action.Command == "start" || action.Command == "stop" || action.Command == "hibernate"
-	if actionOnly && auditResult == AuditResultSuccess {
+	// For stop/hibernate, the Phase 1 ACK is the only user-facing message on success.
+	// For start, Phase 2 posts the full status card once the instance is running.
+	silentOnSuccess := action.Command == "stop" || action.Command == "hibernate"
+	if silentOnSuccess && auditResult == AuditResultSuccess {
 		return
 	}
 
@@ -373,11 +372,25 @@ func startInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration
 	if err != nil {
 		return "", fmt.Errorf("start instance: %w", err)
 	}
-	msg := fmt.Sprintf("▶️ Starting *%s* (`%s`)...", reg.Nickname, reg.InstanceID)
-	if reg.DNSName != "" {
-		msg += fmt.Sprintf("\nWill be available at: https://%s", reg.DNSName)
+
+	// Poll until running (up to 90s), then return the full status card.
+	// The Lambda timeout is set to 120s to accommodate this.
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(6 * time.Second)
+		status, err := getStatus(ctx, client, reg)
+		if err != nil {
+			continue
+		}
+		// Once running, the status card has the IP and URL — return it directly
+		if strings.Contains(status, "Running") {
+			return status, nil
+		}
 	}
-	return msg, nil
+
+	// Took longer than 90s — post a nudge instead of the full card
+	return fmt.Sprintf("▶️ *%s* is starting — it's taking a little longer than usual.\nUse `%s status %s` to check when it's ready.",
+		reg.Nickname, "/spore", reg.Nickname), nil
 }
 
 func stopInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration, hibernate bool) (string, error) {

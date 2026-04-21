@@ -132,7 +132,7 @@ Resources:
       Runtime: provided.al2023
       Architectures: [arm64]
       Handler: bootstrap
-      Timeout: 30
+      Timeout: 120  # start command polls up to 90s for instance to reach running state
       MemorySize: 256
       CodeUri:
         Bucket: !Ref LambdaCodeBucket
