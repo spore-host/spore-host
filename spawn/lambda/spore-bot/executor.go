@@ -288,6 +288,17 @@ func getStatus(ctx context.Context, client *ec2.Client, reg *BotRegistration) (s
 	}
 	inst := out.Reservations[0].Instances[0]
 	state := string(inst.State.Name)
+
+	// Distinguish hibernated from stopped using StateReason.Code.
+	// Both show State.Name = "stopped"; the difference is:
+	//   Client.UserInitiatedHibernate → hibernated (RAM saved to EBS)
+	//   Client.UserInitiatedShutdown  → stopped normally
+	if state == "stopped" && inst.StateReason != nil && inst.StateReason.Code != nil {
+		if *inst.StateReason.Code == "Client.UserInitiatedHibernate" {
+			state = "hibernated"
+		}
+	}
+
 	ip := ""
 	if inst.PublicIpAddress != nil {
 		ip = *inst.PublicIpAddress

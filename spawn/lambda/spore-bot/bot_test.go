@@ -347,6 +347,7 @@ func TestFormatSlackStatus(t *testing.T) {
 		{"running", "🟢"},
 		{"stopped", "🔴"},
 		{"stopping", "🔴"},
+		{"hibernated", "💤"}, // set by executor when StateReason.Code == Client.UserInitiatedHibernate
 		{"pending", "🟡"},
 	}
 	for _, tt := range tests {

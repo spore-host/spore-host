@@ -127,6 +127,9 @@ func formatSlackStatus(s InstanceStatus) string {
 	case "stopped":
 		icon = "🔴"
 		stateLabel = "Stopped"
+	case "hibernated":
+		icon = "💤"
+		stateLabel = "Hibernated (RAM saved)"
 	case "stopping":
 		icon = "🔴"
 		stateLabel = "Stopping..."
