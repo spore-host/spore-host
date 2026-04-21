@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -41,17 +42,44 @@ func init() {
 }
 
 // handler routes between webhook (Phase 1) and async action (Phase 2).
-// Phase 1 receives APIGatewayProxyRequest events from API Gateway.
-// Phase 2 receives BotAction JSON from async self-invocation.
+// Supports both Lambda Function URL events and API Gateway proxy events.
 func handler(ctx context.Context, rawEvent json.RawMessage) (interface{}, error) {
-	// Try to parse as API Gateway event first (Phase 1)
+	// Try Lambda Function URL event first (deployed with Function URL, not API Gateway).
+	// Lambda Function URLs use requestContext.http.method instead of httpMethod.
+	var fnURLReq events.LambdaFunctionURLRequest
+	if err := json.Unmarshal(rawEvent, &fnURLReq); err == nil && fnURLReq.RequestContext.HTTP.Method != "" {
+		return handleWebhook(ctx, cfg, reg, funcURLToAPIGW(fnURLReq))
+	}
+
+	// Try API Gateway proxy event (deployed behind API Gateway).
 	var apiReq events.APIGatewayProxyRequest
 	if err := json.Unmarshal(rawEvent, &apiReq); err == nil && apiReq.HTTPMethod != "" {
 		return handleWebhook(ctx, cfg, reg, apiReq)
 	}
 
-	// Otherwise it's a BotAction payload (Phase 2)
+	// Otherwise it's a BotAction payload from async self-invocation (Phase 2).
 	return nil, handleAsyncAction(ctx, cfg, reg, rawEvent)
+}
+
+// funcURLToAPIGW adapts a Lambda Function URL request to the APIGatewayProxyRequest
+// shape that handleWebhook expects. Lambda Function URLs base64-encode the body when
+// it contains non-UTF-8 bytes or when the content type is application/x-www-form-urlencoded.
+func funcURLToAPIGW(r events.LambdaFunctionURLRequest) events.APIGatewayProxyRequest {
+	body := r.Body
+	if r.IsBase64Encoded {
+		decoded, err := base64.StdEncoding.DecodeString(r.Body)
+		if err == nil {
+			body = string(decoded)
+		}
+	}
+	return events.APIGatewayProxyRequest{
+		HTTPMethod:            r.RequestContext.HTTP.Method,
+		Path:                  r.RawPath,
+		Headers:               r.Headers,
+		QueryStringParameters: r.QueryStringParameters,
+		Body:                  body,
+		IsBase64Encoded:       false,
+	}
 }
 
 // invokeAsync kicks off Phase 2 as an async Lambda self-invocation.

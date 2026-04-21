@@ -88,6 +88,7 @@ func handleSlackWebhook(ctx context.Context, reg *Registry, request events.APIGa
 		return nil, fmt.Errorf("missing Slack signature headers")
 	}
 
+	logf("DEBUG body=%q headers=%v", request.Body, request.Headers)
 	sc, err := parseSlackCommand(request.Body)
 	if err != nil {
 		return nil, fmt.Errorf("parse command: %w", err)
