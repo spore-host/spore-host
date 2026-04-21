@@ -24,55 +24,24 @@ In small teams the Instance Owner and Spore User may be the same person.
 
 *You own spore.host instances and want to let collaborators control them from Slack.*
 
-### 1. Create the Slack app
+### 1. Connect your Slack workspace — one click
 
-1. Go to **https://api.slack.com/apps** → **Create New App** → **From scratch**
-2. Name it `spore-bot`, select your workspace → **Create**
-3. **OAuth & Permissions** → **Bot Token Scopes** → Add:
-   - `commands` — slash command support
-   - `chat:write` — send messages back
-   - `users:read` — look up workspace members
-   - `users:read.email` — look up members by email address
-4. **Install App** → **Install to Workspace** → **Allow**
-5. Copy the **Bot User OAuth Token** (`xoxb-...`) from the top of the OAuth & Permissions page
-6. **Basic Information** → **App Credentials** → copy the **Signing Secret**
-7. Your **Workspace ID** is in the Slack URL when you're in the workspace: `app.slack.com/client/T________`
+Go to the **spore.host dashboard → Settings tab** and click **Add to Slack**. Approve the permissions in Slack, and you'll be redirected back to the dashboard confirming your workspace is connected.
 
-> **Enterprise / university Slack:** In some organizations, IT controls app installation. If you cannot install the app yourself, ask your IT team to approve it. You can complete all remaining steps without further IT involvement.
+Your Workspace ID (`T________`) is shown in the confirmation. Keep it — you'll need it in steps 4 and 5.
 
-### 2. Configure the slash command
+> **Enterprise / university Slack:** In some organizations, IT must approve new app installations. If you can't install spore-bot yourself, ask IT to approve it — you can complete all remaining steps without further IT involvement. Alternatively, see the [Self-Hosting Guide](../spore-bot-self-hosting.md) if your institution runs its own spore.host deployment.
 
-1. **Slash Commands** → **Create New Command**
-2. Fill in:
-   - **Command:** `/spore`
-   - **Request URL:** `https://gmkqcugnviaafk654hfnyyzfca0vyuvt.lambda-url.us-east-1.on.aws/slack`
-   - **Short description:** Control your spore.host instances
-   - **Usage hint:** `[status|start|stop|hibernate|url|list|help|connect] [name]`
-3. **Save** — Slack verifies the URL automatically
-4. **Reinstall to Workspace** when prompted → **Allow**
-
-### 3. Register your workspace
-
-```bash
-spawn bot workspace-add \
-  --platform slack \
-  --workspace-id T00000000 \
-  --workspace-name "My Workspace" \
-  --bot-token xoxb-... \
-  --signing-secret abc123...
-```
+> **Manual path / self-hosting:** Use `spawn bot workspace-add` instead of the dashboard button. See [Self-Hosting Guide](../spore-bot-self-hosting.md).
 
 **Optional — restrict commands to specific channels:**
 
-Find a channel's ID by opening it in Slack (it appears in the URL and in Channel Settings → About).
+Find a channel's ID by opening it in Slack (it appears in the URL and in Channel Settings → About). Run after connecting:
 
 ```bash
 spawn bot workspace-add \
   --platform slack \
   --workspace-id T00000000 \
-  --workspace-name "My Workspace" \
-  --bot-token xoxb-... \
-  --signing-secret abc123... \
   --allowed-channels C12345,C67890
 ```
 
