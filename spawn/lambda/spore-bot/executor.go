@@ -85,7 +85,7 @@ func executeAction(ctx context.Context, cfg aws.Config, reg *Registry, action *B
 }
 
 // resolveRegistration finds the right registration, prompting if ambiguous.
-// Supports nickname, instance ID ("i-..."), or instance name (DNS name / tag).
+// Matches in order: nickname → instance ID → registered DNS → IP / EC2 tags.
 func resolveRegistration(ctx context.Context, reg *Registry, action *BotAction) (*BotRegistration, string, error) {
 	regs, err := reg.ListUserInstances(ctx, action.Platform, action.WorkspaceID, action.UserID)
 	if err != nil {
@@ -95,7 +95,7 @@ func resolveRegistration(ctx context.Context, reg *Registry, action *BotAction) 
 		return nil, "", fmt.Errorf("no instances registered. Run `spawn bot register` to register one")
 	}
 
-	// No nickname given
+	// No target given — return single instance or prompt
 	if action.Nickname == "" {
 		if len(regs) == 1 {
 			return &regs[0], "", nil
@@ -108,25 +108,90 @@ func resolveRegistration(ctx context.Context, reg *Registry, action *BotAction) 
 			strings.Join(names, ", "), action.slashCmd(), action.Command), nil
 	}
 
-	// Match by nickname first
+	target := action.Nickname
+
+	// 1. Nickname (exact, case-insensitive)
 	for i := range regs {
-		if strings.EqualFold(regs[i].Nickname, action.Nickname) {
+		if strings.EqualFold(regs[i].Nickname, target) {
 			return &regs[i], "", nil
 		}
 	}
-
-	// Match by instance ID or instance name (DNS name)
+	// 2. Instance ID
 	for i := range regs {
-		if strings.EqualFold(regs[i].InstanceID, action.Nickname) {
+		if strings.EqualFold(regs[i].InstanceID, target) {
 			return &regs[i], "", nil
 		}
-		if strings.EqualFold(regs[i].DNSName, action.Nickname) {
+	}
+	// 3. Registered DNS name
+	for i := range regs {
+		if regs[i].DNSName != "" && strings.EqualFold(regs[i].DNSName, target) {
 			return &regs[i], "", nil
 		}
+	}
+	// 4. IP address or live EC2 tags (Name, spawn:dns-name, constructed DNS)
+	if matched := matchByEC2(ctx, regs, target); matched != nil {
+		return matched, "", nil
 	}
 
 	return nil, fmt.Sprintf("No instance named `%s`. Your instances: %s",
 		action.Nickname, registrationNames(regs)), nil
+}
+
+// matchByEC2 resolves a target against live EC2 data: public IP, EC2 Name tag,
+// spawn:dns-name tag, or constructed full DNS name ({name}.{base36}.spore.host).
+func matchByEC2(ctx context.Context, regs []BotRegistration, target string) *BotRegistration {
+	for i := range regs {
+		r := &regs[i]
+		if r.RoleARN == "" {
+			continue
+		}
+		ec2Client, err := crossAccountEC2(ctx, cfg, r.RoleARN, r.InstanceID)
+		if err != nil {
+			continue
+		}
+		out, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{r.InstanceID},
+		})
+		if err != nil || len(out.Reservations) == 0 || len(out.Reservations[0].Instances) == 0 {
+			continue
+		}
+		inst := out.Reservations[0].Instances[0]
+
+		// Match public IP
+		if inst.PublicIpAddress != nil && *inst.PublicIpAddress == target {
+			return r
+		}
+		// Collect tags
+		var dnsShort, accountBase36 string
+		for _, tag := range inst.Tags {
+			if tag.Key == nil || tag.Value == nil {
+				continue
+			}
+			switch *tag.Key {
+			case "Name":
+				if strings.EqualFold(*tag.Value, target) {
+					return r
+				}
+			case r.TagPrefix + ":dns-name":
+				dnsShort = *tag.Value
+			case r.TagPrefix + ":account-base36":
+				accountBase36 = *tag.Value
+			}
+		}
+		// Match short DNS name or constructed full name
+		if dnsShort != "" {
+			if strings.EqualFold(dnsShort, target) {
+				return r
+			}
+			if accountBase36 != "" {
+				full := dnsShort + "." + accountBase36 + ".spore.host"
+				if strings.EqualFold(full, target) {
+					return r
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func registrationNames(regs []BotRegistration) string {
@@ -198,7 +263,7 @@ func cmdEC2Op(ctx context.Context, cfg aws.Config, action *BotAction, op string)
 func crossAccountEC2(ctx context.Context, cfg aws.Config, roleARN, instanceID string) (*ec2.Client, error) {
 	stsClient := sts.NewFromConfig(cfg)
 	creds := stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(o *stscreds.AssumeRoleOptions) {
-		o.RoleSessionName = "prism-bot-" + instanceID
+		o.RoleSessionName = "spore-bot-" + instanceID
 		// ExternalId matches what bot-cross-account-role.yaml sets in the trust policy
 		externalID := getEnv("BOT_EXTERNAL_ID", "spawn-bot")
 		o.ExternalID = aws.String(externalID)
@@ -226,15 +291,32 @@ func getStatus(ctx context.Context, client *ec2.Client, reg *BotRegistration) (s
 	if inst.PublicIpAddress != nil {
 		ip = *inst.PublicIpAddress
 	}
-	// Prefer instance name tag over nickname for display
+
+	// Collect useful tags: display name, DNS name, account base36
 	displayName := reg.Nickname
+	dnsShort := ""    // e.g. "spore-bot-test"
+	accountBase36 := "" // e.g. "5k0zfnmq"
 	for _, tag := range inst.Tags {
-		if tag.Key != nil && *tag.Key == reg.TagPrefix+":name" && tag.Value != nil {
+		if tag.Key == nil || tag.Value == nil {
+			continue
+		}
+		switch *tag.Key {
+		case reg.TagPrefix + ":name":
 			displayName = *tag.Value
-			break
+		case reg.TagPrefix + ":dns-name":
+			dnsShort = *tag.Value
+		case reg.TagPrefix + ":account-base36":
+			accountBase36 = *tag.Value
 		}
 	}
-	return formatSlackStatus(displayName, reg.InstanceID, state, ip, reg.DNSName), nil
+
+	// Construct full DNS name: {name}.{account-base36}.spore.host
+	dnsName := reg.DNSName
+	if dnsName == "" && dnsShort != "" && accountBase36 != "" {
+		dnsName = dnsShort + "." + accountBase36 + ".spore.host"
+	}
+
+	return formatSlackStatus(displayName, reg.InstanceID, state, ip, dnsName), nil
 }
 
 func startInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration) (string, error) {
