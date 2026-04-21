@@ -79,6 +79,14 @@ func executeAction(ctx context.Context, cfg aws.Config, reg *Registry, action *B
 		auditor.Log(ctx, newAuditEvent(action, auditResult, detail))
 	}
 
+	// For action commands (start/stop/hibernate), the Phase 1 ACK IS the user-facing
+	// message. Phase 2 only posts back if something went wrong — posting "Stopping..."
+	// again would produce a duplicate.
+	actionOnly := action.Command == "start" || action.Command == "stop" || action.Command == "hibernate"
+	if actionOnly && auditResult == AuditResultSuccess {
+		return
+	}
+
 	// Post result back to the chat platform
 	if err := postResponse(action.Platform, action.ResponseURL, result); err != nil {
 		logf("failed to post response: %v", err)
