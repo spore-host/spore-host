@@ -46,6 +46,10 @@ func executeAction(ctx context.Context, cfg aws.Config, reg *Registry, action *B
 		result, err = cmdConnect(ctx, reg, action)
 	case "list":
 		result, err = cmdList(ctx, reg, action)
+	case "notify":
+		result, err = cmdNotify(ctx, reg, action)
+	case "unnotify":
+		result, err = cmdUnnotify(ctx, reg, action)
 	case "help":
 		result = helpText(action.slashCmd())
 	case "status":
@@ -218,16 +222,34 @@ func cmdList(ctx context.Context, reg *Registry, action *BotAction) (string, err
 		return "", err
 	}
 	if len(regs) == 0 {
-		return "No instances registered. Run `spawn bot register` to register one.", nil
+		return fmt.Sprintf("No instances registered. Use `%s notify <name>` to subscribe to notifications, or ask your workspace admin to run `spawn bot register`.", action.slashCmd()), nil
 	}
-	lines := []string{"*Your registered instances:*"}
+
+	var control, notify []string
 	for _, r := range regs {
-		line := fmt.Sprintf("• *%s* — `%s`", r.Nickname, r.InstanceID)
-		if r.DNSName != "" {
-			line += fmt.Sprintf(" (%s)", r.DNSName)
+		if r.NotifyOnly {
+			name := strings.TrimPrefix(r.Nickname, "notify::")
+			notify = append(notify, fmt.Sprintf("• 🔔 *%s* — `%s` _(notifications only)_", name, r.InstanceID))
+		} else {
+			line := fmt.Sprintf("• *%s* — `%s`", r.Nickname, r.InstanceID)
+			if r.DNSName != "" {
+				line += fmt.Sprintf(" (%s)", r.DNSName)
+			}
+			if len(r.AllowedActions) > 0 {
+				line += fmt.Sprintf(" [%s]", strings.Join(r.AllowedActions, ", "))
+			}
+			control = append(control, line)
 		}
-		line += fmt.Sprintf(" [%s]", strings.Join(r.AllowedActions, ", "))
-		lines = append(lines, line)
+	}
+
+	var lines []string
+	if len(control) > 0 {
+		lines = append(lines, "*Your instances:*")
+		lines = append(lines, control...)
+	}
+	if len(notify) > 0 {
+		lines = append(lines, "*Your notification subscriptions:*")
+		lines = append(lines, notify...)
 	}
 	return strings.Join(lines, "\n"), nil
 }
@@ -526,12 +548,14 @@ func helpText(slashCmd string) string {
 • *%s stop [name]* — stop a running instance
 • *%s hibernate [name]* — hibernate (saves RAM, pauses compute billing)
 • *%s url [name]* — get the instance URL
-• *%s list* — show all your registered instances
+• *%s list* — show your instances and notification subscriptions
+• *%s notify <name>* — subscribe to DM notifications for an instance
+• *%s unnotify <name>* — stop DM notifications for an instance
+• *%s connect [duration]* — get a one-time code to share with your workspace admin
 • *%s help* — this message
-• *%s connect [duration]* — get a one-time code to share with your workspace admin (e.g. /spore connect 4h)
 
 _[name] is optional if you have only one instance. Use the nickname, instance ID, or DNS name._`,
-		c, c, c, c, c, c, c, c)
+		c, c, c, c, c, c, c, c, c, c)
 }
 
 func postResponse(platform, responseURL, text string) error {

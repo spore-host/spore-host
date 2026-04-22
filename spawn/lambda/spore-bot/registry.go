@@ -30,6 +30,9 @@ type BotRegistration struct {
 	// Enabled must be explicitly set true before the bot will execute any EC2 command.
 	// Registrations are created disabled (false) by default.
 	Enabled bool `dynamodbav:"enabled" json:"enabled"`
+	// NotifyOnly marks a self-service notification subscription created via /spore notify.
+	// These entries receive DMs for lifecycle events but cannot execute EC2 operations.
+	NotifyOnly bool `dynamodbav:"notify_only,omitempty" json:"notify_only,omitempty"`
 }
 
 // WorkspaceConfig stores per-workspace OAuth tokens (bot token + signing secret).

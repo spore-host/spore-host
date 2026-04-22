@@ -144,17 +144,23 @@ func handleAsyncAction(ctx context.Context, cfg aws.Config, reg *Registry, paylo
 		return fmt.Errorf("unmarshal action: %w", err)
 	}
 
-	// Resolve registration (supports nickname, instance ID, or DNS name)
-	registration, ambiguousMsg, err := resolveRegistration(ctx, reg, &action)
-	if err != nil {
-		postResponse(action.Platform, action.ResponseURL, "❌ "+err.Error())
-		return nil
+	// Commands that manage their own target or need no registration
+	selfContained := map[string]bool{
+		"help": true, "list": true, "connect": true,
+		"notify": true, "unnotify": true,
 	}
-	if ambiguousMsg != "" {
-		postResponse(action.Platform, action.ResponseURL, ambiguousMsg)
-		return nil
+	if !selfContained[action.Command] {
+		registration, ambiguousMsg, err := resolveRegistration(ctx, reg, &action)
+		if err != nil {
+			postResponse(action.Platform, action.ResponseURL, "❌ "+err.Error())
+			return nil
+		}
+		if ambiguousMsg != "" {
+			postResponse(action.Platform, action.ResponseURL, ambiguousMsg)
+			return nil
+		}
+		action.Registration = registration
 	}
-	action.Registration = registration
 
 	executeAction(ctx, cfg, reg, &action)
 	return nil
@@ -192,6 +198,16 @@ func ackMessage(command, nickname string) string {
 		return "📋 Fetching your instances..."
 	case "connect":
 		return "🔑 Generating your connect code — check your DMs..."
+	case "notify":
+		if nickname != "" {
+			return "🔔 Subscribing to notifications for *" + nickname + "*..."
+		}
+		return "🔔 Setting up notifications..."
+	case "unnotify":
+		if nickname != "" {
+			return "🔕 Removing notifications for *" + nickname + "*..."
+		}
+		return "🔕 Removing notification subscription..."
 	default:
 		return "⏳ On it..."
 	}
