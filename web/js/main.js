@@ -3000,7 +3000,7 @@ async function loadWatchHistory() {
 
     if (params.get('bot') === 'connected') {
         const workspaceName = params.get('workspace_name') || params.get('workspace') || 'your workspace';
-        statusEl.innerHTML =
+        statusEl.innerHTML = // nosemgrep: javascript.browser.security.raw-html-concat.raw-html-concat
             '<div style="padding:0.75rem 1rem;background:rgba(34,197,94,0.12);border:1px solid #22c55e;border-radius:6px;color:#22c55e;font-size:0.9rem;">' +
             '✅ <strong>Slack connected</strong> — spore-bot is now installed in <strong>' + escapeHtml(decodeURIComponent(workspaceName)) + '</strong>.<br>' +
             '<span style="color:var(--text-muted);font-size:0.85rem;">Next: run <code>spawn bot register</code> to grant access to your collaborators.</span>' +
