@@ -26,12 +26,13 @@ type BotAction struct {
 	Registration *BotRegistration `json:"registration"`
 }
 
-// slashCmd returns the slash command name (e.g. "/spore"), defaulting to "/prism".
+// slashCmd returns the slash command name from the Slack payload (e.g. "/spore" or "/prism").
+// Falls back to BOT_SLASH_COMMAND env var, then "/spore".
 func (a *BotAction) slashCmd() string {
 	if a.SlashCommand != "" {
 		return a.SlashCommand
 	}
-	return "/prism"
+	return getEnv("BOT_SLASH_COMMAND", "/spore")
 }
 
 // executeAction runs the EC2 operation, posts the result to the chat platform,
@@ -63,7 +64,7 @@ func executeAction(ctx context.Context, cfg aws.Config, reg *Registry, action *B
 	case "url":
 		result, err = cmdEC2Op(ctx, cfg, action, "url")
 	default:
-		result = fmt.Sprintf("Unknown command: `%s`. Try `/prism help`.", action.Command)
+		result = fmt.Sprintf("Unknown command: `%s`. Try `%s help`.", action.Command, action.slashCmd())
 		auditResult = AuditResultDenied
 	}
 
@@ -277,17 +278,18 @@ func cmdEC2Op(ctx context.Context, cfg aws.Config, action *BotAction, op string)
 		return "", fmt.Errorf("assume role: %w", err)
 	}
 
+	sc := action.slashCmd()
 	switch op {
 	case "status":
 		return getStatus(ctx, ec2Client, reg)
 	case "start":
-		return startInstance(ctx, ec2Client, reg)
+		return startInstance(ctx, ec2Client, reg, sc)
 	case "stop":
 		return stopInstance(ctx, ec2Client, reg, false)
 	case "hibernate":
 		return stopInstance(ctx, ec2Client, reg, true)
 	case "url":
-		return getURL(ctx, ec2Client, reg)
+		return getURL(ctx, ec2Client, reg, sc)
 	}
 	return "", fmt.Errorf("unknown op: %s", op)
 }
@@ -389,7 +391,7 @@ func getStatus(ctx context.Context, client *ec2.Client, reg *BotRegistration) (s
 	}), nil
 }
 
-func startInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration) (string, error) {
+func startInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration, slashCmd string) (string, error) {
 	_, err := client.StartInstances(ctx, &ec2.StartInstancesInput{
 		InstanceIds: []string{reg.InstanceID},
 	})
@@ -414,7 +416,7 @@ func startInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration
 
 	// Took longer than 90s — post a nudge instead of the full card
 	return fmt.Sprintf("▶️ *%s* is starting — it's taking a little longer than usual.\nUse `%s status %s` to check when it's ready.",
-		reg.Nickname, "/spore", reg.Nickname), nil
+		reg.Nickname, slashCmd, reg.Nickname), nil
 }
 
 func stopInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration, hibernate bool) (string, error) {
@@ -443,7 +445,7 @@ func stopInstance(ctx context.Context, client *ec2.Client, reg *BotRegistration,
 	return fmt.Sprintf("⏹️ Stopping *%s* (`%s`)...", reg.Nickname, reg.InstanceID), nil
 }
 
-func getURL(ctx context.Context, client *ec2.Client, reg *BotRegistration) (string, error) {
+func getURL(ctx context.Context, client *ec2.Client, reg *BotRegistration, slashCmd string) (string, error) {
 	if reg.DNSName != "" {
 		return fmt.Sprintf("🔗 *%s*: https://%s", reg.Nickname, reg.DNSName), nil
 	}
@@ -459,8 +461,8 @@ func getURL(ctx context.Context, client *ec2.Client, reg *BotRegistration) (stri
 	}
 	inst := out.Reservations[0].Instances[0]
 	if inst.State.Name != ec2types.InstanceStateNameRunning {
-		return fmt.Sprintf("*%s* is not running (state: %s). Start it first with `/prism start %s`.",
-			reg.Nickname, inst.State.Name, reg.Nickname), nil
+		return fmt.Sprintf("*%s* is not running (state: %s). Start it first with `%s start %s`.",
+			reg.Nickname, inst.State.Name, slashCmd, reg.Nickname), nil
 	}
 	if inst.PublicIpAddress != nil {
 		return fmt.Sprintf("🔗 *%s*: http://%s", reg.Nickname, *inst.PublicIpAddress), nil
@@ -480,7 +482,7 @@ func platformConnectTTL() time.Duration {
 }
 
 // cmdConnect generates a connect code for self-registration.
-// Usage: /spore connect [duration]   e.g. /spore connect 4h
+// Usage: /<cmd> connect [duration]   e.g. /spore connect 4h
 // Duration cannot exceed the workspace or platform maximum.
 // The user shares SPORE-XXXXXX with their Instance Owner, who runs:
 //
@@ -498,7 +500,7 @@ func cmdConnect(ctx context.Context, reg *Registry, action *BotAction) (string, 
 		}
 	}
 
-	// User-requested duration (optional: /spore connect 4h)
+	// User-requested duration (optional, e.g. /spore connect 4h)
 	ttl := workspaceMax
 	if action.Nickname != "" {
 		requested, err := time.ParseDuration(action.Nickname)
@@ -540,7 +542,7 @@ func cmdConnect(ctx context.Context, reg *Registry, action *BotAction) (string, 
 func helpText(slashCmd string) string {
 	c := slashCmd
 	if c == "" {
-		c = "/prism"
+		c = getEnv("BOT_SLASH_COMMAND", "/spore")
 	}
 	return fmt.Sprintf(`*Available commands:*
 • *%s status [name]* — instance state, IP, and URL
