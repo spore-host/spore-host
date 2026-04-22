@@ -149,13 +149,12 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${EnvironmentName}-binaries-${AWS::Region}'
-      BucketEncryption: !If
-        - UseEncryption
-        - ServerSideEncryptionConfiguration:
-            - ServerSideEncryptionByDefault:
-                SSEAlgorithm: 'aws:kms'
-                KMSMasterKeyID: !If [UseCustomKMS, !Ref KMSKeyArn, 'alias/aws/s3']
-        - !Ref AWS::NoValue
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !If [UseCustomKMS, !Ref KMSKeyArn, 'alias/aws/s3']
+            BucketKeyEnabled: true
       VersioningConfiguration:
         Status: Enabled
       LifecycleConfiguration:
@@ -180,13 +179,12 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${EnvironmentName}-schedules-${AWS::Region}'
-      BucketEncryption: !If
-        - UseEncryption
-        - ServerSideEncryptionConfiguration:
-            - ServerSideEncryptionByDefault:
-                SSEAlgorithm: 'aws:kms'
-                KMSMasterKeyID: !If [UseCustomKMS, !Ref KMSKeyArn, 'alias/aws/s3']
-        - !Ref AWS::NoValue
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !If [UseCustomKMS, !Ref KMSKeyArn, 'alias/aws/s3']
+            BucketKeyEnabled: true
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldSchedules

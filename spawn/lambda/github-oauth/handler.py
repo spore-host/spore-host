@@ -6,6 +6,7 @@ import json
 import base64
 import hashlib
 import hmac
+import ssl
 import time
 import urllib.request
 import urllib.parse
@@ -100,7 +101,11 @@ def exchange_code_for_token(code: str) -> str:
     )
 
     try:
-        with urllib.request.urlopen(request) as response:
+        # Use an explicit SSL context to enforce certificate verification.
+        # urllib.urlopen verifies certificates by default in Python 3.4+, but
+        # making it explicit documents the intent and satisfies static analysis.
+        ssl_context = ssl.create_default_context()
+        with urllib.request.urlopen(request, context=ssl_context) as response:
             result = json.loads(response.read().decode('utf-8'))
 
             if 'error' in result:

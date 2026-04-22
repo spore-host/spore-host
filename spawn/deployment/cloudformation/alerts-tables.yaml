@@ -11,6 +11,18 @@ Parameters:
       - development
     Description: Environment name for resource tagging
 
+  KMSKeyArn:
+    Type: String
+    Default: ''
+    Description: >
+      Optional: Customer-managed KMS key ARN for SNS topic encryption.
+      Leave empty to use the AWS-managed SNS key (alias/aws/sns).
+      Providing a CMK enables key rotation control and CloudTrail audit logging
+      of all envelope key operations.
+
+Conditions:
+  UseCustomKMS: !Not [!Equals [!Ref KMSKeyArn, '']]
+
 Resources:
   SpawnAlertsTable:
     Type: AWS::DynamoDB::Table
@@ -99,7 +111,7 @@ Resources:
     Properties:
       TopicName: spawn-sweep-alerts
       DisplayName: Spawn Sweep Alerts
-      KmsMasterKeyId: alias/aws/sns
+      KmsMasterKeyId: !If [UseCustomKMS, !Ref KMSKeyArn, 'alias/aws/sns']
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -113,7 +125,7 @@ Resources:
     Properties:
       TopicName: spawn-schedule-alerts
       DisplayName: Spawn Schedule Alerts
-      KmsMasterKeyId: alias/aws/sns
+      KmsMasterKeyId: !If [UseCustomKMS, !Ref KMSKeyArn, 'alias/aws/sns']
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -127,7 +139,7 @@ Resources:
     Properties:
       TopicName: spawn-cost-alerts
       DisplayName: Spawn Cost Alerts
-      KmsMasterKeyId: alias/aws/sns
+      KmsMasterKeyId: !If [UseCustomKMS, !Ref KMSKeyArn, 'alias/aws/sns']
       Tags:
         - Key: Environment
           Value: !Ref Environment
