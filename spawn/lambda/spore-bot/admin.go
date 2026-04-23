@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,6 +30,7 @@ type adminRequest struct {
 	ConnectCodeTTLHours int      `json:"connect_code_ttl_hours,omitempty"`
 
 	// register
+	UserEmail      string   `json:"user_email,omitempty"` // alternative to user_id; resolved server-side
 	InstanceID     string   `json:"instance_id"`
 	RoleARN        string   `json:"role_arn"`
 	DNSName        string   `json:"dns_name,omitempty"`
@@ -166,9 +170,19 @@ func adminWorkspaceList(ctx context.Context, reg *Registry, params map[string]st
 }
 
 func adminRegister(ctx context.Context, reg *Registry, r adminRequest, callerARN string) (events.APIGatewayProxyResponse, error) {
+	// Resolve user_email → user_id server-side when user_id is absent.
+	// The prism CLI can't resolve emails client-side because it doesn't hold the bot token.
+	if r.UserID == "" && r.UserEmail != "" {
+		resolved, err := resolveSlackEmail(ctx, reg, r.Platform, r.WorkspaceID, r.UserEmail)
+		if err != nil {
+			return adminError(400, fmt.Sprintf("email resolution: %v", err)), nil
+		}
+		r.UserID = resolved
+	}
+
 	if r.Platform == "" || r.WorkspaceID == "" || r.UserID == "" ||
 		r.InstanceID == "" || r.Nickname == "" || r.RoleARN == "" {
-		return adminError(400, "platform, workspace_id, user_id, instance_id, nickname, and role_arn are required"), nil
+		return adminError(400, "platform, workspace_id, user_id (or user_email), instance_id, nickname, and role_arn are required"), nil
 	}
 	if len(r.AllowedActions) == 0 {
 		r.AllowedActions = []string{"status"}
@@ -260,6 +274,51 @@ func adminList(ctx context.Context, reg *Registry, params map[string]string, cal
 	})
 }
 
+
+// resolveSlackEmail resolves an email address to a Slack user ID using the
+// workspace's stored bot token and Slack's users.lookupByEmail API.
+func resolveSlackEmail(ctx context.Context, reg *Registry, platform, workspaceID, email string) (string, error) {
+	ws, err := reg.GetWorkspace(ctx, platform, workspaceID)
+	if err != nil {
+		return "", fmt.Errorf("workspace %s/%s not registered", platform, workspaceID)
+	}
+	botToken := ws.BotToken
+	if botToken == "" {
+		return "", fmt.Errorf("no bot token for workspace — re-run workspace-add with --bot-token")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://slack.com/api/users.lookupByEmail?email="+url.QueryEscape(email), nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+botToken)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Slack API: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var slackResp struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+		User  struct {
+			ID string `json:"id"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &slackResp); err != nil {
+		return "", fmt.Errorf("parse Slack response: %w", err)
+	}
+	if !slackResp.OK {
+		if slackResp.Error == "users_not_found" {
+			return "", fmt.Errorf("no Slack user found with email %q in workspace %s", email, workspaceID)
+		}
+		return "", fmt.Errorf("Slack API error: %s", slackResp.Error)
+	}
+	return slackResp.User.ID, nil
+}
 
 func adminOK(payload interface{}) (events.APIGatewayProxyResponse, error) {
 	body, _ := json.Marshal(payload)
