@@ -153,6 +153,7 @@ func handleSlackTokenRotate(ctx context.Context, cfg aws.Config, request events.
 type slackOAuthTokenResponse struct {
 	OK                   bool   `json:"ok"`
 	Error                string `json:"error,omitempty"`
+	AppID                string `json:"app_id"`
 	AccessToken          string `json:"access_token"`
 	RefreshToken         string `json:"refresh_token,omitempty"`
 	TokenRotationEnabled bool   `json:"token_rotation_enabled,omitempty"`
@@ -207,15 +208,23 @@ func exchangeSlackCode(ctx context.Context, clientID, clientSecret, code, codeVe
 }
 
 // storeSlackWorkspace writes the workspace credentials to DynamoDB.
+// Uses an app-scoped key (slack#{workspace}#{app}) when the app_id is present,
+// so multiple Slack apps can coexist in the same workspace.
 func storeSlackWorkspace(ctx context.Context, cfg aws.Config, tableName string, token *slackOAuthTokenResponse) error {
 	client := dynamodb.NewFromConfig(cfg)
-	workspaceKey := "slack#" + token.Team.ID
 
-	// Preserve existing signing_secret if not in env
+	// App-scoped key when app_id is available; legacy key for backwards compat.
+	workspaceKey := "slack#" + token.Team.ID
+	if token.AppID != "" {
+		workspaceKey = "slack#" + token.Team.ID + "#" + token.AppID
+	}
+
+	// Preserve existing signing_secret — look up both key formats.
+	legacyKey := "slack#" + token.Team.ID
 	existing, _ := client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]dynamodbtypes.AttributeValue{
-			"workspace_key": &dynamodbtypes.AttributeValueMemberS{Value: workspaceKey},
+			"workspace_key": &dynamodbtypes.AttributeValueMemberS{Value: legacyKey},
 		},
 	})
 
@@ -229,6 +238,7 @@ func storeSlackWorkspace(ctx context.Context, cfg aws.Config, tableName string, 
 
 	ws := map[string]interface{}{
 		"workspace_key":  workspaceKey,
+		"app_id":         token.AppID,
 		"bot_token":      token.BotToken,
 		"signing_secret": signingSecret,
 		"platform":       "slack",
