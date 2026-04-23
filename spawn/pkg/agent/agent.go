@@ -311,7 +311,7 @@ func countActiveSessions() int {
 
 // writeSessionCountTag updates the spawn:logged-in-count EC2 tag, throttled to once per minute.
 func (a *Agent) writeSessionCountTag(ctx context.Context, count int) {
-	if time.Since(a.lastSessionTagWrite) < time.Minute {
+	if time.Since(a.lastSessionTagWrite) < 5*time.Minute {
 		return
 	}
 	a.lastSessionTagWrite = time.Now()
@@ -345,7 +345,7 @@ func (a *Agent) isIdle() bool {
 
 	// Check network traffic
 	networkBytes := a.getNetworkBytes()
-	if networkBytes > 10000 { // 10KB/min threshold
+	if networkBytes > 100000 { // 100KB/min threshold — filters out spored's own EC2/IMDS API calls (~25KB/min)
 		log.Printf("Not idle: Network traffic %d bytes", networkBytes)
 		return false
 	}
