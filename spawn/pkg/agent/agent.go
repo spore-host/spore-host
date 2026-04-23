@@ -36,7 +36,9 @@ type Agent struct {
 	preStopDone         bool  // guards against running pre-stop hook more than once
 	prevCPUIdle         int64 // /proc/stat idle jiffies at last getCPUUsage call
 	prevCPUTotal        int64 // /proc/stat total jiffies at last getCPUUsage call
-	lastSessionTagWrite time.Time // throttle spawn:logged-in-count tag writes
+	lastSessionTagWrite time.Time  // throttle spawn:logged-in-count tag writes
+	prevNetRx           int64      // /proc/net/dev RX bytes at last getNetworkBytes call
+	prevNetTx           int64      // /proc/net/dev TX bytes at last getNetworkBytes call
 }
 
 func NewAgent(ctx context.Context, prov provider.Provider) (*Agent, error) {
@@ -431,28 +433,29 @@ func readProcStatCPU() (idle, total int64, err error) {
 }
 
 func (a *Agent) getNetworkBytes() int64 {
-	// Read /proc/net/dev
+	// Read /proc/net/dev — compute delta since last call, not cumulative since boot.
 	data, err := os.ReadFile("/proc/net/dev")
 	if err != nil {
 		return 1000000 // Assume active if can't read
 	}
-
-	lines := strings.Split(string(data), "\n")
-	var totalBytes int64
-
-	for _, line := range lines {
+	var rx, tx int64
+	for _, line := range strings.Split(string(data), "\n") {
 		if strings.Contains(line, "eth0") || strings.Contains(line, "ens") {
 			fields := strings.Fields(line)
 			if len(fields) >= 10 {
-				// RX bytes + TX bytes
-				rx, _ := strconv.ParseInt(fields[1], 10, 64)
-				tx, _ := strconv.ParseInt(fields[9], 10, 64)
-				totalBytes += rx + tx
+				r, _ := strconv.ParseInt(fields[1], 10, 64)
+				t, _ := strconv.ParseInt(fields[9], 10, 64)
+				rx += r
+				tx += t
 			}
 		}
 	}
-
-	return totalBytes
+	prevRx, prevTx := a.prevNetRx, a.prevNetTx
+	a.prevNetRx, a.prevNetTx = rx, tx
+	if prevRx == 0 && prevTx == 0 {
+		return 1000000 // First call — no delta; assume active
+	}
+	return (rx - prevRx) + (tx - prevTx)
 }
 
 func (a *Agent) getDiskIO() int64 {
