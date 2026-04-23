@@ -45,7 +45,7 @@ type Auditor struct {
 func NewAuditor(cfg aws.Config) *Auditor {
 	return &Auditor{
 		client:    dynamodb.NewFromConfig(cfg),
-		tableName: getEnv("BOT_AUDIT_TABLE", "prism-bot-audit"),
+		tableName: getEnv("BOT_AUDIT_TABLE", "spore-bot-audit"),
 	}
 }
 

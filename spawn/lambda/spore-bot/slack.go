@@ -18,6 +18,7 @@ type SlashCommand struct {
 	Text        string
 	UserID      string
 	WorkspaceID string
+	ChannelID   string // used for channel restriction checks
 	ResponseURL string
 	TriggerID   string
 }
@@ -54,6 +55,7 @@ func parseSlackCommand(body string) (*SlashCommand, error) {
 		Text:        strings.TrimSpace(vals.Get("text")),
 		UserID:      vals.Get("user_id"),
 		WorkspaceID: vals.Get("team_id"),
+		ChannelID:   vals.Get("channel_id"),
 		ResponseURL: vals.Get("response_url"),
 		TriggerID:   vals.Get("trigger_id"),
 	}, nil

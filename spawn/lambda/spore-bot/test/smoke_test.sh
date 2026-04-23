@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Layer 2 smoke test for prism-bot Lambda.
+# Layer 2 smoke test for spore-bot Lambda.
 # Tests the HTTP endpoints without a real Slack workspace by using httpbin
 # as the response_url — httpbin echoes back whatever the Lambda POSTs to it.
 #
 # Prerequisites:
-#   - Lambda deployed (make deploy from spawn/lambda/prism-bot/)
+#   - Lambda deployed (make deploy from spawn/lambda/spore-bot/)
 #   - Workspace registered (spawn bot workspace-add --platform slack ...)
 #   - Instance registered (spawn bot register --platform slack ...)
 #
@@ -39,7 +39,7 @@ slack_sig() {
 
 echo ""
 echo "=========================================="
-echo " prism-bot Layer 2 Smoke Test"
+echo " spore-bot Layer 2 Smoke Test"
 echo "=========================================="
 echo "  Lambda URL:   $LAMBDA_URL"
 echo "  Workspace:    $WORKSPACE_ID"
@@ -127,6 +127,6 @@ echo "=========================================="
 echo " All smoke tests passed!"
 echo ""
 echo " Note: For the status/start/stop commands, check httpbin.org"
-echo " or CloudWatch /aws/lambda/prism-bot for the Phase 2 response."
+echo " or CloudWatch /aws/lambda/spore-bot for the Phase 2 response."
 echo " The Lambda posts the EC2 result to response_url asynchronously."
 echo "=========================================="
