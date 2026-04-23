@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,11 +16,11 @@ import (
 )
 
 // NotifyRequest is sent by spored when a lifecycle event fires.
-// Authentication uses the EC2 instance identity document + signature,
-// the same pattern as the dns-updater Lambda.
+// Authentication: PKCS#7 (preferred) or legacy document+signature.
 type NotifyRequest struct {
-	InstanceIdentityDocument  string `json:"instance_identity_document"`
-	InstanceIdentitySignature string `json:"instance_identity_signature"`
+	PKCS7                     string `json:"pkcs7,omitempty"`
+	InstanceIdentityDocument  string `json:"instance_identity_document,omitempty"`
+	InstanceIdentitySignature string `json:"instance_identity_signature,omitempty"`
 	Platform                  string `json:"platform"`     // "slack"
 	WorkspaceID               string `json:"workspace_id"` // e.g. "T03NE3GTY"
 	EventType                 string `json:"event_type"`   // ttl_warning, completion, etc.
@@ -40,12 +39,8 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		return errorResp(400, "Invalid request body"), nil
 	}
 
-	// Verify instance identity signature (same as dns-updater)
-	docBytes, err := base64.StdEncoding.DecodeString(nr.InstanceIdentityDocument)
-	if err != nil {
-		return errorResp(400, "Invalid instance identity document"), nil
-	}
-	if err := verifyInstanceIdentitySignature(docBytes, nr.InstanceIdentitySignature); err != nil {
+	// Verify instance identity — prefer PKCS#7 (self-contained), fall back to legacy.
+	if err := verifyNotifyAuth(nr); err != nil {
 		logf("notify auth failed for %s: %v", nr.InstanceID, err)
 		return errorResp(403, "Instance identity verification failed"), nil
 	}

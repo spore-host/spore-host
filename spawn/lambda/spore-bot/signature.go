@@ -55,40 +55,48 @@ hWdlzSaLTm3drnB6wnqMnMn0gQ5KoLc4QUVAKMnvZjY2CqBCNMBVW9Zl5q5UGk3
 u+KxJEnW5WtF1Z6l
 -----END CERTIFICATE-----`
 
+// verifyNotifyAuth verifies a NotifyRequest's instance identity.
+// Prefers PKCS#7 (self-contained, no hardcoded certs) over legacy doc+signature.
+func verifyNotifyAuth(nr NotifyRequest) error {
+	if nr.PKCS7 != "" {
+		pkcs7Bytes, err := base64.StdEncoding.DecodeString(nr.PKCS7)
+		if err != nil {
+			return fmt.Errorf("decode pkcs7: %w", err)
+		}
+		return verifyPKCS7(nil, pkcs7Bytes)
+	}
+
+	// Legacy path: separate document + signature
+	if nr.InstanceIdentityDocument == "" {
+		return fmt.Errorf("missing instance identity")
+	}
+	docBytes, err := base64.StdEncoding.DecodeString(nr.InstanceIdentityDocument)
+	if err != nil {
+		return fmt.Errorf("decode document: %w", err)
+	}
+	return verifyInstanceIdentitySignature(docBytes, nr.InstanceIdentitySignature)
+}
+
 // verifyInstanceIdentitySignature verifies the RSA signature on an EC2 instance
 // identity document using AWS's published certificates.
-//
-// docBytes is the raw (non-base64) identity document JSON.
-// signatureB64 is the base64-encoded signature from the request.
 func verifyInstanceIdentitySignature(docBytes []byte, signatureB64 string) error {
 	if signatureB64 == "" {
 		return fmt.Errorf("instance identity signature is required")
 	}
-
 	sigBytes, err := base64.StdEncoding.DecodeString(signatureB64)
 	if err != nil {
 		return fmt.Errorf("decode signature: %w", err)
 	}
-
-	// Collect all known AWS certs to try
 	certs, err := parseAWSCerts()
 	if err != nil {
 		return fmt.Errorf("parse AWS certificates: %w", err)
 	}
-
-	// Try PKCS#7 first (used by PKCS7 signature endpoint)
-	if err := verifyPKCS7(docBytes, sigBytes); err == nil {
-		return nil
-	}
-
-	// Try raw RSA-SHA256 against each cert (used by base64 signature endpoint)
 	for _, cert := range certs {
 		if err := verifyRawRSA(docBytes, sigBytes, cert); err == nil {
 			return nil
 		}
 	}
-
-	return fmt.Errorf("signature verification failed against all known AWS EC2 certificates")
+	return fmt.Errorf("signature verification failed")
 }
 
 func parseAWSCerts() ([]*x509.Certificate, error) {
@@ -110,12 +118,17 @@ func parseAWSCerts() ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
+// verifyPKCS7 verifies a PKCS#7 envelope. When docBytes is nil the document
+// is taken from the envelope itself (the /instance-identity/pkcs7 endpoint
+// returns a self-contained signed message with content embedded).
 func verifyPKCS7(docBytes, sigBytes []byte) error {
 	p7, err := pkcs7.Parse(sigBytes)
 	if err != nil {
 		return fmt.Errorf("parse PKCS#7: %w", err)
 	}
-	p7.Content = docBytes
+	if docBytes != nil {
+		p7.Content = docBytes
+	}
 	return p7.Verify()
 }
 

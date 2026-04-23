@@ -19,8 +19,9 @@ import (
 
 // notifyRequest mirrors the NotifyRequest struct in the spore-bot Lambda.
 type notifyRequest struct {
-	InstanceIdentityDocument  string `json:"instance_identity_document"`
-	InstanceIdentitySignature string `json:"instance_identity_signature"`
+	PKCS7                     string `json:"pkcs7,omitempty"`                     // preferred: self-contained PKCS#7
+	InstanceIdentityDocument  string `json:"instance_identity_document,omitempty"` // legacy
+	InstanceIdentitySignature string `json:"instance_identity_signature,omitempty"` // legacy
 	Platform                  string `json:"platform"`
 	WorkspaceID               string `json:"workspace_id"`
 	EventType                 string `json:"event_type"`
@@ -87,37 +88,22 @@ func (n *Notifier) Notify(ctx context.Context, eventType, detail string) {
 }
 
 func (n *Notifier) send(ctx context.Context, eventType, detail string) error {
-	// Get the raw instance identity document bytes from IMDS.
-	// Must use GetDynamicData (not GetInstanceIdentityDocument) to preserve
-	// the exact bytes that AWS signed — re-marshalling a parsed struct breaks
-	// the PKCS#7 signature verification on the Lambda side.
-	docResp, err := n.imdsClient.GetDynamicData(ctx, &imds.GetDynamicDataInput{
-		Path: "instance-identity/document",
+	// Use the PKCS#7 endpoint — it includes the document, certificate, and signature
+	// in one self-contained envelope. No hardcoded AWS certificates needed.
+	pkcs7Resp, err := n.imdsClient.GetDynamicData(ctx, &imds.GetDynamicDataInput{
+		Path: "instance-identity/pkcs7",
 	})
 	if err != nil {
-		return fmt.Errorf("get identity doc: %w", err)
+		return fmt.Errorf("get pkcs7: %w", err)
 	}
-	defer docResp.Content.Close()
-	identityDocBytes, err := io.ReadAll(docResp.Content)
+	defer pkcs7Resp.Content.Close()
+	pkcs7Bytes, err := io.ReadAll(pkcs7Resp.Content)
 	if err != nil {
-		return fmt.Errorf("read identity doc: %w", err)
-	}
-
-	sigResp, err := n.imdsClient.GetDynamicData(ctx, &imds.GetDynamicDataInput{
-		Path: "instance-identity/signature",
-	})
-	if err != nil {
-		return fmt.Errorf("get signature: %w", err)
-	}
-	defer sigResp.Content.Close()
-	sigBytes, err := io.ReadAll(sigResp.Content)
-	if err != nil {
-		return fmt.Errorf("read signature: %w", err)
+		return fmt.Errorf("read pkcs7: %w", err)
 	}
 
 	nr := notifyRequest{
-		InstanceIdentityDocument:  base64.StdEncoding.EncodeToString(identityDocBytes),
-		InstanceIdentitySignature: strings.TrimSpace(string(sigBytes)),
+		PKCS7:    base64.StdEncoding.EncodeToString(pkcs7Bytes),
 		Platform:                  n.platform,
 		WorkspaceID:               n.workspaceID,
 		EventType:                 eventType,
