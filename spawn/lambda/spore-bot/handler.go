@@ -94,8 +94,12 @@ func handleSlackWebhook(ctx context.Context, reg *Registry, request events.APIGa
 		return nil, fmt.Errorf("parse command: %w", err)
 	}
 
-	// Fetch signing secret for this workspace
-	ws, err := reg.GetWorkspace(ctx, "slack", sc.WorkspaceID)
+	// X-Slack-App-ID scopes the lookup when multiple apps share a workspace.
+	appID := request.Headers["X-Slack-App-ID"]
+	if appID == "" {
+		appID = request.Headers["x-slack-app-id"]
+	}
+	ws, err := reg.GetWorkspaceForApp(ctx, "slack", sc.WorkspaceID, appID)
 	if err != nil {
 		return nil, fmt.Errorf("workspace not found: %w", err)
 	}

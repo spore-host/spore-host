@@ -37,8 +37,12 @@ type BotRegistration struct {
 
 // WorkspaceConfig stores per-workspace OAuth tokens (bot token + signing secret).
 type WorkspaceConfig struct {
-	// PK: {platform}#{workspace-id}
+	// PK: {platform}#{workspace-id}#{app-id}  (preferred)
+	//  or {platform}#{workspace-id}            (legacy, single app per workspace)
 	WorkspaceKey  string `dynamodbav:"workspace_key"`
+	// AppID is the Slack App ID (A...). Used to scope workspace keys when multiple
+	// Slack apps are installed in the same workspace (e.g. spore-bot + prism-bot).
+	AppID         string `dynamodbav:"app_id,omitempty"`
 	BotToken      string `dynamodbav:"bot_token"`
 	SigningSecret string `dynamodbav:"signing_secret"`
 	Platform      string `dynamodbav:"platform"`
@@ -79,9 +83,48 @@ func userKey(platform, workspaceID, userID string) string {
 	return strings.Join([]string{platform, workspaceID, userID}, "#")
 }
 
-// workspaceKey builds the DynamoDB PK for a workspace: "{platform}#{workspace}".
-func workspaceKey(platform, workspaceID string) string {
+// workspaceKey builds the DynamoDB PK for a workspace.
+// When appID is non-empty, uses "{platform}#{workspace}#{app}" to support
+// multiple Slack apps installed in the same workspace.
+// Falls back to "{platform}#{workspace}" for legacy records.
+func workspaceKey(platform, workspaceID string, appID ...string) string {
+	if len(appID) > 0 && appID[0] != "" {
+		return platform + "#" + workspaceID + "#" + appID[0]
+	}
 	return platform + "#" + workspaceID
+}
+
+// GetWorkspaceForApp looks up a workspace by platform, workspace ID, and Slack App ID.
+// Tries the app-scoped key first ({platform}#{workspace}#{app}), then falls back to
+// the legacy key ({platform}#{workspace}) for backwards compatibility.
+func (r *Registry) GetWorkspaceForApp(ctx context.Context, platform, workspaceID, appID string) (*WorkspaceConfig, error) {
+	if appID != "" {
+		ws, err := r.getWorkspaceByKey(ctx, workspaceKey(platform, workspaceID, appID))
+		if err == nil {
+			return ws, nil
+		}
+	}
+	return r.getWorkspaceByKey(ctx, workspaceKey(platform, workspaceID))
+}
+
+func (r *Registry) getWorkspaceByKey(ctx context.Context, key string) (*WorkspaceConfig, error) {
+	result, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.workspacesTable),
+		Key: map[string]dynamodbtypes.AttributeValue{
+			"workspace_key": &dynamodbtypes.AttributeValueMemberS{Value: key},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get workspace: %w", err)
+	}
+	if result.Item == nil {
+		return nil, fmt.Errorf("workspace %s not registered", key)
+	}
+	var ws WorkspaceConfig
+	if err := attributevalue.UnmarshalMap(result.Item, &ws); err != nil {
+		return nil, fmt.Errorf("unmarshal workspace: %w", err)
+	}
+	return &ws, nil
 }
 
 // Registry handles DynamoDB operations for bot registrations and workspaces.
@@ -100,24 +143,9 @@ func newRegistry(cfg aws.Config) *Registry {
 }
 
 // GetWorkspace retrieves signing secret and bot token for a workspace.
+// Use GetWorkspaceForApp when the Slack App ID is available.
 func (r *Registry) GetWorkspace(ctx context.Context, platform, workspaceID string) (*WorkspaceConfig, error) {
-	result, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.workspacesTable),
-		Key: map[string]dynamodbtypes.AttributeValue{
-			"workspace_key": &dynamodbtypes.AttributeValueMemberS{Value: workspaceKey(platform, workspaceID)},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("get workspace: %w", err)
-	}
-	if result.Item == nil {
-		return nil, fmt.Errorf("workspace %s/%s not registered", platform, workspaceID)
-	}
-	var ws WorkspaceConfig
-	if err := attributevalue.UnmarshalMap(result.Item, &ws); err != nil {
-		return nil, fmt.Errorf("unmarshal workspace: %w", err)
-	}
-	return &ws, nil
+	return r.getWorkspaceByKey(ctx, workspaceKey(platform, workspaceID))
 }
 
 // ListUserInstances returns all registered instances for a user.

@@ -121,8 +121,13 @@ func adminWorkspaceAdd(ctx context.Context, reg *Registry, r adminRequest, calle
 		return adminError(400, "platform, workspace_id, bot_token, and signing_secret are required"), nil
 	}
 
+	// Resolve App ID from Slack so workspaces are scoped per-app, allowing
+	// multiple Slack apps (e.g. spore-bot + prism-bot) in the same workspace.
+	appID := resolveSlackAppID(ctx, r.BotToken)
+
 	ws := &WorkspaceConfig{
-		WorkspaceKey:        workspaceKey(r.Platform, r.WorkspaceID),
+		WorkspaceKey:        workspaceKey(r.Platform, r.WorkspaceID, appID),
+		AppID:               appID,
 		Platform:            r.Platform,
 		BotToken:            r.BotToken,
 		SigningSecret:       r.SigningSecret,
@@ -288,6 +293,30 @@ func adminList(ctx context.Context, reg *Registry, params map[string]string, cal
 	})
 }
 
+
+// resolveSlackAppID calls Slack's auth.test API to get the App ID for a bot token.
+// Returns "" on failure so callers fall back to the legacy workspace key format.
+func resolveSlackAppID(ctx context.Context, botToken string) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://slack.com/api/auth.test", nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Authorization", "Bearer "+botToken)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		OK    bool   `json:"ok"`
+		AppID string `json:"app_id"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || !result.OK {
+		return ""
+	}
+	return result.AppID
+}
 
 // resolveSlackEmail resolves an email address to a Slack user ID using the
 // workspace's stored bot token and Slack's users.lookupByEmail API.

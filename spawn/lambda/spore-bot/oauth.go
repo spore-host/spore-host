@@ -89,9 +89,11 @@ func handleOAuthCallback(ctx context.Context, reg *Registry, platform string, re
 		return oauthError(500, fmt.Sprintf("OAuth exchange failed: %v", err)), nil
 	}
 
-	// Store workspace credentials
+	// Store workspace credentials — keyed by app ID when available so multiple
+	// Slack apps can coexist in the same workspace.
 	ws := &WorkspaceConfig{
-		WorkspaceKey:  "slack#" + token.Team.ID,
+		WorkspaceKey:  workspaceKey("slack", token.Team.ID, token.AppID),
+		AppID:         token.AppID,
 		Platform:      "slack",
 		BotToken:      token.AccessToken,
 		WorkspaceName: token.Team.Name,
@@ -123,12 +125,13 @@ func handleOAuthCallback(ctx context.Context, reg *Registry, platform string, re
 
 // oauthTokenResponse is the response from Slack's oauth.v2.access endpoint.
 type oauthTokenResponse struct {
-	OK          bool   `json:"ok"`
-	Error       string `json:"error,omitempty"`
-	AccessToken string `json:"access_token"`
+	OK           bool   `json:"ok"`
+	Error        string `json:"error,omitempty"`
+	AppID        string `json:"app_id"`
+	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
-	ExpiresIn   int    `json:"expires_in,omitempty"`
-	Team        struct {
+	ExpiresIn    int    `json:"expires_in,omitempty"`
+	Team         struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"team"`
