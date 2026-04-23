@@ -189,13 +189,34 @@ func runBotRegister(cmd *cobra.Command, args []string) error {
 	}
 
 	client := dynamodb.NewFromConfig(cfg)
-	item, err := attributevalue.MarshalMap(reg)
-	if err != nil {
-		return fmt.Errorf("marshal registration: %w", err)
-	}
-	_, err = client.PutItem(ctx, &dynamodb.PutItemInput{
+	// Use UpdateItem so re-registering an already-enabled instance doesn't reset
+	// the enabled flag back to false. All other fields are overwritten.
+	_, err = client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(tableName),
-		Item:      item,
+		Key: map[string]dynamodbtypes.AttributeValue{
+			"user_key": &dynamodbtypes.AttributeValueMemberS{Value: reg.UserKey},
+			"nickname": &dynamodbtypes.AttributeValueMemberS{Value: reg.Nickname},
+		},
+		UpdateExpression: aws.String(
+			"SET instance_id = :iid, aws_account_id = :acct, role_arn = :role, " +
+				"tag_prefix = :pfx, allowed_actions = :acts, registered_by = :by, " +
+				"platform = :plat, created_at = if_not_exists(created_at, :cat)"),
+		ExpressionAttributeValues: map[string]dynamodbtypes.AttributeValue{
+			":iid":  &dynamodbtypes.AttributeValueMemberS{Value: reg.InstanceID},
+			":acct": &dynamodbtypes.AttributeValueMemberS{Value: reg.AWSAccountID},
+			":role": &dynamodbtypes.AttributeValueMemberS{Value: reg.RoleARN},
+			":pfx":  &dynamodbtypes.AttributeValueMemberS{Value: reg.TagPrefix},
+			":acts": &dynamodbtypes.AttributeValueMemberL{Value: func() []dynamodbtypes.AttributeValue {
+				vals := make([]dynamodbtypes.AttributeValue, len(reg.AllowedActions))
+				for i, a := range reg.AllowedActions {
+					vals[i] = &dynamodbtypes.AttributeValueMemberS{Value: a}
+				}
+				return vals
+			}()},
+			":by":  &dynamodbtypes.AttributeValueMemberS{Value: reg.RegisteredBy},
+			":plat": &dynamodbtypes.AttributeValueMemberS{Value: reg.Platform},
+			":cat":  &dynamodbtypes.AttributeValueMemberS{Value: reg.CreatedAt},
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("write registration: %w", err)
@@ -950,6 +971,9 @@ type botRegistration struct {
 	RegisteredBy   string   `dynamodbav:"registered_by" json:"registered_by"`
 	Platform       string   `dynamodbav:"platform" json:"platform"`
 	CreatedAt      string   `dynamodbav:"created_at" json:"created_at"`
+	// Enabled tracks whether the bot may execute EC2 commands for this registration.
+	// Stored explicitly so re-registering an enabled instance doesn't silently disable it.
+	Enabled bool `dynamodbav:"enabled" json:"enabled"`
 }
 
 // ── init ─────────────────────────────────────────────────────────────────────
@@ -996,7 +1020,7 @@ func init() {
 	botRegisterCmd.Flags().StringVar(&botNickname, "nickname", "", "Friendly name for slash commands (default: 'default')")
 	botRegisterCmd.Flags().StringSliceVar(&botAllow, "allow", nil, "Allowed actions (default: start,stop,status,hibernate,url)")
 	botRegisterCmd.Flags().StringVar(&botTagPrefix, "tag-prefix", "", "Tag prefix: spawn or prism (default: auto-detected)")
-	botRegisterCmd.Flags().StringVar(&botRoleARN, "role-arn", "", "Cross-account IAM role ARN for this instance's account")
+	botRegisterCmd.Flags().StringVar(&botRoleARN, "role-arn", "", "Cross-account IAM role ARN for this instance's account (created automatically if omitted)")
 	botRegisterCmd.Flags().StringVar(&botConnectCode, "connect-code", "", "One-time code from /spore connect (alternative to --user-id)")
 
 	// Deregister flags
