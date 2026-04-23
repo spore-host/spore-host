@@ -392,7 +392,7 @@ func TestFormatSlackStatus_RichCard(t *testing.T) {
 		"AWS Region", "us-east-1f",
 		"IP Address", "98.92.241.152",
 		"URL", "https://spore-bot-test.5k0zfnmq.spore.host",
-		"Auto-terminate", "4h",
+		"TTL (auto-terminate)", "4h",
 		"Idle timeout", "1h",
 		"AWS Instance ID", "i-038954d0b2e861273",
 	} {

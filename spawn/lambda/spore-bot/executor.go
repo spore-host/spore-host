@@ -231,21 +231,40 @@ func cmdList(ctx context.Context, reg *Registry, action *BotAction) (string, err
 		return fmt.Sprintf("No instances registered. Use `%s notify <name>` to subscribe to notifications, or ask your workspace admin to run `spawn bot register`.", action.slashCmd()), nil
 	}
 
-	var control, notify []string
-	for _, r := range regs {
+	var control, notify, terminated []string
+	for i := range regs {
+		r := &regs[i]
 		if r.NotifyOnly {
 			name := strings.TrimPrefix(r.Nickname, "notify::")
 			notify = append(notify, fmt.Sprintf("• 🔔 *%s* — `%s` _(notifications only)_", name, r.InstanceID))
-		} else {
-			line := fmt.Sprintf("• *%s* — `%s`", r.Nickname, r.InstanceID)
-			if r.DNSName != "" {
-				line += fmt.Sprintf(" (%s)", r.DNSName)
-			}
-			if len(r.AllowedActions) > 0 {
-				line += fmt.Sprintf(" [%s]", strings.Join(r.AllowedActions, ", "))
-			}
-			control = append(control, line)
+			continue
 		}
+
+		// Already known terminated — show with expiry countdown
+		if r.TerminatedAt != "" {
+			terminated = append(terminated, formatTerminatedEntry(r))
+			continue
+		}
+
+		// Check EC2 state to detect newly terminated instances
+		if r.RoleARN != "" {
+			if isTerminatedInEC2(ctx, r) {
+				go func(rr *BotRegistration) {
+					_ = reg.MarkTerminated(context.Background(), rr)
+				}(r)
+				terminated = append(terminated, formatTerminatedEntry(r))
+				continue
+			}
+		}
+
+		line := fmt.Sprintf("• *%s* — `%s`", r.Nickname, r.InstanceID)
+		if r.DNSName != "" {
+			line += fmt.Sprintf(" (%s)", r.DNSName)
+		}
+		if len(r.AllowedActions) > 0 {
+			line += fmt.Sprintf(" [%s]", strings.Join(r.AllowedActions, ", "))
+		}
+		control = append(control, line)
 	}
 
 	var lines []string
@@ -257,7 +276,45 @@ func cmdList(ctx context.Context, reg *Registry, action *BotAction) (string, err
 		lines = append(lines, "*Your notification subscriptions:*")
 		lines = append(lines, notify...)
 	}
+	if len(terminated) > 0 {
+		lines = append(lines, "*Recently terminated:*")
+		lines = append(lines, terminated...)
+	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// isTerminatedInEC2 returns true if the instance is terminated or not found in EC2.
+func isTerminatedInEC2(ctx context.Context, reg *BotRegistration) bool {
+	ec2Client, err := crossAccountEC2(ctx, cfg, reg.RoleARN, reg.InstanceID)
+	if err != nil {
+		return false
+	}
+	out, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{reg.InstanceID},
+	})
+	if err != nil || len(out.Reservations) == 0 || len(out.Reservations[0].Instances) == 0 {
+		return true // not found = terminated and reaped
+	}
+	state := string(out.Reservations[0].Instances[0].State.Name)
+	return state == "terminated"
+}
+
+// formatTerminatedEntry formats a recently-terminated instance line for /spore list.
+func formatTerminatedEntry(r *BotRegistration) string {
+	ago := ""
+	expiry := ""
+	if r.TerminatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, r.TerminatedAt); err == nil {
+			ago = " — terminated " + formatDuration(time.Since(t)) + " ago"
+		}
+	}
+	if r.TTL > 0 {
+		remaining := time.Until(time.Unix(r.TTL, 0))
+		if remaining > 0 {
+			expiry = fmt.Sprintf(" _(auto-removing in %s)_", formatDuration(remaining))
+		}
+	}
+	return fmt.Sprintf("• ⚫ *%s* — `%s`%s%s", r.Nickname, r.InstanceID, ago, expiry)
 }
 
 func cmdEC2Op(ctx context.Context, cfg aws.Config, action *BotAction, op string) (string, error) {

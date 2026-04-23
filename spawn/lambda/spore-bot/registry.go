@@ -33,6 +33,11 @@ type BotRegistration struct {
 	// NotifyOnly marks a self-service notification subscription created via /spore notify.
 	// These entries receive DMs for lifecycle events but cannot execute EC2 operations.
 	NotifyOnly bool `dynamodbav:"notify_only,omitempty" json:"notify_only,omitempty"`
+	// TerminatedAt is set when the instance is detected as terminated in /spore list.
+	TerminatedAt string `dynamodbav:"terminated_at,omitempty" json:"terminated_at,omitempty"`
+	// TTL is the DynamoDB auto-expiry timestamp (Unix seconds). Set to 7 days after
+	// TerminatedAt so the record disappears without manual cleanup.
+	TTL int64 `dynamodbav:"ttl,omitempty" json:"ttl,omitempty"`
 }
 
 // WorkspaceConfig stores per-workspace OAuth tokens (bot token + signing secret).
@@ -441,6 +446,29 @@ func (r *Registry) RedeemConnectCode(ctx context.Context, code string) (*Connect
 		return nil, nil // expired
 	}
 	return &cc, nil
+}
+
+// MarkTerminated stamps terminated_at and sets a 7-day DynamoDB TTL on a registration.
+// Called by /spore list when EC2 reports the instance as terminated.
+func (r *Registry) MarkTerminated(ctx context.Context, reg *BotRegistration) error {
+	now := time.Now().UTC()
+	expiry := now.Add(7 * 24 * time.Hour).Unix()
+	_, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: &r.registryTable,
+		Key: map[string]dynamodbtypes.AttributeValue{
+			"user_key": &dynamodbtypes.AttributeValueMemberS{Value: reg.UserKey},
+			"nickname": &dynamodbtypes.AttributeValueMemberS{Value: reg.Nickname},
+		},
+		UpdateExpression: aws.String("SET terminated_at = :t, #ttl = :e"),
+		ExpressionAttributeNames: map[string]string{
+			"#ttl": "ttl", // ttl is a reserved word in DynamoDB expressions
+		},
+		ExpressionAttributeValues: map[string]dynamodbtypes.AttributeValue{
+			":t": &dynamodbtypes.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
+			":e": &dynamodbtypes.AttributeValueMemberN{Value: fmt.Sprintf("%d", expiry)},
+		},
+	})
+	return err
 }
 
 // isActionAllowed checks if an action is in the allowed list.
