@@ -59,14 +59,19 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		return jsonOK(), nil
 	}
 
+	// Use a background context for outbound Slack calls — the request context
+	// is cancelled as soon as handleNotify returns, killing in-flight HTTP calls.
+	slackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	for i := range workspaces {
 		ws := &workspaces[i]
-		// Pattern A: post to channel via incoming webhook
+		// Pattern A: post to channel via incoming webhook (fire-and-forget ok, errors logged)
 		if ws.IncomingWebhookURL != "" {
 			go postIncomingWebhook(ws.IncomingWebhookURL, msg)
 		}
-		// Pattern B: DM each registered user for this instance
-		go sendUserDMs(ctx, cfg, reg, ws, nr.InstanceID, msg)
+		// Pattern B: DM each registered user — synchronous so context isn't cancelled
+		sendUserDMs(slackCtx, cfg, reg, ws, nr.InstanceID, msg)
 	}
 
 	return jsonOK(), nil
@@ -135,7 +140,11 @@ func sendUserDMs(ctx context.Context, cfg aws.Config, reg *Registry, ws *Workspa
 }
 
 // postSlackDM sends a direct message to a Slack user via chat.postMessage.
+// Uses its own 8-second timeout context so caller context cancellation doesn't abort the call.
 func postSlackDM(ctx context.Context, botToken, userID, text string) {
+	dmCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	ctx = dmCtx
 	payload, _ := json.Marshal(map[string]string{
 		"channel": userID, // Using user ID as channel opens a DM
 		"text":    text,
