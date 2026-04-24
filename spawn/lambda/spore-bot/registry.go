@@ -170,6 +170,31 @@ func (r *Registry) GetWorkspace(ctx context.Context, platform, workspaceID strin
 	return r.getWorkspaceByKey(ctx, workspaceKey(platform, workspaceID))
 }
 
+// GetWorkspacesForPlatform returns ALL workspace configs whose key starts with
+// "{platform}#{workspaceID}" — covering legacy, app-scoped, and command-scoped records.
+// Used by handleNotify to fan out across multiple apps in the same workspace.
+func (r *Registry) GetWorkspacesForPlatform(ctx context.Context, platform, workspaceID string) []WorkspaceConfig {
+	prefix := platform + "#" + workspaceID
+	result, err := r.client.Scan(ctx, &dynamodb.ScanInput{
+		TableName:        aws.String(r.workspacesTable),
+		FilterExpression: aws.String("begins_with(workspace_key, :pfx) AND attribute_exists(bot_token)"),
+		ExpressionAttributeValues: map[string]dynamodbtypes.AttributeValue{
+			":pfx": &dynamodbtypes.AttributeValueMemberS{Value: prefix},
+		},
+	})
+	if err != nil || len(result.Items) == 0 {
+		return nil
+	}
+	var workspaces []WorkspaceConfig
+	for _, item := range result.Items {
+		var ws WorkspaceConfig
+		if err := attributevalue.UnmarshalMap(item, &ws); err == nil && ws.BotToken != "" {
+			workspaces = append(workspaces, ws)
+		}
+	}
+	return workspaces
+}
+
 // ListUserInstances returns all registered instances for a user.
 func (r *Registry) ListUserInstances(ctx context.Context, platform, workspaceID, userID string) ([]BotRegistration, error) {
 	key := userKey(platform, workspaceID, userID)

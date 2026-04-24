@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -47,26 +48,26 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		return errorResp(400, "workspace_id and instance_id are required"), nil
 	}
 
-	// Parse workspace key
-	workspaceKey := nr.Platform + "#" + nr.WorkspaceID
+	msg := formatNotification(nr)
 
-	// Look up workspace (for incoming webhook + bot token)
-	ws, err := reg.GetWorkspace(ctx, nr.Platform, nr.WorkspaceID)
-	if err != nil {
-		logf("notify: workspace %s not found: %v", workspaceKey, err)
-		// Don't error — workspace might not be registered; just skip
+	// Fan out to ALL workspace configs for this workspace_id.
+	// Multiple Slack apps (spore-bot, prism-bot) may share the same workspace_id
+	// so we try every registered app-scoped and command-scoped config.
+	workspaces := reg.GetWorkspacesForPlatform(ctx, nr.Platform, nr.WorkspaceID)
+	if len(workspaces) == 0 {
+		logf("notify: no workspaces found for %s#%s", nr.Platform, nr.WorkspaceID)
 		return jsonOK(), nil
 	}
 
-	msg := formatNotification(nr)
-
-	// Pattern A: post to channel via incoming webhook (fire-and-forget)
-	if ws.IncomingWebhookURL != "" {
-		go postIncomingWebhook(ws.IncomingWebhookURL, msg)
+	for i := range workspaces {
+		ws := &workspaces[i]
+		// Pattern A: post to channel via incoming webhook
+		if ws.IncomingWebhookURL != "" {
+			go postIncomingWebhook(ws.IncomingWebhookURL, msg)
+		}
+		// Pattern B: DM each registered user for this instance
+		go sendUserDMs(ctx, cfg, reg, ws, nr.InstanceID, msg)
 	}
-
-	// Pattern B: DM each registered user for this instance
-	go sendUserDMs(ctx, cfg, reg, ws, nr.InstanceID, msg)
 
 	return jsonOK(), nil
 }
@@ -153,6 +154,15 @@ func postSlackDM(ctx context.Context, botToken, userID, text string) {
 		return
 	}
 	defer resp.Body.Close()
+	var slackResp struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error,omitempty"`
+	}
+	if body, err := io.ReadAll(resp.Body); err == nil {
+		if jsonErr := json.Unmarshal(body, &slackResp); jsonErr == nil && !slackResp.OK {
+			logf("DM to %s failed: %s", userID, slackResp.Error)
+		}
+	}
 }
 
 // formatNotification builds the Slack message text for a lifecycle event.
