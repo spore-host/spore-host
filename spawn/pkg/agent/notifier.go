@@ -19,11 +19,12 @@ import (
 
 // notifyRequest mirrors the NotifyRequest struct in the spore-bot Lambda.
 type notifyRequest struct {
-	PKCS7                     string `json:"pkcs7,omitempty"`                     // preferred: self-contained PKCS#7
-	InstanceIdentityDocument  string `json:"instance_identity_document,omitempty"` // legacy
-	InstanceIdentitySignature string `json:"instance_identity_signature,omitempty"` // legacy
+	PKCS7                     string `json:"pkcs7,omitempty"`
+	InstanceIdentityDocument  string `json:"instance_identity_document,omitempty"`
+	InstanceIdentitySignature string `json:"instance_identity_signature,omitempty"`
 	Platform                  string `json:"platform"`
 	WorkspaceID               string `json:"workspace_id"`
+	Command                   string `json:"command,omitempty"` // e.g. "/spore" — routes to correct app config
 	EventType                 string `json:"event_type"`
 	InstanceName              string `json:"instance_name"`
 	InstanceID                string `json:"instance_id"`
@@ -39,6 +40,7 @@ type Notifier struct {
 	notifyURL    string
 	workspaceID  string
 	platform     string
+	command      string // e.g. "/spore" — routes to correct workspace config
 	instanceID   string
 	instanceName string
 	region       string
@@ -64,10 +66,15 @@ func NewNotifier(cfg *provider.Config, identity *provider.Identity) *Notifier {
 	if fqdn != "" && cfg.AccountBase36 != "" {
 		fqdn = cfg.DNSName + "." + cfg.AccountBase36 + ".spore.host"
 	}
+	command := cfg.NotifyCommand
+	if command == "" {
+		command = "/spore" // default for spawn CLI launches
+	}
 	return &Notifier{
 		notifyURL:    strings.TrimRight(cfg.NotifyURL, "/"),
 		workspaceID:  cfg.SlackWorkspaceID,
 		platform:     "slack",
+		command:      command,
 		instanceID:   identity.InstanceID,
 		instanceName: name,
 		region:       identity.Region,
@@ -116,7 +123,8 @@ func (n *Notifier) send(ctx context.Context, eventType, detail string) error {
 	}
 
 	nr := notifyRequest{
-		PKCS7:    base64.StdEncoding.EncodeToString(pkcs7DER),
+		PKCS7:   base64.StdEncoding.EncodeToString(pkcs7DER),
+		Command: n.command,
 		Platform:                  n.platform,
 		WorkspaceID:               n.workspaceID,
 		EventType:                 eventType,

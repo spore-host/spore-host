@@ -1592,6 +1592,7 @@ func buildLaunchConfig(truffleInput *input.TruffleInput) (*aws.LaunchConfig, err
 			notifyURL = "https://awdzf7fbbsvqcrnrzusqjsuybm0iiyvf.lambda-url.us-east-1.on.aws"
 		}
 		config.NotifyURL = notifyURL
+		config.NotifyCommand = "/spore" // routes notifications to spore-bot workspace config
 	}
 	if idleTimeout != "" {
 		config.IdleTimeout = idleTimeout

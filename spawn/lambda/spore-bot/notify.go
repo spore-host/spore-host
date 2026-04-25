@@ -22,6 +22,7 @@ type NotifyRequest struct {
 	PKCS7                     string `json:"pkcs7,omitempty"`
 	InstanceIdentityDocument  string `json:"instance_identity_document,omitempty"`
 	InstanceIdentitySignature string `json:"instance_identity_signature,omitempty"`
+	Command                   string `json:"command,omitempty"` // e.g. "/spore" — routes to correct workspace config
 	Platform                  string `json:"platform"`     // "slack"
 	WorkspaceID               string `json:"workspace_id"` // e.g. "T03NE3GTY"
 	EventType                 string `json:"event_type"`   // ttl_warning, completion, etc.
@@ -50,10 +51,18 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 
 	msg := formatNotification(nr)
 
-	// Fan out to ALL workspace configs for this workspace_id.
-	// Multiple Slack apps (spore-bot, prism-bot) may share the same workspace_id
-	// so we try every registered app-scoped and command-scoped config.
-	workspaces := reg.GetWorkspacesForPlatform(ctx, nr.Platform, nr.WorkspaceID)
+	// Look up workspace configs. When the command is known (e.g. "/spore"),
+	// use the command-scoped key directly to avoid cross-app DM duplication.
+	// Fall back to scanning all configs if no command is specified.
+	var workspaces []WorkspaceConfig
+	if nr.Command != "" {
+		if ws, err := reg.getWorkspaceByKey(ctx, workspaceKey(nr.Platform, nr.WorkspaceID, nr.Command)); err == nil {
+			workspaces = []WorkspaceConfig{*ws}
+		}
+	}
+	if len(workspaces) == 0 {
+		workspaces = reg.GetWorkspacesForPlatform(ctx, nr.Platform, nr.WorkspaceID)
+	}
 	if len(workspaces) == 0 {
 		logf("notify: no workspaces found for %s#%s", nr.Platform, nr.WorkspaceID)
 		return jsonOK(), nil

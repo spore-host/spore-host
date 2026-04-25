@@ -49,6 +49,7 @@ type Config struct {
 	// Notification settings — populated from EC2 tags at startup
 	NotifyURL        string // spore-bot Lambda Function URL for lifecycle notifications
 	SlackWorkspaceID string // Slack workspace ID (e.g. "T03NE3GTY")
+	NotifyCommand    string // Slash command for workspace config lookup (e.g. "/spore", "/prism")
 	AccountBase36    string // base36-encoded account ID for full DNS FQDN (name.base36.spore.host)
 
 	// Job array settings

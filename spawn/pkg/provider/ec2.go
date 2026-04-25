@@ -364,6 +364,8 @@ func loadConfigFromEC2Tags(ctx context.Context, client *ec2.Client, instanceID s
 			config.AccountBase36 = *tag.Value
 		case tagprefix.Tag("notify-url"):
 			config.NotifyURL = *tag.Value
+		case tagprefix.Tag("notify-command"):
+			config.NotifyCommand = *tag.Value
 		case tagprefix.Tag("slack-workspace-id"):
 			config.SlackWorkspaceID = *tag.Value
 		case tagprefix.Tag("pre-stop"):

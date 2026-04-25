@@ -40,6 +40,7 @@ type Agent struct {
 	prevNetRx           int64      // /proc/net/dev RX bytes at last getNetworkBytes call
 	prevNetTx           int64      // /proc/net/dev TX bytes at last getNetworkBytes call
 	idleWarned          bool       // send idle_warning notification only once
+	ttlWarned           bool       // send ttl_warning notification only once
 }
 
 func NewAgent(ctx context.Context, prov provider.Provider) (*Agent, error) {
@@ -230,8 +231,9 @@ func (a *Agent) checkAndAct(ctx context.Context) {
 			return
 		}
 
-		// Warn at 5 minutes
-		if remaining > 0 && remaining <= 5*time.Minute {
+		// Warn once when 5 minutes remain before TTL
+		if remaining > 0 && remaining <= 5*time.Minute && !a.ttlWarned {
+			a.ttlWarned = true
 			a.warnUsers(i18n.Tf("spawn.agent.ttl_warning", map[string]interface{}{
 				"Duration": remaining.Round(time.Minute),
 			}))
