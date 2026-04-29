@@ -122,6 +122,17 @@ func handleOAuthCallback(ctx context.Context, reg *Registry, platform string, re
 		return oauthError(500, "Failed to store workspace credentials"), nil
 	}
 
+	// Also write a command-scoped copy (e.g. slack#T#/prism) so the slash command
+	// handler can find the signing secret and bot token without knowing the app ID.
+	// The platform prefix in the OAuth path determines the command name.
+	cmdKey := workspaceKey("slack", token.Team.ID, "/"+platform)
+	cmdWS := *ws
+	cmdWS.WorkspaceKey = cmdKey
+	if err := reg.PutWorkspace(ctx, &cmdWS); err != nil {
+		logf("oauth: store command-scoped workspace %s: %v", cmdKey, err)
+		// Non-fatal — app-scoped record is the primary one
+	}
+
 	return oauthRedirectResult(successURL, fmt.Sprintf("bot=connected&workspace=%s&workspace_name=%s",
 		url.QueryEscape(token.Team.ID),
 		url.QueryEscape(token.Team.Name),
