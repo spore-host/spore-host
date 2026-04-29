@@ -51,6 +51,7 @@ type Config struct {
 	SlackWorkspaceID string // Slack workspace ID (e.g. "T03NE3GTY")
 	NotifyCommand    string // Slash command for workspace config lookup (e.g. "/spore", "/prism")
 	AccountBase36    string // base36-encoded account ID for full DNS FQDN (name.base36.spore.host)
+	ActivePorts      []int  // TCP ports to monitor for active connections (e.g. 8787 for RStudio)
 
 	// Job array settings
 	JobArrayID    string

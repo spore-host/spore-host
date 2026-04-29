@@ -208,8 +208,9 @@ func (a *Agent) Monitor(ctx context.Context) {
 }
 
 func (a *Agent) checkAndAct(ctx context.Context) {
-	// 0. Keep spawn:logged-in-count tag current (throttled to 1/min).
-	a.writeSessionCountTag(ctx, countActiveSessions())
+	// 0. Keep spawn:logged-in-count tag current (throttled to 5/min).
+	// Combines SSH sessions + active port connections so the bot can warn before stopping.
+	a.writeSessionCountTag(ctx, countActiveSessions()+countActivePortConnections(a.config.ActivePorts))
 
 	// 1. Check for completion signal (HIGH PRIORITY)
 	if a.config.OnComplete != "" {
@@ -301,6 +302,44 @@ func (a *Agent) checkAndAct(ctx context.Context) {
 	}
 }
 
+// countActivePortConnections checks /proc/net/tcp for ESTABLISHED connections
+// on the given ports. Used to detect browser-based app users (RStudio, Jupyter)
+// that don't appear in `who` because they connect via HTTP, not SSH.
+func countActivePortConnections(ports []int) int {
+	if len(ports) == 0 {
+		return 0
+	}
+	portSet := make(map[int]bool, len(ports))
+	for _, p := range ports {
+		portSet[p] = true
+	}
+
+	data, err := os.ReadFile("/proc/net/tcp")
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(string(data), "\n")[1:] {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[3] != "01" { // 01 = ESTABLISHED
+			continue
+		}
+		// local_address is hex ip:port e.g. "0F02000A:2253"
+		parts := strings.SplitN(fields[1], ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		port64, err := strconv.ParseInt(parts[1], 16, 32)
+		if err != nil {
+			continue
+		}
+		if portSet[int(port64)] {
+			count++
+		}
+	}
+	return count
+}
+
 // countActiveSessions returns the number of active login sessions from `who`.
 func countActiveSessions() int {
 	out, err := exec.Command("who").Output()
@@ -336,10 +375,15 @@ func (a *Agent) writeSessionCountTag(ctx context.Context, count int) {
 }
 
 func (a *Agent) isIdle() bool {
-	// Active SSH/terminal sessions reset the idle timer — don't auto-terminate
-	// an instance while someone is working on it.
+	// Active SSH/terminal sessions reset the idle timer.
 	if sessions := countActiveSessions(); sessions > 0 {
 		log.Printf("Not idle: %d active session(s)", sessions)
+		return false
+	}
+	// Active connections on monitored ports (e.g. RStudio:8787, Jupyter:8888)
+	// reset the idle timer — browser-based users don't appear in `who`.
+	if conns := countActivePortConnections(a.config.ActivePorts); conns > 0 {
+		log.Printf("Not idle: %d active connection(s) on monitored port(s)", conns)
 		return false
 	}
 

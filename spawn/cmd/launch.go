@@ -83,6 +83,7 @@ var (
 	dnsAPIEndpoint   string
 	noTimeout        bool
 	slackWorkspaceID string // for lifecycle notifications via spore-bot
+	activePorts      string // comma-separated ports to monitor for active connections (e.g. "8787,8888")
 
 	// Job array
 	count         int
@@ -230,6 +231,7 @@ func init() {
 	launchCmd.Flags().StringVar(&userDataFile, "user-data-file", "", "User data file")
 	launchCmd.Flags().StringVar(&dnsName, "dns", "", "Override DNS name if different from --name (advanced)")
 	launchCmd.Flags().StringVar(&slackWorkspaceID, "slack-workspace", "", "Slack workspace ID for lifecycle notifications (e.g. T03NE3GTY)")
+	launchCmd.Flags().StringVar(&activePorts, "active-ports", "", "TCP ports to monitor for active connections, prevents idle termination (e.g. '8787' for RStudio, '8787,8888' for RStudio+Jupyter)")
 	launchCmd.Flags().StringVar(&dnsDomain, "dns-domain", "", "Custom DNS domain (overrides default)")
 	launchCmd.Flags().StringVar(&dnsAPIEndpoint, "dns-api-endpoint", "", "Custom DNS API endpoint (overrides default)")
 
@@ -1593,6 +1595,9 @@ func buildLaunchConfig(truffleInput *input.TruffleInput) (*aws.LaunchConfig, err
 		}
 		config.NotifyURL = notifyURL
 		config.NotifyCommand = "/spore" // routes notifications to spore-bot workspace config
+	}
+	if activePorts != "" {
+		config.ActivePortsRaw = activePorts
 	}
 	if idleTimeout != "" {
 		config.IdleTimeout = idleTimeout

@@ -366,6 +366,13 @@ func loadConfigFromEC2Tags(ctx context.Context, client *ec2.Client, instanceID s
 			config.NotifyURL = *tag.Value
 		case tagprefix.Tag("notify-command"):
 			config.NotifyCommand = *tag.Value
+		case tagprefix.Tag("active-ports"):
+			for _, p := range strings.Split(*tag.Value, ",") {
+				p = strings.TrimSpace(p)
+				if port, err := strconv.Atoi(p); err == nil && port > 0 {
+					config.ActivePorts = append(config.ActivePorts, port)
+				}
+			}
 		case tagprefix.Tag("slack-workspace-id"):
 			config.SlackWorkspaceID = *tag.Value
 		case tagprefix.Tag("pre-stop"):
