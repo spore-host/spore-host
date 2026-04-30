@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"strings"
@@ -354,27 +355,36 @@ func handleStatus() {
 	// ── Cost ──────────────────────────────────────────────────────────────────
 	if config.PricePerHour > 0 {
 		fmt.Println()
-		computeCost := config.PricePerHour * computeTime.Hours()
-		// EBS cost approximation: ~$0.08/GB/month for gp3, assume 30GB root = ~$0.003/hr
+		// EBS cost: ~$0.08/GB/month for gp3 30GB root = ~$0.003/hr while stopped/hibernated
 		const ebsHourlyCost = 0.003
+		computeCost := config.PricePerHour * computeTime.Hours()
 		ebsCost := ebsHourlyCost * stoppedTime.Hours()
-		totalCost := computeCost + ebsCost
-		elapsedHours := elapsed.Hours()
 
-		fmt.Printf("  Total cost:       $%.2f", totalCost)
-		if stoppedTime > 0 {
-			fmt.Printf("  ($%.2f compute + $%.3f storage while stopped)", computeCost, ebsCost)
+		// Round each component to cents first, then sum — guarantees the displayed
+		// line items always add up to the displayed total.
+		displayCompute := math.Round(computeCost*100) / 100
+		displayEBS := math.Round(ebsCost*100) / 100
+		displayTotal := displayCompute + displayEBS
+
+		// Show each cost component so the total is transparent
+		fmt.Printf("  Compute cost:     $%.2f  (%s × $%.4f/hr)\n",
+			displayCompute, formatDuration(computeTime), config.PricePerHour)
+		if stoppedTime >= time.Minute {
+			fmt.Printf("  Storage cost:     $%.2f  (%s × ~$%.3f/hr EBS)\n",
+				displayEBS, formatDuration(stoppedTime), ebsHourlyCost)
 		}
-		fmt.Println()
+		fmt.Printf("  Total cost:       $%.2f\n", displayTotal)
+		totalCost := displayTotal // use display total for effective rate
 
+		elapsedHours := elapsed.Hours()
 		if elapsedHours > 0 {
 			effectiveRate := totalCost / elapsedHours
 			savingsPct := (1 - effectiveRate/config.PricePerHour) * 100
-			if savingsPct > 0 {
-				fmt.Printf("  Effective rate:   $%.3f/hr  (%.0f%% savings vs always-running)\n",
+			if savingsPct > 0.5 {
+				fmt.Printf("  Effective rate:   $%.4f/hr  (%.0f%% lower than continuous on-demand)\n",
 					effectiveRate, savingsPct)
 			} else {
-				fmt.Printf("  Effective rate:   $%.3f/hr\n", effectiveRate)
+				fmt.Printf("  Effective rate:   $%.4f/hr\n", effectiveRate)
 			}
 		}
 
@@ -385,8 +395,10 @@ func handleStatus() {
 				config.CostLimit, totalCost, pct, remaining)
 		}
 
-		fmt.Printf("  On-demand rate:   $%.4f/hr  (%s)\n",
-			config.PricePerHour, region)
+		fmt.Printf("  On-demand rate:   $%.4f/hr compute  +  ~$%.3f/hr EBS storage  (%s)\n",
+			config.PricePerHour, ebsHourlyCost, region)
+		fmt.Println()
+		fmt.Println("  * Cost figures are estimates. Definitive billing is from your cloud provider.")
 	}
 
 	// ── Live metrics (brief) ──────────────────────────────────────────────────
