@@ -29,6 +29,7 @@ type Config struct {
 	DNS            DNSConfig            `yaml:"dns"`
 	Compliance     ComplianceConfig     `yaml:"compliance"`
 	Infrastructure InfrastructureConfig `yaml:"infrastructure"`
+	Defaults       LaunchDefaults       `yaml:"defaults"`
 }
 
 // DNSConfig represents DNS configuration

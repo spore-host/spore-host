@@ -355,6 +355,17 @@ func countActiveSessions() int {
 	return count
 }
 
+// findActiveProcess returns the first configured process name that is currently running,
+// or "" if none are found. Uses pgrep for portable process lookup.
+func (a *Agent) findActiveProcess() string {
+	for _, name := range a.config.ActiveProcesses {
+		if err := exec.Command("pgrep", "-x", name).Run(); err == nil {
+			return name
+		}
+	}
+	return ""
+}
+
 // writeSessionCountTag updates the spawn:logged-in-count EC2 tag, throttled to once per minute.
 func (a *Agent) writeSessionCountTag(ctx context.Context, count int) {
 	if time.Since(a.lastSessionTagWrite) < 5*time.Minute {
@@ -380,6 +391,13 @@ func (a *Agent) isIdle() bool {
 		log.Printf("Not idle: %d active session(s)", sessions)
 		return false
 	}
+
+	// Check configured process names — if any are running, instance is not idle.
+	if proc := a.findActiveProcess(); proc != "" {
+		log.Printf("Not idle: process %q is running", proc)
+		return false
+	}
+
 	// Note: we intentionally do NOT check active port connections here.
 	// An open browser tab maintains an ESTABLISHED TCP connection even when
 	// the user is idle or away — treating it as "active" would permanently

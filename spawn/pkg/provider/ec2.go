@@ -373,6 +373,12 @@ func loadConfigFromEC2Tags(ctx context.Context, client *ec2.Client, instanceID s
 					config.ActivePorts = append(config.ActivePorts, port)
 				}
 			}
+		case tagprefix.Tag("active-processes"):
+			for _, p := range strings.Split(*tag.Value, ",") {
+				if p = strings.TrimSpace(p); p != "" {
+					config.ActiveProcesses = append(config.ActiveProcesses, p)
+				}
+			}
 		case tagprefix.Tag("slack-workspace-id"):
 			config.SlackWorkspaceID = *tag.Value
 		case tagprefix.Tag("pre-stop"):

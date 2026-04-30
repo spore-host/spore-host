@@ -84,6 +84,7 @@ var (
 	noTimeout        bool
 	slackWorkspaceID string // for lifecycle notifications via spore-bot
 	activePorts      string // comma-separated ports to monitor for active connections (e.g. "8787,8888")
+	activeProcesses  string // comma-separated process names to monitor (e.g. "rsession,jupyter")
 
 	// Job array
 	count         int
@@ -232,6 +233,7 @@ func init() {
 	launchCmd.Flags().StringVar(&dnsName, "dns", "", "Override DNS name if different from --name (advanced)")
 	launchCmd.Flags().StringVar(&slackWorkspaceID, "slack-workspace", "", "Slack workspace ID for lifecycle notifications (e.g. T03NE3GTY)")
 	launchCmd.Flags().StringVar(&activePorts, "active-ports", "", "TCP ports to monitor for active connections, prevents idle termination (e.g. '8787' for RStudio, '8787,8888' for RStudio+Jupyter)")
+	launchCmd.Flags().StringVar(&activeProcesses, "active-processes", "", "Process names to monitor, prevents idle termination while any are running (e.g. 'rsession' for RStudio, 'rsession,jupyter' for multiple)")
 	launchCmd.Flags().StringVar(&dnsDomain, "dns-domain", "", "Custom DNS domain (overrides default)")
 	launchCmd.Flags().StringVar(&dnsAPIEndpoint, "dns-api-endpoint", "", "Custom DNS API endpoint (overrides default)")
 
@@ -383,6 +385,9 @@ func runLaunch(cmd *cobra.Command, args []string) error {
 		}
 		return launchParameterSweep(ctx, config, plat, auditLog)
 	}
+
+	// Apply user defaults from ~/.spawn/config.yaml for flags not explicitly set.
+	applyLaunchDefaults(cmd)
 
 	// Positional arg takes precedence over --name flag.
 	if len(args) > 0 {
@@ -1598,6 +1603,9 @@ func buildLaunchConfig(truffleInput *input.TruffleInput) (*aws.LaunchConfig, err
 	}
 	if activePorts != "" {
 		config.ActivePortsRaw = activePorts
+	}
+	if activeProcesses != "" {
+		config.ActiveProcessesRaw = activeProcesses
 	}
 	if idleTimeout != "" {
 		config.IdleTimeout = idleTimeout
@@ -3525,5 +3533,29 @@ func waitForSweepCompletion(ctx context.Context, sweepID string, timeout time.Du
 				return fmt.Errorf("timeout waiting for completion")
 			}
 		}
+	}
+}
+
+// applyLaunchDefaults loads ~/.spawn/config.yaml defaults and applies them to
+// package-level flag variables that were not explicitly set on the command line.
+func applyLaunchDefaults(cmd *cobra.Command) {
+	d, err := spawnconfig.LoadLaunchDefaults()
+	if err != nil || d == nil {
+		return
+	}
+	if !cmd.Flags().Changed("slack-workspace") && d.SlackWorkspace != "" {
+		slackWorkspaceID = d.SlackWorkspace
+	}
+	if !cmd.Flags().Changed("active-processes") && d.ActiveProcesses != "" {
+		activeProcesses = d.ActiveProcesses
+	}
+	if !cmd.Flags().Changed("active-ports") && d.ActivePorts != "" {
+		activePorts = d.ActivePorts
+	}
+	if !cmd.Flags().Changed("idle-timeout") && d.IdleTimeout != "" {
+		idleTimeout = d.IdleTimeout
+	}
+	if !cmd.Flags().Changed("hibernate-on-idle") && d.HibernateOnIdle != nil {
+		hibernateOnIdle = *d.HibernateOnIdle
 	}
 }
