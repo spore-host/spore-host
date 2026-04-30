@@ -7,3 +7,5 @@
 | [IAM Permissions](/reference/iam-permissions) | Minimal IAM policy for launching instances |
 | [Lifecycle Events](/reference/lifecycle-events) | Event types, timing, and notification routing |
 | [Environment Variables](/reference/environment-variables) | `SPAWN_*` and `SPORE_*` environment variables |
+| [FAQ](/reference/faq) | Common questions and answers |
+| [Cheat Sheet](/reference/cheatsheet) | Quick command reference for truffle, spawn, lagotto |

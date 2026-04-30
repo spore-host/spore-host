@@ -119,6 +119,8 @@ export default defineConfig({
             { text: 'IAM Permissions', link: '/reference/iam-permissions' },
             { text: 'Lifecycle Events', link: '/reference/lifecycle-events' },
             { text: 'Environment Variables', link: '/reference/environment-variables' },
+            { text: 'FAQ', link: '/reference/faq' },
+            { text: 'Cheat Sheet', link: '/reference/cheatsheet' },
           ]
         },
       ],
