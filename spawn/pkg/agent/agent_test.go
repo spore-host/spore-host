@@ -32,7 +32,8 @@ func (s *stubProvider) CheckSpotInterruption(_ context.Context) (*provider.Inter
 func (s *stubProvider) DiscoverPeers(_ context.Context, _ string) ([]provider.PeerInfo, error) {
 	return nil, nil
 }
-func (s *stubProvider) GetProviderType() string { return "stub" }
+func (s *stubProvider) GetProviderType() string                       { return "stub" }
+func (s *stubProvider) LookupAndTagEBSCost(_ context.Context) float64 { return 0 }
 
 func newTestAgent(t *testing.T, cfg *provider.Config) *Agent {
 	t.Helper()
