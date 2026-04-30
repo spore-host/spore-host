@@ -99,10 +99,9 @@ echo -e "${GREEN}✓${NC} Files uploaded"
 # Step 5: Check for CloudFront distribution
 echo ""
 echo -e "${BLUE}→${NC} Checking CloudFront distribution..."
-DISTRIBUTION_ID=$(aws cloudfront list-distributions \
-    --profile "$AWS_PROFILE" \
-    --query "DistributionList.Items[?Origins.Items[0].DomainName=='$BUCKET_NAME.s3.amazonaws.com'].Id" \
-    --output text 2>/dev/null || echo "")
+# Hard-coded distribution ID for spore.host (EY67INS5HDFLU)
+# The query-based lookup fails because the origin uses the website endpoint, not the S3 REST endpoint
+DISTRIBUTION_ID="EY67INS5HDFLU"
 
 if [ -z "$DISTRIBUTION_ID" ]; then
     echo -e "${YELLOW}!${NC} No CloudFront distribution found"
