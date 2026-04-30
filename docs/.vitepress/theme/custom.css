@@ -5,17 +5,17 @@
   --vp-font-family-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
   /* Brand colours mapped to VitePress tokens */
-  --vp-c-brand-1: #2563eb;
-  --vp-c-brand-2: #1d4ed8;
-  --vp-c-brand-3: #3b82f6;
-  --vp-c-brand-soft: rgba(37, 99, 235, 0.1);
+  --vp-c-brand-1: #4059E5;   /* brand blue */
+  --vp-c-brand-2: #1E3EA6;   /* brand navy */
+  --vp-c-brand-3: #42D4D4;   /* brand teal */
+  --vp-c-brand-soft: rgba(64, 89, 229, 0.1);
 
   /* Tool colours as custom properties */
   --sp-truffle: #d97706;
-  --sp-spawn:   #2563eb;
-  --sp-lagotto: #059669;
+  --sp-spawn:   #4059E5;
+  --sp-lagotto: #0891b2;
   --sp-bot:     #7c3aed;
-  --sp-mcp:     #4f46e5;
+  --sp-mcp:     #4264F5;
 }
 
 /* ── Typography ── */

@@ -1,7 +1,16 @@
-/* spore.host — clean, researcher-focused */
+/* spore.host — researcher-focused */
 
-/* ── Tokens ── */
+/* ── Brand tokens (extracted from lookbook) ── */
 :root {
+  /* Brand */
+  --brand-teal:    #42D4D4;   /* right side of "spore" gradient */
+  --brand-blue:    #4059E5;   /* left side of "spore" gradient  */
+  --brand-navy:    #1E3EA6;   /* "host" text color               */
+  --brand-dark:    #22132C;   /* dark background                 */
+  --brand-orb-hi:  #C4FFFB;  /* orb highlight                   */
+  --brand-orb-glo: #33DEF9;  /* orb glow                        */
+
+  /* Page */
   --bg:           #ffffff;
   --bg-subtle:    #f8f9fa;
   --bg-card:      #ffffff;
@@ -10,26 +19,17 @@
   --border:       #e5e7eb;
   --border-strong:#d1d5db;
 
-  /* Dashboard compatibility aliases */
-  --bg-dark:      #f8f9fa;
-  --bg-main:      #f3f4f6;
-  --text-primary: #111827;
-  --text-secondary:#6b7280;
-  --accent-blue:  #2563eb;
-  --accent-green: #059669;
-  --accent-red:   #dc2626;
-
-  /* tool accent colours */
-  --truffle:      #d97706;
+  /* Tool accent colours — shifted slightly toward brand palette */
+  --truffle:      #d97706;   /* amber — warm complement to navy  */
   --truffle-bg:   #fffbeb;
-  --spawn:        #2563eb;
-  --spawn-bg:     #eff6ff;
-  --lagotto:      #059669;
-  --lagotto-bg:   #ecfdf5;
-  --bot:          #7c3aed;
+  --spawn:        #4059E5;   /* brand blue                       */
+  --spawn-bg:     #eef0ff;
+  --lagotto:      #0891b2;   /* teal-adjacent cyan               */
+  --lagotto-bg:   #ecfeff;
+  --bot:          #7c3aed;   /* purple — works against navy      */
   --bot-bg:       #f5f3ff;
-  --mcp:          #4f46e5;
-  --mcp-bg:       #eef2ff;
+  --mcp:          #4264F5;   /* brand blue variant               */
+  --mcp-bg:       #eef0ff;
 
   --code-bg:      #f3f4f6;
   --terminal-bg:  #f3f4f6;
@@ -41,48 +41,46 @@
   --radius:       8px;
   --max-width:    1100px;
 
-  /* ── Backwards compatibility (dashboard.html uses old variable names) ── */
-  --accent-blue:    var(--spawn);
-  --accent-green:   var(--lagotto);
+  /* Dashboard compatibility aliases */
+  --bg-dark:        #f8f9fa;
+  --bg-main:        #f3f4f6;
+  --text-primary:   #111827;
+  --text-secondary: #6b7280;
+  --accent-blue:    #4059E5;
+  --accent-green:   #0891b2;
   --accent-red:     #ef4444;
-  --bg-dark:        var(--bg-subtle);
-  --bg-main:        var(--bg);
-  --text-primary:   var(--text);
-  --text-secondary: var(--text-muted);
 }
 
 [data-theme="dark"] {
-  --bg:           #0d1117;
-  --bg-subtle:    #161b22;
-  --bg-card:      #161b22;
-  --text:         #e6edf3;
-  --text-muted:   #8b949e;
-  --border:       #30363d;
-  --border-strong:#484f58;
+  --bg:           #22132C;   /* brand dark */
+  --bg-subtle:    #2d1a3d;
+  --bg-card:      #2a1839;
+  --text:         #e8e4f0;
+  --text-muted:   #9e96b0;
+  --border:       #3d2850;
+  --border-strong:#533a6a;
 
-  --truffle-bg:   #1a1200;
-  --spawn-bg:     #0d1b2e;
-  --lagotto-bg:   #0a1f16;
-  --bot-bg:       #160d2e;
-  --mcp-bg:       #0f0d2e;
+  --truffle-bg:   #2a1a00;
+  --spawn-bg:     #12103a;
+  --lagotto-bg:   #082030;
+  --bot-bg:       #1a0d30;
+  --mcp-bg:       #12103a;
 
-  --code-bg:      #21262d;
-  --terminal-bg:  #0d1117;
+  --code-bg:      #1a0e28;
+  --terminal-bg:  #1a0e28;
   --terminal-text:#e2e8f0;
-  --terminal-bar-bg: rgba(255,255,255,0.04);
+  --terminal-bar-bg: rgba(255,255,255,0.05);
   --terminal-bar-border: rgba(255,255,255,0.08);
   --terminal-title-color: rgba(255,255,255,0.3);
 
   /* Dashboard compatibility aliases — dark */
-  --bg-dark:      #0d1117;
-  --bg-main:      #21262d;
-  --text-primary: #e6edf3;
-  --text-secondary:#8b949e;
-  --accent-blue:  #4fc3f7;
-  --accent-green: #66bb6a;
-  --accent-red:   #ef5350;
-  --accent-blue:    #60a5fa;
-  --accent-green:   #34d399;
+  --bg-dark:        #22132C;
+  --bg-main:        #1a0e28;
+  --text-primary:   #e8e4f0;
+  --text-secondary: #9e96b0;
+  --accent-blue:    #42D4D4;
+  --accent-green:   #33DEF9;
+  --accent-red:     #f87171;
   --accent-red:     #f87171;
   --bg-dark:        #0d1117;
   --bg-main:        #0d1117;
@@ -133,6 +131,24 @@ section + section { border-top: 1px solid var(--border); }
   max-width: var(--max-width); margin: 0 auto; padding: 0 1.5rem;
   display: flex; align-items: center; gap: 2rem; height: 56px;
 }
+/* ── Logo mark ── */
+.logo-spore {
+  background: linear-gradient(to right, var(--brand-blue), var(--brand-teal));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.logo-host {
+  color: var(--brand-navy);
+}
+[data-theme="dark"] .logo-host { color: #c4b8e0; }
+.logo-orb {
+  display: inline-block;
+  width: 1em; height: 1em;
+  vertical-align: -0.15em;
+  margin: 0 0.05em;
+}
+
 .nav-brand {
   font-weight: 700; font-size: 1rem; letter-spacing: -0.01em;
   display: flex; align-items: center; gap: 0.5rem;

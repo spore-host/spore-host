@@ -1,3 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <text y="80" font-size="80">🍄</text>
+  <defs>
+    <radialGradient id="orb" cx="35%" cy="28%" r="68%">
+      <stop offset="0%"   stop-color="#C4FFFB"/>
+      <stop offset="18%"  stop-color="#42D4D4"/>
+      <stop offset="52%"  stop-color="#2B68FD"/>
+      <stop offset="100%" stop-color="#151B4A"/>
+    </radialGradient>
+  </defs>
+  <circle cx="50" cy="50" r="48" fill="url(#orb)"/>
 </svg>
