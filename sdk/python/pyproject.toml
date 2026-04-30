@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "spore-host"
+version = "0.1.0"
+description = "Python SDK for spore.host — ephemeral EC2 compute for researchers"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+keywords = ["aws", "ec2", "compute", "research", "hpc"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "boto3>=1.34",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+jupyter = ["ipywidgets>=8.0", "IPython>=8.0"]
+dev     = ["pytest>=7", "pytest-asyncio", "black", "ruff"]
+
+[project.urls]
+Homepage      = "https://spore.host"
+Documentation = "https://docs.spore.host"
+Repository    = "https://github.com/scttfrdmn/spore-host"
+Issues        = "https://github.com/scttfrdmn/spore-host/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["spore*"]
