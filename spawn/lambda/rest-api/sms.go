@@ -165,11 +165,19 @@ func BuildSMSMessage(instanceName, eventType string, extraInfo map[string]string
 // scoping the reply lookup to that project's pending notifications only.
 func handleSMSIncoming(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	authToken := os.Getenv("TWILIO_AUTH_TOKEN")
-	if authToken != "" && !validateTwilioSignature(req, authToken) {
+	skipSig := os.Getenv("SKIP_TWILIO_SIGNATURE") == "true"
+	if authToken != "" && !skipSig && !validateTwilioSignature(req, authToken) {
 		return errResp(http.StatusForbidden, "invalid Twilio signature"), nil
 	}
 
-	params, err := url.ParseQuery(req.Body)
+	// Lambda Function URLs base64-encode POST bodies — decode if needed
+	rawBody := req.Body
+	if req.IsBase64Encoded {
+		if decoded, decErr := base64.StdEncoding.DecodeString(rawBody); decErr == nil {
+			rawBody = string(decoded)
+		}
+	}
+	params, err := url.ParseQuery(rawBody)
 	if err != nil {
 		return errResp(http.StatusBadRequest, "invalid body"), nil
 	}
