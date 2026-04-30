@@ -220,9 +220,17 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
 <span class="t-out">Then in Claude Desktop:</span>
 
 <span class="t-prompt">You:</span>  <span class="t-cmd">What instances are running and how long have they been up?</span>
-<span class="t-prompt">Claude:</span> <span class="t-out">You have 2 running instances:
-• ml-training (p4d.24xlarge) — 6h 42m, terminates in 5h 18m
-• dev-box (t3.medium) — 3d 14h — </span><span class="t-hi">no TTL set, consider stopping it</span></pre>
+<span class="t-prompt">Claude:</span> <span class="t-out">Found 2 running instance(s):
+
+• sim-run-42 (i-0a1b2c3d4e5f)
+  Type: c8a.2xlarge  State: running  Region: us-east-1
+  IP: 54.234.12.87
+  Age: 6h 42m  TTL: 12h
+
+• analysis-box (i-0f9e8d7c6b5a)
+  Type: c6i.2xlarge  State: running  Region: us-east-1
+  IP: 18.234.56.78
+  Age: 3d 14h</span></pre>
           </div>
         </div>
       </div>
