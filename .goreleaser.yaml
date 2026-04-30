@@ -414,7 +414,7 @@ scoops:
 # GitHub Release
 release:
   github:
-    owner: scttfrdmn
+    owner: spore-host
     name: spore-host
   draft: false
   prerelease: auto
