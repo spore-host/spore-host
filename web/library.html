@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>For Developers — spore.host</title>
+  <meta name="description" content="Use spore-host as a Go library or call via the MCP server. Python SDK and REST API coming soon.">
+  <script>(function(){var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}());</script>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <div class="nav-brand">
+        <a href="/">spore.host</a>
+      </div>
+      <button class="hamburger" id="hamburger-btn" aria-label="Toggle navigation" aria-expanded="false" aria-controls="nav-links">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-links" id="nav-links">
+        <a href="/#tools">Tools</a>
+        <a href="/#install">Install</a>
+        <a href="library.html" aria-current="page">For Developers</a>
+        <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener" aria-label="GitHub (opens in new tab)">GitHub</a>
+        <a href="/dashboard.html" class="btn-outline btn nav-cta">Dashboard</a>
+        <button class="theme-btn" id="theme-toggle" aria-label="Toggle colour theme">🌙</button>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main-content">
+
+    <!-- ── Header ── -->
+    <div class="hero">
+      <div class="hero-inner">
+        <span class="hero-eyebrow">For Developers</span>
+        <h1>Build on spore-host</h1>
+        <p class="hero-sub">
+          The truffle and spawn packages are clean, importable Go libraries. Use them in your own tools,
+          scripts, or services — no CLI subprocess calls required.
+          The MCP server ships as a ready-to-use integration for AI assistants.
+          Python SDK and REST API are on the roadmap.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Go library ── -->
+    <section id="go-library">
+      <div class="container">
+        <p class="section-label">Available now</p>
+        <h2 class="section-title">Go library</h2>
+        <p class="section-sub">Import truffle and spawn directly into your Go project. No subprocesses, no shell wrappers — just Go packages with clean APIs.</p>
+
+        <div class="dev-grid">
+
+          <div class="dev-block">
+            <h3>truffle — capacity search</h3>
+            <p>Search instance types, fetch Spot prices, check service quotas.</p>
+<pre><code>import (
+    truffleaws "github.com/scttfrdmn/spore-host/truffle/pkg/aws"
+    "github.com/scttfrdmn/spore-host/truffle/pkg/find"
+    "github.com/scttfrdmn/spore-host/truffle/pkg/quotas"
+)
+
+// Natural language search
+pq, _ := find.ParseQuery("nvidia h100 8gpu")
+criteria, _ := pq.BuildCriteria()
+
+client, _ := truffleaws.NewClient(ctx)
+results, _ := client.SearchInstanceTypes(ctx,
+    []string{"us-east-1"},
+    criteria.InstanceTypePattern,
+    criteria.FilterOptions,
+)
+
+// Spot prices
+prices, _ := client.GetSpotPricing(ctx, results,
+    truffleaws.SpotOptions{ShowSavings: true},
+)
+
+// Quota check
+qc, _ := quotas.NewClient(ctx)
+info, _ := qc.GetQuotas(ctx, "us-east-1")
+ok, msg := qc.CanLaunch("p4d.24xlarge", 96, info, false)</code></pre>
+          </div>
+
+          <div class="dev-block">
+            <h3>spawn — instance management</h3>
+            <p>List, launch, stop, terminate, and update instances programmatically.</p>
+<pre><code>import spawnclient "github.com/scttfrdmn/spore-host/spawn/pkg/aws"
+
+client, _ := spawnclient.NewClient(ctx)
+
+// List running instances (all regions)
+instances, _ := client.ListInstances(ctx, "", "running")
+
+// Launch
+result, _ := client.Launch(ctx, spawnclient.LaunchConfig{
+    Name:         "ml-job",
+    InstanceType: "p4d.24xlarge",
+    Region:       "us-east-1",
+    TTL:          "12h",
+    OnComplete:   "terminate",
+})
+
+// Stop / terminate
+client.StopInstance(ctx, result.Region, result.InstanceID, false)
+client.Terminate(ctx, result.Region, result.InstanceID)
+
+// Extend TTL
+client.UpdateInstanceTags(ctx, result.Region, result.InstanceID,
+    map[string]string{"spawn:ttl": "24h"},
+)</code></pre>
+          </div>
+
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+          <a href="https://pkg.go.dev/github.com/scttfrdmn/spore-host/truffle" target="_blank" rel="noopener" class="btn btn-outline">truffle on pkg.go.dev →</a>
+          <a href="https://pkg.go.dev/github.com/scttfrdmn/spore-host/spawn" target="_blank" rel="noopener" class="btn btn-outline">spawn on pkg.go.dev →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── MCP ── -->
+    <section id="mcp">
+      <div class="container">
+        <p class="section-label">Available now</p>
+        <h2 class="section-title">MCP server</h2>
+        <p class="section-sub">
+          <span class="inline-code">spore-host-mcp</span> exposes truffle and spawn as MCP tools for Claude Desktop, Cursor, and any MCP-compatible AI assistant.
+          It uses the same Go packages above — no API keys, no extra auth, just your existing AWS credentials.
+        </p>
+
+        <div class="dev-grid">
+          <div class="dev-block">
+            <h3>Install</h3>
+<pre><code>brew install scttfrdmn/tap/spore-host-mcp</code></pre>
+            <h3 style="margin-top:1.5rem">Configure (Claude Desktop)</h3>
+<pre><code>// ~/.claude/claude_desktop_config.json
+{
+  "mcpServers": {
+    "spore-host": {
+      "command": "/usr/local/bin/spore-host-mcp"
+    }
+  }
+}</code></pre>
+          </div>
+
+          <div class="dev-block">
+            <h3>Available tools</h3>
+            <ul class="tool-features" style="margin-top:0.5rem">
+              <li><code>truffle_find</code> — natural language instance search</li>
+              <li><code>truffle_spot_prices</code> — current Spot prices by AZ</li>
+              <li><code>truffle_quota_check</code> — can you launch this type?</li>
+              <li><code>spawn_list</code> — list running instances</li>
+              <li><code>spawn_status</code> — detailed status by name or ID</li>
+              <li><code>spawn_stop</code> — stop or hibernate</li>
+              <li><code>spawn_terminate</code> — terminate permanently</li>
+              <li><code>spawn_extend</code> — extend TTL</li>
+            </ul>
+            <a href="https://github.com/scttfrdmn/spore-host/tree/main/mcp" target="_blank" rel="noopener" class="tool-link tool-mcp" style="color:var(--mcp); font-weight:600; font-size:0.875rem; margin-top:1rem; display:inline-block">MCP server source →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Real-world example ── -->
+    <section>
+      <div class="container">
+        <p class="section-label">Real-world example</p>
+        <h2 class="section-title">prism uses spore-host as a library</h2>
+        <p class="section-sub">
+          <a href="https://prismcloud.host" target="_blank" rel="noopener">prism</a> is a research workspace platform that imports spawn and truffle directly to manage RStudio and Jupyter environments on behalf of university researchers. It uses the same cross-account IAM pattern and lifecycle infrastructure as spore.host — without maintaining its own EC2 tooling.
+        </p>
+        <a href="https://github.com/scttfrdmn/prism" target="_blank" rel="noopener" class="btn btn-outline">View prism on GitHub →</a>
+      </div>
+    </section>
+
+    <!-- ── Coming soon ── -->
+    <section id="roadmap">
+      <div class="container">
+        <p class="section-label">Roadmap</p>
+        <h2 class="section-title">What's coming</h2>
+        <p class="section-sub">The Go library and MCP server are available today. Language-agnostic access is next.</p>
+
+        <div class="dev-grid">
+
+          <div class="coming-soon-card">
+            <span class="badge">Coming soon</span>
+            <h3>Python SDK</h3>
+            <p>A <span class="inline-code">pip install spore-host</span> package for use in Jupyter notebooks, training scripts, and data pipelines. Designed for researchers who live in Python.</p>
+<pre style="margin-top:0.75rem"><code>import spore
+
+# Find and launch from a notebook
+results = spore.truffle.find("nvidia a100", region="us-east-1")
+instance = spore.spawn.launch(
+    instance_type=results[0].instance_type,
+    ttl="8h",
+    on_complete="terminate",
+)
+instance.wait()  # blocks until SPAWN_COMPLETE</code></pre>
+            <a href="https://github.com/scttfrdmn/spore-host/issues/253" target="_blank" rel="noopener" style="font-size:0.85rem; color:var(--spawn);">Track issue #253 →</a>
+          </div>
+
+          <div class="coming-soon-card">
+            <span class="badge">Coming soon</span>
+            <h3>REST API</h3>
+            <p>A language-agnostic HTTP API over truffle and spawn. Authenticated via AWS SigV4 — same credentials you already have. The foundation the Python SDK and future R/Julia bindings will build on.</p>
+<pre style="margin-top:0.75rem"><code>GET  /v1/instances/search?query=nvidia+h100
+GET  /v1/instances/spot-prices?type=p4d.24xlarge
+POST /v1/instances          # launch
+GET  /v1/instances          # list
+POST /v1/instances/{id}/stop
+POST /v1/instances/{id}/terminate</code></pre>
+            <a href="https://github.com/scttfrdmn/spore-host/issues/252" target="_blank" rel="noopener" style="font-size:0.85rem; color:var(--spawn);">Track issue #252 →</a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div>
+        <div class="footer-brand">spore.host</div>
+        <div class="footer-tagline">Ephemeral compute for research.</div>
+      </div>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/scttfrdmn/spore-host/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="library.html">For Developers</a>
+        <a href="https://github.com/scttfrdmn/spore-host/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Made by <a href="https://github.com/scttfrdmn" target="_blank" rel="noopener">@scttfrdmn</a></span>
+      <span><a href="https://github.com/scttfrdmn/spore-host/blob/main/LICENSE" target="_blank" rel="noopener">Apache 2.0</a></span>
+    </div>
+  </footer>
+
+  <script>
+  function toggleTheme() {
+    document.documentElement.classList.add('theme-transitioning');
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    document.getElementById('theme-toggle').textContent = next === 'dark' ? '🌙' : '☀️';
+    setTimeout(() => document.documentElement.classList.remove('theme-transitioning'), 300);
+  }
+  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+  (function() {
+    const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+    document.getElementById('theme-toggle').textContent = t === 'dark' ? '🌙' : '☀️';
+  })();
+
+  const hamburger = document.getElementById('hamburger-btn');
+  const navLinks = document.getElementById('nav-links');
+  hamburger.addEventListener('click', () => {
+    const open = navLinks.classList.toggle('open');
+    hamburger.setAttribute('aria-expanded', open);
+  });
+  </script>
+</body>
+</html>

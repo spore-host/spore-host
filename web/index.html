@@ -1,316 +1,297 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>spore.host - Launch Ephemeral AWS EC2 Instances</title>
-    <meta name="description" content="Free, open-source CLI tools for launching ephemeral AWS EC2 instances with automatic termination, cost control, and hibernation support.">
-    <!-- Anti-FOUC: set data-theme before CSS renders -->
-    <script>(function(){var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}());</script>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.14.0/dist/bundle/asciinema-player.min.css" integrity="sha384-F+lc4cWo1d80kNYQvxdOFxzEN8KGt+h6q7EpdMhsOlX6X9CbuZhoOMXbt9OCv3y9" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.14.0/dist/bundle/asciinema-player.min.js" integrity="sha384-JbH7GXOgTVQWRkK8kGQLlQvC5t1LfMzW/FjQFVQaNndtkyvQMBHHLLSu+/MT5eVr" crossorigin="anonymous"></script>
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1564.0.min.js" integrity="sha384-TZF3VHyWLcE4Fx9/DRuBvpqvyZlBn9mU7Ft4R3VrL0S4TDKb7d+sPxSMqCPZY7eM" crossorigin="anonymous"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>spore.host — Ephemeral compute for researchers</title>
+  <meta name="description" content="Find the right EC2 instance, launch it in minutes, and let it manage itself. Auto-termination, idle detection, Slack control, and AI-assistant integration for researchers and data scientists.">
+  <script>(function(){var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}());</script>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 </head>
 <body>
-    <a href="#main-content" class="skip-link">Skip to main content</a>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
-    <!-- Navigation -->
-    <nav class="nav">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <span class="nav-logo" aria-hidden="true">🍄</span>
-                <span class="nav-title">spore.host</span>
-            </div>
-            <button class="hamburger" id="hamburger-btn" aria-label="Toggle navigation" aria-expanded="false">
-                <span></span><span></span><span></span>
-            </button>
-            <div class="nav-links">
-                <a href="#install">Install</a>
-                <a href="#examples">Examples</a>
-                <a href="/dashboard.html" class="btn-login-nav" style="background: var(--accent-blue); color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'"><span aria-hidden="true">🔐</span> Dashboard / Login</a>
-                <a href="https://github.com/scttfrdmn/mycelium" target="_blank" aria-label="GitHub (opens in new tab)">GitHub</a>
-                <button id="theme-toggle" onclick="toggleTheme()" style="background: none; border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.75rem; cursor: pointer; color: var(--text-primary); font-size: 1.2rem; transition: all 0.3s ease;" title="Toggle theme" aria-label="Switch to light theme">
-                    <span id="theme-icon" aria-hidden="true">🌙</span>
-                </button>
-            </div>
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <div class="nav-brand">
+        <a href="/">spore.host</a>
+      </div>
+      <button class="hamburger" id="hamburger-btn" aria-label="Toggle navigation" aria-expanded="false" aria-controls="nav-links">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-links" id="nav-links" role="menubar">
+        <a href="#tools" role="menuitem">Tools</a>
+        <a href="#install" role="menuitem">Install</a>
+        <a href="library.html" role="menuitem">For Developers</a>
+        <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener" role="menuitem" aria-label="GitHub (opens in new tab)">GitHub</a>
+        <a href="/dashboard.html" class="btn-outline btn nav-cta" role="menuitem">Dashboard</a>
+        <button class="theme-btn" id="theme-toggle" aria-label="Toggle colour theme">🌙</button>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main-content">
+
+    <!-- ── Hero ── -->
+    <div class="hero">
+      <div class="hero-inner">
+        <span class="hero-eyebrow">Open Source · Apache 2.0 · Free</span>
+        <h1>Compute that manages itself</h1>
+        <p class="hero-sub">
+          Find the right EC2 instance. Launch it in minutes. Auto-terminate when your job is done.
+          Built for researchers and data scientists, not ops engineers.
+        </p>
+        <div class="hero-props">
+          <span>No surprise bills</span>
+          <span>GPU-aware</span>
+          <span>Slack &amp; Teams control</span>
+          <span>AI assistant integration</span>
+          <span>macOS, Linux, Windows</span>
         </div>
-    </nav>
+        <div class="hero-actions">
+          <a href="#install" class="btn btn-primary">Get started</a>
+          <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener" class="btn btn-outline">View on GitHub</a>
+        </div>
 
-    <main id="main-content" class="container">
-        <!-- Hero Section -->
-        <header class="hero">
-            <div style="font-size: 4rem; margin-bottom: 1rem;" aria-hidden="true">🍄</div>
-            <h1>Launch EC2 in 2 Minutes</h1>
-            <p class="tagline">Auto-terminate. Zero surprise bills.</p>
-            <div class="hero-buttons">
-                <a href="#install" class="btn btn-primary">Get Started</a>
-                <a href="#examples" class="btn btn-secondary">See Examples</a>
-            </div>
-            <div class="hero-stats">
-                <span><span aria-hidden="true">✓</span> Free &amp; Open Source</span>
-                <span><span aria-hidden="true">✓</span> ~$0.01/hr</span>
-                <span><span aria-hidden="true">✓</span> Mac, Windows, Linux</span>
-            </div>
-        </header>
+        <div class="terminal" role="img" aria-label="Terminal showing a typical spore.host workflow">
+          <div class="terminal-bar" aria-hidden="true">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="terminal-title">bash</span>
+          </div>
+          <div class="terminal-body">
+            <pre><span class="t-prompt">$</span> <span class="t-cmd">truffle find</span> <span class="t-flag">"nvidia a100"</span> <span class="t-flag">--region us-east-1</span>
+<span class="t-out">p4d.24xlarge   96 vCPU   1152 GiB   8× A100 40GB   $32.77/hr   </span><span class="t-hi">$9.83/hr spot (70% savings)</span>
+<span class="t-out">p3.16xlarge    64 vCPU    488 GiB   8× V100 16GB   $24.48/hr   </span><span class="t-hi">$7.34/hr spot (70% savings)</span>
 
-        <!-- Demo Video -->
-        <section class="demo-video">
-            <h2>See It In Action</h2>
-            <div class="demo-container">
-                <div id="demo"></div>
-            </div>
-            <p style="text-align: center; color: var(--text-muted); margin-top: 1rem; font-size: 0.9rem;">
-                Watch how spore.host finds the cheapest EC2 instances and launches them in seconds
-            </p>
-        </section>
+<span class="t-prompt">$</span> <span class="t-cmd">spawn launch</span> <span class="t-flag">--name</span> ml-training <span class="t-flag">--instance-type</span> p4d.24xlarge \
+         <span class="t-flag">--ttl</span> 12h <span class="t-flag">--on-complete</span> terminate <span class="t-flag">--slack-workspace</span> T03NE3GTY
+<span class="t-ok">✓</span> Instance i-0a1b2c3d4e5f running
+<span class="t-ok">✓</span> ml-training.a1b2c3.spore.host
+<span class="t-ok">✓</span> Terminates automatically in 12h
+<span class="t-ok">✓</span> Slack notifications enabled — you'll hear when it's done</pre>
+          </div>
+        </div>
+      </div>
+    </div>
 
-        <!-- Features Grid -->
-        <section class="features">
-            <div class="feature-card">
-                <div class="icon">🔍</div>
-                <h3>Truffle</h3>
-                <p>Find and discover instance types, check Spot prices, manage quotas</p>
-                <span class="badge">No AWS account needed</span>
-            </div>
-            <div class="feature-card">
-                <div class="icon">🚀</div>
-                <h3>Spawn</h3>
-                <p>Launch instances in 2 minutes with interactive wizard or CLI</p>
-                <span class="badge" data-tooltip="Instances terminate automatically when TTL expires" aria-describedby="tip-auto-term">Auto-termination<span id="tip-auto-term" role="tooltip" class="sr-only">Instances terminate automatically when TTL expires</span></span>
-            </div>
-            <div class="feature-card">
-                <div class="icon">🤖</div>
-                <h3>Spored</h3>
-                <p>Monitor automatically with <span data-tooltip="Time-To-Live: instances automatically terminate after this duration" aria-describedby="tip-ttl1">TTL<span id="tip-ttl1" role="tooltip" class="sr-only">Time-To-Live: instances automatically terminate after this duration</span></span>, idle detection, and hibernation</p>
-                <span class="badge" data-tooltip="Runs on the instance itself, not your local machine" aria-describedby="tip-laptop">Laptop-independent<span id="tip-laptop" role="tooltip" class="sr-only">Runs on the instance itself, not your local machine</span></span>
-            </div>
-        </section>
+    <!-- ── Tools ── -->
+    <section id="tools">
+      <div class="container">
+        <p class="section-label">The tool suite</p>
+        <h2 class="section-title">Five tools. One workflow.</h2>
+        <p class="section-sub">Each tool has exactly one job. Together they cover the full lifecycle of ephemeral compute.</p>
 
-        <!-- Quick Start -->
-        <section id="install" class="quick-start">
-            <h2>Quick Start</h2>
-            <div class="install-tabs">
-                <button class="tab-btn active" onclick="showTab('homebrew', event)">macOS/Linux</button>
-                <button class="tab-btn" onclick="showTab('scoop', event)">Windows</button>
-                <button class="tab-btn" onclick="showTab('manual', event)">Manual</button>
-            </div>
+        <div class="tool-grid">
 
-            <div id="homebrew" class="tab-content active">
-                <pre><code># Install via Homebrew
+          <div class="tool-card tool-truffle">
+            <span class="tool-tag">Discovery</span>
+            <h3>Truffle</h3>
+            <p>Find the right instance before you commit. Search by GPU model, vCPU count, memory, or plain language. Compares Spot prices across regions and checks your service quotas.</p>
+            <ul class="tool-features">
+              <li>Natural language search — <em>"nvidia h100 8gpu"</em></li>
+              <li>Spot prices across all regions and AZs</li>
+              <li>Quota check before you launch</li>
+              <li>On-Demand Capacity Reservations</li>
+            </ul>
+            <a href="https://github.com/scttfrdmn/spore-host/tree/main/truffle" class="tool-link" target="_blank" rel="noopener">truffle docs</a>
+          </div>
+
+          <div class="tool-card tool-spawn">
+            <span class="tool-tag">Launch &amp; manage</span>
+            <h3>Spawn</h3>
+            <p>Launch EC2 instances in under two minutes. Interactive wizard, CLI flags, or pipe from truffle. Instances are tagged with a TTL and auto-terminate — no cron jobs, no forgotten instances.</p>
+            <ul class="tool-features">
+              <li>TTL auto-termination</li>
+              <li>Idle detection — CPU, network, processes, sessions</li>
+              <li>Hibernation support</li>
+              <li>Spot, GPU, MPI clusters, parameter sweeps</li>
+            </ul>
+            <a href="https://github.com/scttfrdmn/spore-host/tree/main/spawn" class="tool-link" target="_blank" rel="noopener">spawn docs</a>
+          </div>
+
+          <div class="tool-card tool-lagotto">
+            <span class="tool-tag">Capacity watching</span>
+            <h3>Lagotto</h3>
+            <p>Watch for instance availability and act when it appears. Lagotto polls for capacity across regions on a schedule — useful for scarce GPU types where you wait for a spot to open up.</p>
+            <ul class="tool-features">
+              <li>Polls across regions on configurable schedule</li>
+              <li>Triggers launch, notification, or webhook</li>
+              <li>Serverless — runs as a Lambda function</li>
+              <li>Slack notifications when capacity appears</li>
+            </ul>
+            <a href="https://github.com/scttfrdmn/spore-host/tree/main/lagotto" class="tool-link" target="_blank" rel="noopener">lagotto docs</a>
+          </div>
+
+          <div class="tool-card tool-bot">
+            <span class="tool-tag">Chat control</span>
+            <h3>Spore-bot</h3>
+            <p>Control your instances from Slack or Microsoft Teams without opening a terminal. Start, stop, check status, extend runtime, and receive lifecycle notifications as direct messages.</p>
+            <ul class="tool-features">
+              <li><code>/spore status</code>, <code>start</code>, <code>stop</code>, <code>extend</code></li>
+              <li>DM notifications on idle, TTL warning, completion</li>
+              <li>OAuth — one-click workspace connection</li>
+              <li>Works from any device, anywhere</li>
+            </ul>
+            <a href="https://github.com/scttfrdmn/spore-host/tree/main/spawn/lambda/spore-bot" class="tool-link" target="_blank" rel="noopener">spore-bot docs</a>
+          </div>
+
+          <div class="tool-card tool-mcp">
+            <span class="tool-tag">AI assistant</span>
+            <h3>MCP Server</h3>
+            <p>Use Claude, Cursor, or any MCP-compatible AI assistant to find instances, check status, and manage compute through natural conversation. No terminal required.</p>
+            <ul class="tool-features">
+              <li>Works with Claude Desktop, Cursor, and more</li>
+              <li>Natural language instance search via truffle</li>
+              <li>Full instance lifecycle via spawn</li>
+              <li>Install via Homebrew — one config line</li>
+            </ul>
+            <a href="https://github.com/scttfrdmn/spore-host/tree/main/mcp" class="tool-link" target="_blank" rel="noopener">MCP server docs</a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Install ── -->
+    <section id="install">
+      <div class="container">
+        <p class="section-label">Installation</p>
+        <h2 class="section-title">Up and running in minutes</h2>
+        <p class="section-sub">Install the tools that fit your workflow. Truffle and spawn are the core pair. Add the others as needed.</p>
+
+        <div class="install-tabs" role="tablist" aria-label="Installation method">
+          <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-homebrew" id="btn-homebrew" onclick="showTab('homebrew', event)">macOS / Linux</button>
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-scoop" id="btn-scoop" onclick="showTab('scoop', event)">Windows</button>
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-manual" id="btn-manual" onclick="showTab('manual', event)">Manual</button>
+        </div>
+
+        <div id="tab-homebrew" class="tab-content active" role="tabpanel" aria-labelledby="btn-homebrew">
+<pre><code># Core tools
 brew install scttfrdmn/tap/truffle
 brew install scttfrdmn/tap/spawn
 
-# Launch your first instance
-spawn</code></pre>
-            </div>
+# Optional: capacity watcher
+brew install scttfrdmn/tap/lagotto
 
-            <div id="scoop" class="tab-content">
-                <pre><code># Install via Scoop
-scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
-scoop install truffle
-scoop install spawn
+# Optional: MCP server for AI assistants
+brew install scttfrdmn/tap/spore-host-mcp</code></pre>
+        </div>
 
-# Launch your first instance
-spawn</code></pre>
-            </div>
+        <div id="tab-scoop" class="tab-content" role="tabpanel" aria-labelledby="btn-scoop">
+<pre><code>scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop install truffle spawn
 
-            <div id="manual" class="tab-content">
-                <pre><code># Download from GitHub releases
-# https://github.com/scttfrdmn/mycelium/releases/latest
+# Optional
+scoop install lagotto spore-host-mcp</code></pre>
+        </div>
 
-# Extract and run
+        <div id="tab-manual" class="tab-content" role="tabpanel" aria-labelledby="btn-manual">
+<pre><code># Download from GitHub Releases
+# https://github.com/scttfrdmn/spore-host/releases/latest
+
 tar -xzf spawn_*_$(uname -s)_$(uname -m).tar.gz
-./spawn</code></pre>
-            </div>
-        </section>
+tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
+        </div>
 
-        <!-- Key Features -->
-        <section class="key-features">
-            <h2>Why spore.host?</h2>
-            <div class="features-grid">
-                <div class="feature-item">
-                    <span class="check">✓</span>
-                    <strong>2-Minute Setup</strong> - From zero to instance instantly
-                </div>
-                <div class="feature-item">
-                    <span class="check">✓</span>
-                    <strong>No Surprise Bills</strong> - Auto-termination with <span data-tooltip="Time-To-Live: instances automatically terminate after this duration" aria-describedby="tip-ttl2">TTL<span id="tip-ttl2" role="tooltip" class="sr-only">Time-To-Live: instances automatically terminate after this duration</span></span>
-                </div>
-                <div class="feature-item">
-                    <span class="check">✓</span>
-                    <strong>Cross-Platform</strong> - Windows, macOS, Linux
-                </div>
-                <div class="feature-item">
-                    <span class="check">✓</span>
-                    <strong>GPU Support</strong> - Auto-detects GPU-enabled AMIs
-                </div>
-                <div class="feature-item">
-                    <span class="check">✓</span>
-                    <strong><span data-tooltip="Pause instance to disk and stop billing for compute, resume later" aria-describedby="tip-hibernate">Hibernation<span id="tip-hibernate" role="tooltip" class="sr-only">Pause instance to disk and stop billing for compute, resume later</span></span></strong> - Save 99% costs when idle
-                </div>
-                <div class="feature-item">
-                    <span class="check">✓</span>
-                    <strong>Multilingual</strong> - 6 languages supported
-                </div>
-            </div>
-        </section>
+        <p style="margin-top:2rem; font-size:0.875rem; color:var(--text-muted);">
+          Debian/Ubuntu and RHEL/Fedora packages (.deb/.rpm) are also available on the
+          <a href="https://github.com/scttfrdmn/spore-host/releases/latest" target="_blank" rel="noopener">releases page</a>.
+        </p>
+      </div>
+    </section>
 
-        <!-- Examples -->
-        <section id="examples" class="examples">
-            <h2>Common Use Cases</h2>
+    <!-- ── MCP quick-start ── -->
+    <section>
+      <div class="container">
+        <p class="section-label">AI assistant integration</p>
+        <h2 class="section-title">Use Claude to manage your compute</h2>
+        <p class="section-sub">Add spore-host-mcp to Claude Desktop and ask it to find instances, check status, or stop a forgotten job in plain English.</p>
 
-            <div class="example">
-                <h4>🔍 Finding Available Instances</h4>
-                <pre><code>$ truffle spot "t3.*" --sort-by-price
-
-┌─────────────────────────────────────────────────────────────┐
-│ 🔍 Truffle - EC2 Spot Instance Search                      │
-└─────────────────────────────────────────────────────────────┘
-
-Instance Type    vCPUs  Memory   Spot Price   Region      Savings
-─────────────────────────────────────────────────────────────────
-t3.nano          2      0.5 GB   $0.0016/hr   us-east-1   95%
-t3.micro         2      1.0 GB   $0.0031/hr   us-east-1   94%
-t3.small         2      2.0 GB   $0.0063/hr   us-east-1   93%
-t3.medium        2      4.0 GB   $0.0125/hr   us-east-2   92%
-t3.large         2      8.0 GB   $0.0250/hr   us-west-2   91%
-
-✓ Found 5 instances with spot capacity available</code></pre>
-            </div>
-
-            <div class="example">
-                <h4>💰 Launch Cheapest Dev Box</h4>
-                <pre><code>$ truffle spot "t3.*" --sort-by-price --pick-first | spawn --ttl 8h
-
-🍄 Launching instance...
-   Type: t3.nano (2 vCPUs, 0.5 GB RAM)
-   Region: us-east-1
-   Cost: $0.0016/hr (~$0.01/day)
-   TTL: 8h (auto-terminates)
-
-✓ Instance i-0abc123 running
-✓ SSH: ssh ec2-user@3.84.123.45
-✓ Auto-terminates in 8h 0m
-
-Cost: ~$0.01/hr • Auto-terminates after 8h</code></pre>
-            </div>
-
-            <div class="example">
-                <h4>🚀 Interactive Launch</h4>
-                <pre><code>$ spawn
-
-🍄 Welcome to spawn - Launch EC2 instances in 2 minutes
-
-? Instance type: t3.small
-? Region: us-east-1
-? TTL (auto-terminate): 4h
-? SSH key: my-key
-? Launch? Yes
-
-🚀 Launching...
-✓ Instance i-0def456 running in 45s
-✓ IP: 18.234.56.78
-✓ SSH: ssh ec2-user@18.234.56.78
-
-Your instance will auto-terminate in 3h 59m</code></pre>
-            </div>
-
-            <div class="example">
-                <h4>🎮 GPU Training with Hibernation</h4>
-                <pre><code>$ truffle capacity --instance-types g5.xlarge | spawn --ttl 24h --hibernate-on-idle
-
-✓ g5.xlarge available in us-west-2
-🍄 Launching GPU instance...
-✓ Instance running with NVIDIA A10G GPU
-✓ Hibernation enabled (saves 99% cost when idle)
-✓ Auto-terminates in 24h if not extended
-
-Cost: $1.006/hr active, $0.01/hr hibernated</code></pre>
-            </div>
-        </section>
-
-    </main>
-
-    <!-- Footer -->
-    <div class="container">
-        <footer>
-            <div class="footer-roadmap">
-                <h3>🚧 Roadmap</h3>
-                <p class="footer-roadmap-subtitle">Future dashboard features under development:</p>
-                <div class="roadmap-items">
-                    <span class="roadmap-item">⚡ Instance Control</span>
-                    <span class="roadmap-item">💻 Web SSH</span>
-                    <span class="roadmap-item">📈 Real-Time Metrics</span>
-                    <span class="roadmap-item">🎮 Remote Desktop (DCV)</span>
-                </div>
-            </div>
-
-            <div class="footer-links">
-                <a href="https://github.com/scttfrdmn/mycelium">GitHub</a>
-                <a href="https://github.com/scttfrdmn/mycelium/releases">Releases</a>
-                <a href="https://github.com/scttfrdmn/mycelium/blob/main/README.md">Documentation</a>
-                <a href="https://github.com/scttfrdmn/mycelium/issues">Issues</a>
-                <a href="/privacy.html">Privacy</a>
-                <a href="/terms.html">Terms</a>
-            </div>
-            <p class="footer-text">
-                Made with <span aria-hidden="true">🍄</span> by <a href="https://github.com/scttfrdmn">@scttfrdmn</a>
-                <br>
-                Licensed under <a href="https://github.com/scttfrdmn/mycelium/blob/main/LICENSE">Apache 2.0</a>
-            </p>
-        </footer>
-    </div>
-
-    <script>
-    // Initialize asciinema player
-    document.addEventListener('DOMContentLoaded', function() {
-        const target = document.getElementById('demo');
-        if (target && typeof AsciinemaPlayer !== 'undefined') {
-            AsciinemaPlayer.create('/assets/demo.cast', target, {
-                autoPlay: true,
-                loop: true,
-                speed: 2,
-                fit: 'width'
-            });
-        }
-    });
-    </script>
-    <script src="js/auth.js?v=2"></script>
-    <script src="js/websocket.js?v=1"></script>
-    <script src="js/main.js?v=2"></script>
-    <script>
-    // Welcome banner functionality
-    function dismissWelcomeBanner() {
-        const banner = document.getElementById('welcome-banner');
-        if (banner) {
-            banner.style.opacity = '0';
-            banner.style.transform = 'translateY(-20px)';
-            setTimeout(() => {
-                banner.style.display = 'none';
-            }, 300);
-        }
-        localStorage.setItem('welcomeBannerDismissed', 'true');
+        <div class="terminal" role="img" aria-label="Claude Desktop config and example conversation">
+          <div class="terminal-bar" aria-hidden="true">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="terminal-title">~/.claude/claude_desktop_config.json</span>
+          </div>
+          <div class="terminal-body">
+<pre><span class="t-out">{
+  "mcpServers": {
+    "spore-host": {
+      "command": "</span><span class="t-hi">/usr/local/bin/spore-host-mcp</span><span class="t-out">"
     }
+  }
+}</span>
 
-    // Show welcome banner for first-time visitors
-    (function initWelcomeBanner() {
-        const dismissed = localStorage.getItem('welcomeBannerDismissed');
-        const banner = document.getElementById('welcome-banner');
+<span class="t-out">Then in Claude Desktop:</span>
 
-        if (!dismissed && banner) {
-            banner.style.display = 'block';
-            banner.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-            banner.style.opacity = '0';
-            banner.style.transform = 'translateY(-20px)';
+<span class="t-prompt">You:</span>  <span class="t-cmd">What instances are running and how long have they been up?</span>
+<span class="t-prompt">Claude:</span> <span class="t-out">You have 2 running instances:
+• ml-training (p4d.24xlarge) — 6h 42m, terminates in 5h 18m
+• dev-box (t3.medium) — 3d 14h — </span><span class="t-hi">no TTL set, consider stopping it</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
 
-            setTimeout(() => {
-                banner.style.opacity = '1';
-                banner.style.transform = 'translateY(0)';
-            }, 100);
-        }
-    })();
-    </script>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div>
+        <div class="footer-brand">spore.host</div>
+        <div class="footer-tagline">Ephemeral compute for research.</div>
+      </div>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/scttfrdmn/spore-host/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="library.html">For Developers</a>
+        <a href="https://github.com/scttfrdmn/spore-host/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>Made by <a href="https://github.com/scttfrdmn" target="_blank" rel="noopener">@scttfrdmn</a></span>
+      <span><a href="https://github.com/scttfrdmn/spore-host/blob/main/LICENSE" target="_blank" rel="noopener">Apache 2.0</a></span>
+    </div>
+  </footer>
+
+  <script>
+  // Theme
+  function toggleTheme() {
+    document.documentElement.classList.add('theme-transitioning');
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    document.getElementById('theme-toggle').textContent = next === 'dark' ? '🌙' : '☀️';
+    setTimeout(() => document.documentElement.classList.remove('theme-transitioning'), 300);
+  }
+  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+  (function() {
+    const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+    document.getElementById('theme-toggle').textContent = t === 'dark' ? '🌙' : '☀️';
+  })();
+
+  // Tabs
+  function showTab(id, e) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => { el.classList.remove('active'); el.setAttribute('aria-selected','false'); });
+    document.getElementById('tab-' + id).classList.add('active');
+    e.currentTarget.classList.add('active');
+    e.currentTarget.setAttribute('aria-selected','true');
+  }
+
+  // Hamburger
+  const hamburger = document.getElementById('hamburger-btn');
+  const navLinks = document.getElementById('nav-links');
+  hamburger.addEventListener('click', () => {
+    const open = navLinks.classList.toggle('open');
+    hamburger.setAttribute('aria-expanded', open);
+  });
+  </script>
 </body>
 </html>
