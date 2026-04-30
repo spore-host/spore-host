@@ -300,7 +300,7 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
     btn.innerHTML = '<span class="demo-play-icon">⟳</span> Loading...';
 
     const cdnBase = 'https://cdn.jsdelivr.net/npm/asciinema-player@3.14.0/dist/bundle';
-    const castUrl = window.location.origin + '/assets/demo.cast?v=3';
+    const castUrl = window.location.origin + '/assets/demo.cast?v=4';
 
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -318,7 +318,7 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
       player.style.display = 'block';
       AsciinemaPlayer.create(castUrl, player, {
         autoPlay: true,
-        loop: false,
+        loop: true,
         speed: 1.0,
         fit: 'width'
       });

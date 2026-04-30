@@ -165,7 +165,7 @@ section + section { border-top: 1px solid var(--border); }
 .hamburger span { display: block; width: 22px; height: 2px; background: var(--text); border-radius: 2px; transition: all 0.2s; }
 
 /* ── Hero ── */
-.hero { padding: 6rem 0 5rem; }
+.hero { padding: 6rem 0 3rem; }
 .hero-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 1.5rem; }
 .hero-eyebrow {
   display: inline-block; font-size: 0.8rem; font-weight: 600;
@@ -312,7 +312,7 @@ h2.section-title {
 .demo-play-btn:hover { opacity: 0.88; }
 .demo-play-btn:disabled { opacity: 0.5; cursor: default; }
 .demo-play-icon { font-size: 0.75rem; }
-#demo-player { border-radius: var(--radius); overflow: hidden; max-width: 900px; margin-top: 0.5rem; }
+#demo-player { border-radius: var(--radius); overflow: hidden; max-width: 900px; margin-top: 0.5rem; margin-bottom: 0; }
 .demo-hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.6rem; }
 
 /* ── Install ── */
