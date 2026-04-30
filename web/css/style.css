@@ -10,6 +10,15 @@
   --border:       #e5e7eb;
   --border-strong:#d1d5db;
 
+  /* Dashboard compatibility aliases */
+  --bg-dark:      #f8f9fa;
+  --bg-main:      #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary:#6b7280;
+  --accent-blue:  #2563eb;
+  --accent-green: #059669;
+  --accent-red:   #dc2626;
+
   /* tool accent colours */
   --truffle:      #d97706;
   --truffle-bg:   #fffbeb;
@@ -58,7 +67,14 @@
   --terminal-bg:  #0d1117;
   --terminal-text:#e2e8f0;
 
-  /* backwards compat — dark overrides */
+  /* Dashboard compatibility aliases — dark */
+  --bg-dark:      #0d1117;
+  --bg-main:      #21262d;
+  --text-primary: #e6edf3;
+  --text-secondary:#8b949e;
+  --accent-blue:  #4fc3f7;
+  --accent-green: #66bb6a;
+  --accent-red:   #ef5350;
   --accent-blue:    #60a5fa;
   --accent-green:   #34d399;
   --accent-red:     #f87171;

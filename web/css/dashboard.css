@@ -1,0 +1,217 @@
+/* Dashboard-specific styles — independent of the marketing site CSS */
+
+/* ── Layout ── */
+.container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+
+/* ── Login Section ── */
+.login-section {
+  max-width: 560px;
+  margin: 5rem auto;
+  text-align: center;
+}
+.login-section h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem; }
+.login-subtitle { color: var(--text-secondary); margin-bottom: 2rem; font-size: 1rem; }
+
+.login-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+.login-btn {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+  width: 100%;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+.login-btn:hover { border-color: var(--accent-blue); background: rgba(79,195,247,0.05); }
+.login-icon { font-size: 1.4rem; flex-shrink: 0; }
+.login-text strong { display: block; font-weight: 600; }
+.login-text small { color: var(--text-secondary); font-size: 0.8rem; }
+.login-info {
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.login-info ul { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+.login-info li { padding: 0.2rem 0; }
+
+/* ── Dashboard Layout ── */
+.dashboard { padding: 1.5rem 0; }
+.dashboard-subtitle { color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.9rem; }
+
+.user-display {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  text-align: right;
+}
+
+.status-disconnected,
+.status-connected {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+.status-disconnected { background: var(--accent-red); }
+.status-connected    { background: var(--accent-green); }
+
+/* ── Tables ── */
+.table-container { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+
+.instances-table,
+.sweeps-table,
+.autoscale-table,
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  background: var(--bg-card);
+}
+.instances-table th,
+.sweeps-table th,
+.autoscale-table th,
+.dashboard-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--bg-dark);
+  border-bottom: 1px solid var(--border);
+}
+.instances-table td,
+.sweeps-table td,
+.autoscale-table td,
+.dashboard-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.instances-table tr:last-child td,
+.sweeps-table tr:last-child td,
+.autoscale-table tr:last-child td,
+.dashboard-table tr:last-child td { border-bottom: none; }
+.instances-table tr:hover td,
+.sweeps-table tr:hover td,
+.autoscale-table tr:hover td { background: rgba(79,195,247,0.04); }
+
+/* ── Dashboard Tabs ── */
+.dashboard-tabs { display: flex; gap: 0.25rem; border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; }
+.dashboard-tab {
+  padding: 0.75rem 1.25rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -2px;
+}
+.dashboard-tab:hover { color: var(--text-primary); }
+.dashboard-tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+.dashboard-tab-content { display: none; }
+.dashboard-tab-content.active,
+.dashboard-tab-content:first-of-type { display: block; }
+
+/* ── Team Modal ── */
+.team-modal {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.team-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 999;
+}
+.team-modal-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+  z-index: 1001;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.team-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.team-modal-header h3 { margin: 0; font-size: 1.1rem; }
+.team-modal-close {
+  background: none; border: none;
+  font-size: 1.4rem; cursor: pointer;
+  color: var(--text-secondary); line-height: 1;
+}
+.team-modal-body { padding: 1.25rem 1.5rem; }
+.team-section { margin-bottom: 1.5rem; }
+.team-section h4 { font-size: 0.9rem; font-weight: 600; margin: 0 0 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.team-form { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.team-input {
+  flex: 1; min-width: 160px;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-dark); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-primary); font-size: 0.875rem;
+}
+.btn-team-action {
+  padding: 0.5rem 1rem;
+  background: var(--accent-blue); color: #fff;
+  border: none; border-radius: 6px;
+  cursor: pointer; font-size: 0.875rem; font-weight: 600;
+}
+.team-error { color: var(--accent-red); font-size: 0.85rem; margin-top: 0.5rem; }
+
+/* ── Manage Teams button in nav ── */
+.btn-manage-teams {
+  padding: 0.35rem 0.75rem;
+  background: none; border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer;
+  color: var(--text-secondary); font-size: 0.85rem;
+  transition: border-color 0.15s;
+}
+.btn-manage-teams:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+/* ── Refresh button ── */
+.btn-refresh {
+  padding: 0.5rem 1rem;
+  background: var(--accent-blue); color: #fff;
+  border: none; border-radius: 6px;
+  cursor: pointer; font-size: 0.9rem;
+  transition: opacity 0.15s;
+  min-width: 130px;
+}
+.btn-refresh:hover { opacity: 0.85; }
+
+/* ── Table controls ── */
+.table-controls {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
