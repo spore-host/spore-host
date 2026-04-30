@@ -55,3 +55,4 @@ checksums.txt
 
 # Local archive (not pushed to GitHub)
 .local-archive/
+spawn/lambda/rest-api/rest-api
