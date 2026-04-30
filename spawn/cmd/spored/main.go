@@ -356,33 +356,34 @@ func handleStatus() {
 	if config.PricePerHour > 0 {
 		fmt.Println()
 		// EBS cost: looked up from actual volumes at first start, stored in spawn:ebs-hourly-cost tag.
-		// Falls back to ~$0.003/hr (30GB gp3) if the tag hasn't been written yet.
+		// If not yet available, skip the storage line rather than showing a guess.
 		ebsHourlyCost := config.EBSHourlyCost
-		if ebsHourlyCost == 0 {
-			ebsHourlyCost = 0.003
-		}
+		ebsCostKnown := ebsHourlyCost > 0
 		computeCost := config.PricePerHour * computeTime.Hours()
-		ebsCost := ebsHourlyCost * stoppedTime.Hours()
-
-		// Round each component to cents first, then sum — guarantees the displayed
-		// line items always add up to the displayed total.
 		displayCompute := math.Round(computeCost*100) / 100
-		displayEBS := math.Round(ebsCost*100) / 100
+
+		var displayEBS float64
+		if ebsCostKnown {
+			displayEBS = math.Round(ebsHourlyCost*stoppedTime.Hours()*100) / 100
+		}
 		displayTotal := displayCompute + displayEBS
 
-		// Show each cost component so the total is transparent
 		fmt.Printf("  Compute cost:     $%.2f  (%s × $%.4f/hr)\n",
 			displayCompute, formatDuration(computeTime), config.PricePerHour)
 		if stoppedTime >= time.Minute {
-			fmt.Printf("  Storage cost:     $%.2f  (%s × ~$%.3f/hr EBS)\n",
-				displayEBS, formatDuration(stoppedTime), ebsHourlyCost)
+			if ebsCostKnown {
+				fmt.Printf("  Storage cost:     $%.2f  (%s × $%.4f/hr EBS)\n",
+					displayEBS, formatDuration(stoppedTime), ebsHourlyCost)
+			} else {
+				fmt.Printf("  Storage cost:     not yet available  (%s stopped)\n",
+					formatDuration(stoppedTime))
+			}
 		}
 		fmt.Printf("  Total cost:       $%.2f\n", displayTotal)
-		totalCost := displayTotal // use display total for effective rate
 
 		elapsedHours := elapsed.Hours()
-		if elapsedHours > 0 {
-			effectiveRate := totalCost / elapsedHours
+		if elapsedHours > 0 && ebsCostKnown {
+			effectiveRate := displayTotal / elapsedHours
 			savingsPct := (1 - effectiveRate/config.PricePerHour) * 100
 			if savingsPct > 0.5 {
 				fmt.Printf("  Effective rate:   $%.4f/hr  (%.0f%% lower than continuous on-demand)\n",
@@ -390,21 +391,24 @@ func handleStatus() {
 			} else {
 				fmt.Printf("  Effective rate:   $%.4f/hr\n", effectiveRate)
 			}
+		} else if elapsedHours > 0 && !ebsCostKnown {
+			fmt.Println("  Effective rate:   not yet available  (EBS cost lookup pending)")
 		}
 
 		if config.CostLimit > 0 {
-			remaining := config.CostLimit - totalCost
-			pct := (totalCost / config.CostLimit) * 100
-			fmt.Printf("  Cost limit:       $%.2f  ($%.4f used, %.0f%% — $%.4f remaining)\n",
-				config.CostLimit, totalCost, pct, remaining)
+			remaining := config.CostLimit - displayTotal
+			pct := (displayTotal / config.CostLimit) * 100
+			fmt.Printf("  Cost limit:       $%.2f  ($%.2f used, %.0f%% — $%.2f remaining)\n",
+				config.CostLimit, displayTotal, pct, remaining)
 		}
 
-		ebsLabel := "~"
-		if config.EBSHourlyCost > 0 {
-			ebsLabel = "" // actual value from volumes, not an estimate
+		if ebsCostKnown {
+			fmt.Printf("  On-demand rate:   $%.4f/hr compute  +  $%.4f/hr EBS storage  (%s)\n",
+				config.PricePerHour, ebsHourlyCost, region)
+		} else {
+			fmt.Printf("  On-demand rate:   $%.4f/hr compute  +  EBS storage pending  (%s)\n",
+				config.PricePerHour, region)
 		}
-		fmt.Printf("  On-demand rate:   $%.4f/hr compute  +  %s$%.4f/hr EBS storage  (%s)\n",
-			config.PricePerHour, ebsLabel, ebsHourlyCost, region)
 		fmt.Println()
 		fmt.Println("  * Cost figures are estimates. Definitive billing is from your cloud provider.")
 	}

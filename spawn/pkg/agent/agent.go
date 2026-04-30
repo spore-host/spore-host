@@ -411,10 +411,16 @@ func (a *Agent) writeSessionCountTag(ctx context.Context, count int) {
 	})
 }
 
-// writeComputeSecondsTag persists the total compute seconds (base + current uptime) to an EC2 tag,
-// throttled to once every 5 minutes. This survives stop/wake cycles so effective cost can be calculated.
+// writeComputeSecondsTag persists the total compute seconds (base + current uptime) to an EC2 tag.
+// Throttle: every 1 minute for the first 10 minutes (fast feedback on fresh instances),
+// then every 5 minutes thereafter.
 func (a *Agent) writeComputeSecondsTag(ctx context.Context) {
-	if time.Since(a.lastComputeTagWrite) < 5*time.Minute {
+	uptime := time.Since(a.startTime)
+	interval := 5 * time.Minute
+	if uptime < 10*time.Minute {
+		interval = 1 * time.Minute
+	}
+	if time.Since(a.lastComputeTagWrite) < interval {
 		return
 	}
 	a.lastComputeTagWrite = time.Now()

@@ -2,7 +2,9 @@ package aws
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	awspricing "github.com/aws/aws-sdk-go-v2/service/pricing"
+	pricingtypes "github.com/aws/aws-sdk-go-v2/service/pricing/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/scttfrdmn/spore-host/spawn/pkg/observability/tracing"
 	"github.com/scttfrdmn/spore-host/pkg/pricing"
@@ -150,6 +154,9 @@ type LaunchConfig struct {
 	ActivePortsRaw      string // comma-separated ports to monitor — injected as spawn:active-ports tag
 	ActiveProcessesRaw  string // comma-separated process names — injected as spawn:active-processes tag
 
+	// Pricing (populated at launch from AWS Pricing API)
+	PricePerHour float64 // actual on-demand rate; 0 means look it up
+
 	// Metadata
 	Name string
 	Tags map[string]string
@@ -176,6 +183,20 @@ func (c *Client) Launch(ctx context.Context, launchConfig LaunchConfig) (*Launch
 	accountID, userARN, err := c.GetCallerIdentityInfo(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get caller identity: %w", err)
+	}
+
+	// Look up the actual on-demand price from the AWS Pricing API.
+	// This is stored in the spawn:price-per-hour tag so spored can compute effective cost
+	// without needing to know the instance type at runtime.
+	if launchConfig.PricePerHour == 0 {
+		if price := LookupEC2OnDemandPrice(ctx, launchConfig.Region, launchConfig.InstanceType); price > 0 {
+			launchConfig.PricePerHour = price
+			log.Printf("pricing: %s in %s = $%.4f/hr (from AWS Pricing API)", launchConfig.InstanceType, launchConfig.Region, price)
+		} else {
+			// Fall back to static table only as a last resort
+			launchConfig.PricePerHour = pricing.GetEC2HourlyRate(launchConfig.Region, launchConfig.InstanceType)
+			log.Printf("pricing: %s in %s = $%.4f/hr (from static table — API unavailable)", launchConfig.InstanceType, launchConfig.Region, launchConfig.PricePerHour)
+		}
 	}
 
 	// Build tags (including account and user tags for per-user isolation)
@@ -397,12 +418,12 @@ func buildTags(config LaunchConfig, accountID string, userARN string) []types.Ta
 		}
 	}
 
-	// Cost limit
+	// Always tag the on-demand price — used by spored for effective cost calculation.
+	if config.PricePerHour > 0 {
+		tags = append(tags, types.Tag{Key: aws.String("spawn:price-per-hour"), Value: aws.String(fmt.Sprintf("%.6f", config.PricePerHour))})
+	}
 	if config.CostLimit > 0 {
 		tags = append(tags, types.Tag{Key: aws.String("spawn:cost-limit"), Value: aws.String(fmt.Sprintf("%.4f", config.CostLimit))})
-		// Pre-compute on-demand price per hour so spored can track spend without knowing the instance type
-		pricePerHour := pricing.GetEC2HourlyRate(config.Region, config.InstanceType)
-		tags = append(tags, types.Tag{Key: aws.String("spawn:price-per-hour"), Value: aws.String(fmt.Sprintf("%.6f", pricePerHour))})
 	}
 
 	// Session management
@@ -1245,4 +1266,94 @@ func (c *Client) GetDefaultVPC(ctx context.Context, region string) (string, erro
 // GetEFSDNSName constructs the EFS DNS name from filesystem ID and region
 func GetEFSDNSName(filesystemID, region string) string {
 	return fmt.Sprintf("%s.efs.%s.amazonaws.com", filesystemID, region)
+}
+
+// regionToLocationName maps AWS region codes to the location name used by the Pricing API.
+var regionToLocationName = map[string]string{
+	"us-east-1":      "US East (N. Virginia)",
+	"us-east-2":      "US East (Ohio)",
+	"us-west-1":      "US West (N. California)",
+	"us-west-2":      "US West (Oregon)",
+	"eu-west-1":      "Europe (Ireland)",
+	"eu-west-2":      "Europe (London)",
+	"eu-west-3":      "Europe (Paris)",
+	"eu-central-1":   "Europe (Frankfurt)",
+	"eu-north-1":     "Europe (Stockholm)",
+	"eu-south-1":     "Europe (Milan)",
+	"ap-northeast-1": "Asia Pacific (Tokyo)",
+	"ap-northeast-2": "Asia Pacific (Seoul)",
+	"ap-northeast-3": "Asia Pacific (Osaka)",
+	"ap-southeast-1": "Asia Pacific (Singapore)",
+	"ap-southeast-2": "Asia Pacific (Sydney)",
+	"ap-south-1":     "Asia Pacific (Mumbai)",
+	"ap-east-1":      "Asia Pacific (Hong Kong)",
+	"ca-central-1":   "Canada (Central)",
+	"sa-east-1":      "South America (Sao Paulo)",
+	"me-south-1":     "Middle East (Bahrain)",
+	"af-south-1":     "Africa (Cape Town)",
+}
+
+// LookupEC2OnDemandPrice queries the AWS Pricing API for the current on-demand price
+// of an instance type in a region. Returns 0 and logs if the lookup fails.
+// The Pricing API is only available in us-east-1 and ap-south-1.
+func LookupEC2OnDemandPrice(ctx context.Context, region, instanceType string) float64 {
+	location, ok := regionToLocationName[region]
+	if !ok {
+		log.Printf("pricing: unknown region %q, cannot look up price", region)
+		return 0
+	}
+
+	// Pricing API is only in us-east-1 and ap-south-1 regardless of where the instance is
+	pricingCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+	if err != nil {
+		log.Printf("pricing: failed to load config: %v", err)
+		return 0
+	}
+
+	pricingClient := awspricing.NewFromConfig(pricingCfg)
+	out, err := pricingClient.GetProducts(ctx, &awspricing.GetProductsInput{
+		ServiceCode: aws.String("AmazonEC2"),
+		Filters: []pricingtypes.Filter{
+			{Type: pricingtypes.FilterTypeTermMatch, Field: aws.String("instanceType"), Value: aws.String(instanceType)},
+			{Type: pricingtypes.FilterTypeTermMatch, Field: aws.String("location"), Value: aws.String(location)},
+			{Type: pricingtypes.FilterTypeTermMatch, Field: aws.String("operatingSystem"), Value: aws.String("Linux")},
+			{Type: pricingtypes.FilterTypeTermMatch, Field: aws.String("tenancy"), Value: aws.String("Shared")},
+			{Type: pricingtypes.FilterTypeTermMatch, Field: aws.String("preInstalledSw"), Value: aws.String("NA")},
+			{Type: pricingtypes.FilterTypeTermMatch, Field: aws.String("capacitystatus"), Value: aws.String("Used")},
+		},
+		MaxResults: aws.Int32(1),
+	})
+	if err != nil {
+		log.Printf("pricing: GetProducts failed for %s in %s: %v", instanceType, region, err)
+		return 0
+	}
+	if len(out.PriceList) == 0 {
+		log.Printf("pricing: no price found for %s in %s", instanceType, region)
+		return 0
+	}
+
+	// Parse the nested pricing JSON: terms → OnDemand → priceDimensions → pricePerUnit USD
+	var priceDoc struct {
+		Terms struct {
+			OnDemand map[string]struct {
+				PriceDimensions map[string]struct {
+					PricePerUnit map[string]string `json:"pricePerUnit"`
+				} `json:"priceDimensions"`
+			} `json:"OnDemand"`
+		} `json:"terms"`
+	}
+	if err := json.Unmarshal([]byte(out.PriceList[0]), &priceDoc); err != nil {
+		log.Printf("pricing: parse error: %v", err)
+		return 0
+	}
+	for _, term := range priceDoc.Terms.OnDemand {
+		for _, dim := range term.PriceDimensions {
+			if usd, ok := dim.PricePerUnit["USD"]; ok {
+				if price, err := strconv.ParseFloat(usd, 64); err == nil && price > 0 {
+					return price
+				}
+			}
+		}
+	}
+	return 0
 }
