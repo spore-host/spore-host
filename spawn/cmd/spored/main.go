@@ -355,8 +355,12 @@ func handleStatus() {
 	// ── Cost ──────────────────────────────────────────────────────────────────
 	if config.PricePerHour > 0 {
 		fmt.Println()
-		// EBS cost: ~$0.08/GB/month for gp3 30GB root = ~$0.003/hr while stopped/hibernated
-		const ebsHourlyCost = 0.003
+		// EBS cost: looked up from actual volumes at first start, stored in spawn:ebs-hourly-cost tag.
+		// Falls back to ~$0.003/hr (30GB gp3) if the tag hasn't been written yet.
+		ebsHourlyCost := config.EBSHourlyCost
+		if ebsHourlyCost == 0 {
+			ebsHourlyCost = 0.003
+		}
 		computeCost := config.PricePerHour * computeTime.Hours()
 		ebsCost := ebsHourlyCost * stoppedTime.Hours()
 
@@ -395,8 +399,12 @@ func handleStatus() {
 				config.CostLimit, totalCost, pct, remaining)
 		}
 
-		fmt.Printf("  On-demand rate:   $%.4f/hr compute  +  ~$%.3f/hr EBS storage  (%s)\n",
-			config.PricePerHour, ebsHourlyCost, region)
+		ebsLabel := "~"
+		if config.EBSHourlyCost > 0 {
+			ebsLabel = "" // actual value from volumes, not an estimate
+		}
+		fmt.Printf("  On-demand rate:   $%.4f/hr compute  +  %s$%.4f/hr EBS storage  (%s)\n",
+			config.PricePerHour, ebsLabel, ebsHourlyCost, region)
 		fmt.Println()
 		fmt.Println("  * Cost figures are estimates. Definitive billing is from your cloud provider.")
 	}

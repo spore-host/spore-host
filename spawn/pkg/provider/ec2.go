@@ -307,6 +307,87 @@ func (p *EC2Provider) GetProviderType() string {
 	return "ec2"
 }
 
+// ebsPricePerGBMonth returns the approximate per-GB-month price for common EBS volume types.
+// Prices are for us-east-1; other regions are within ~10% of these.
+func ebsPricePerGBMonth(volumeType string) float64 {
+	switch strings.ToLower(volumeType) {
+	case "gp3":
+		return 0.08
+	case "gp2":
+		return 0.10
+	case "io1", "io2":
+		return 0.125
+	case "st1":
+		return 0.045
+	case "sc1":
+		return 0.015
+	default:
+		return 0.08 // gp3 default
+	}
+}
+
+// LookupAndTagEBSCost queries the instance's attached volumes, calculates the hourly
+// EBS storage cost, and stores it as spawn:ebs-hourly-cost. Called once at first
+// spored start; subsequent starts read the tag instead of re-querying.
+func (p *EC2Provider) LookupAndTagEBSCost(ctx context.Context) float64 {
+	if p.config.EBSHourlyCost > 0 {
+		return p.config.EBSHourlyCost // already known from tag
+	}
+
+	// Describe the instance to get block device mappings
+	descOut, err := p.ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{p.identity.InstanceID},
+	})
+	if err != nil || len(descOut.Reservations) == 0 || len(descOut.Reservations[0].Instances) == 0 {
+		log.Printf("Warning: could not describe instance for EBS cost lookup: %v", err)
+		return 0.003 // safe fallback
+	}
+
+	inst := descOut.Reservations[0].Instances[0]
+	var volumeIDs []string
+	for _, bdm := range inst.BlockDeviceMappings {
+		if bdm.Ebs != nil && bdm.Ebs.VolumeId != nil {
+			volumeIDs = append(volumeIDs, *bdm.Ebs.VolumeId)
+		}
+	}
+	if len(volumeIDs) == 0 {
+		return 0.003
+	}
+
+	// Describe volumes to get sizes and types
+	volOut, err := p.ec2Client.DescribeVolumes(ctx, &ec2.DescribeVolumesInput{
+		VolumeIds: volumeIDs,
+	})
+	if err != nil {
+		log.Printf("Warning: could not describe volumes for EBS cost lookup: %v", err)
+		return 0.003
+	}
+
+	const hoursPerMonth = 730.0
+	var totalHourlyCost float64
+	for _, vol := range volOut.Volumes {
+		sizeGB := float64(aws.ToInt32(vol.Size))
+		pricePerGBMonth := ebsPricePerGBMonth(string(vol.VolumeType))
+		totalHourlyCost += sizeGB * pricePerGBMonth / hoursPerMonth
+	}
+
+	log.Printf("EBS volumes: %d vol(s), hourly cost = $%.4f/hr", len(volOut.Volumes), totalHourlyCost)
+
+	// Store as a tag so subsequent spored starts don't need to re-query
+	_, _ = p.ec2Client.CreateTags(ctx, &ec2.CreateTagsInput{
+		Resources: []string{p.identity.InstanceID},
+		Tags: []types.Tag{
+			{
+				Key:   aws.String(tagprefix.Tag("ebs-hourly-cost")),
+				Value: aws.String(strconv.FormatFloat(totalHourlyCost, 'f', 6, 64)),
+			},
+		},
+	})
+
+	p.config.EBSHourlyCost = totalHourlyCost
+	return totalHourlyCost
+}
+
 // loadConfigFromEC2Tags loads configuration from EC2 instance tags.
 // It returns the Config and the value of the EC2 Name tag (may be empty).
 func loadConfigFromEC2Tags(ctx context.Context, client *ec2.Client, instanceID string) (*Config, string, error) {
@@ -351,6 +432,10 @@ func loadConfigFromEC2Tags(ctx context.Context, client *ec2.Client, instanceID s
 		case tagprefix.Tag("compute-seconds"):
 			if s, err := strconv.ParseInt(*tag.Value, 10, 64); err == nil {
 				config.ComputeSeconds = s
+			}
+		case tagprefix.Tag("ebs-hourly-cost"):
+			if f, err := strconv.ParseFloat(*tag.Value, 64); err == nil {
+				config.EBSHourlyCost = f
 			}
 		case tagprefix.Tag("idle-timeout"):
 			if duration, err := time.ParseDuration(*tag.Value); err == nil {

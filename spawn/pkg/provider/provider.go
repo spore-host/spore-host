@@ -31,6 +31,7 @@ type Config struct {
 	TTLDeadline     time.Time     // absolute deadline = launch_time + TTL; authoritative across stop/wake cycles
 	LaunchTime      time.Time     // original launch time; never resets on stop/wake
 	ComputeSeconds  int64         // accumulated compute seconds since launch (updated by spored)
+	EBSHourlyCost   float64       // actual EBS cost per hour (queried at first start, tagged for reuse)
 	IdleTimeout     time.Duration
 	HibernateOnIdle bool
 	CostLimit       float64
@@ -113,6 +114,10 @@ type Provider interface {
 
 	// GetProviderType returns the provider type ("ec2" or "local")
 	GetProviderType() string
+
+	// LookupAndTagEBSCost returns the hourly EBS storage cost, querying AWS if
+	// not already cached in the spawn:ebs-hourly-cost tag.
+	LookupAndTagEBSCost(ctx context.Context) float64
 }
 
 // NewProvider creates a provider based on the environment

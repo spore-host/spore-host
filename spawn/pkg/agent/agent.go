@@ -72,6 +72,17 @@ func NewAgent(ctx context.Context, prov provider.Provider) (*Agent, error) {
 	log.Printf("Config: TTL=%v, IdleTimeout=%v, Hibernate=%v",
 		config.TTL, config.IdleTimeout, config.HibernateOnIdle)
 
+	// Look up actual EBS volume cost on first start; caches result in spawn:ebs-hourly-cost tag.
+	if identity.Provider == "ec2" && config.EBSHourlyCost == 0 {
+		go func() {
+			ebsCost := prov.LookupAndTagEBSCost(context.Background())
+			if ebsCost > 0 {
+				agent.config.EBSHourlyCost = ebsCost
+				log.Printf("EBS hourly cost: $%.4f/hr", ebsCost)
+			}
+		}()
+	}
+
 	// Initialize lifecycle notifier (Slack notifications via spore-bot Lambda)
 	if config.NotifyURL != "" {
 		agent.notifier = NewNotifier(config, identity)

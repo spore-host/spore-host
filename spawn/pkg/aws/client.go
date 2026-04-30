@@ -984,6 +984,7 @@ func (c *Client) SetupSporedIAMRole(ctx context.Context) (string, error) {
       "Action": [
         "ec2:DescribeTags",
         "ec2:DescribeInstances",
+        "ec2:DescribeVolumes",
         "ec2:CreateTags"
       ],
       "Resource": "*"

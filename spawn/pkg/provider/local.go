@@ -279,6 +279,10 @@ func (p *LocalProvider) GetProviderType() string {
 	return "local"
 }
 
+func (p *LocalProvider) LookupAndTagEBSCost(_ context.Context) float64 {
+	return 0 // no EBS on local provider
+}
+
 // getPublicIP queries an external service to get the public IP
 func getPublicIP() string {
 	// Try multiple services in case one is down
