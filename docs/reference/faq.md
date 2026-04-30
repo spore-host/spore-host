@@ -4,7 +4,7 @@
 
 ### What is spore.host?
 
-spore.host is a set of free, open-source tools for launching ephemeral EC2 instances that manage their own lifecycle. Every instance you launch gets a time-to-live and an idle detector — it terminates itself when the work is done, so you never leave instances running by accident.
+spore.host is a set of free, open-source tools for launching ephemeral EC2 instances that manage their own lifecycle. Every instance you launch gets a time-to-live and an idle detector — the TTL terminates it when the deadline passes, and idle detection stops it between tasks — so you never pay for idle compute by accident.
 
 ### What's the difference between truffle and spawn?
 

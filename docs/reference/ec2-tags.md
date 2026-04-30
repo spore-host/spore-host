@@ -20,7 +20,7 @@ spore.host tags every instance it launches with `spawn:*` tags. These tags drive
 | `spawn:ttl-remaining` | `8h23m` | Approximate time until TTL-based termination (updated by spored). |
 | `spawn:on-complete` | `terminate` | Action when TTL expires: `terminate`, `stop`, or `hibernate`. |
 | `spawn:idle-timeout` | `30m` | Terminate/stop if idle for this duration. |
-| `spawn:hibernate-on-idle` | `true` | Hibernate (rather than terminate) when idle. |
+| `spawn:hibernate-on-idle` | `true` | Hibernate instead of stopping when idle. |
 | `spawn:session-timeout` | `2h` | Terminate if no SSH session for this duration. |
 | `spawn:cost-limit` | `50.00` | Stop/terminate when cumulative cost exceeds this amount (USD). |
 

@@ -50,7 +50,7 @@ Spored reads its configuration from EC2 tags on the instance at startup. These a
 |-----|-------------|-------------|
 | `spawn:ttl` | `--ttl` | Time-to-live duration (e.g. `8h`, `2d`) |
 | `spawn:idle-timeout` | `--idle-timeout` | Idle timeout duration |
-| `spawn:hibernate-on-idle` | `--hibernate-on-idle` | `true` to hibernate instead of terminate |
+| `spawn:hibernate-on-idle` | `--hibernate-on-idle` | `true` to hibernate instead of stop |
 | `spawn:active-processes` | `--active-processes` | Comma-separated process names |
 | `spawn:active-ports` | `--active-ports` | Comma-separated TCP port numbers |
 | `spawn:on-complete` | `--on-complete` | Action on completion: `terminate`, `stop`, `hibernate` |

@@ -6,11 +6,11 @@ spore.host sends notifications when significant things happen to your instances 
 
 | Event | When | Message |
 |-------|------|---------|
-| TTL warning | 10 min before TTL expires | ⏱️ *name* terminates in 10 minutes |
+| TTL warning | 5 min before TTL expires | ⏱️ *name* terminates in 5 minutes |
 | TTL expired | At TTL | 🔴 *name* has terminated — scheduled end time reached |
-| Idle warning | 10 min before idle timeout | 💤 *name* will terminate in 10 minutes — no activity |
-| Idle terminated | At idle timeout | 🔴 *name* has terminated — idle timeout reached |
-| Idle hibernated | At idle timeout (hibernate mode) | 💤 *name* has hibernated |
+| Idle warning | 5 min before idle timeout | 💤 *name* will stop in 5 minutes — no activity |
+| Idle stopped | At idle timeout (default) | ⏹️ *name* has stopped — idle timeout reached |
+| Idle hibernated | At idle timeout with `--hibernate-on-idle` | 💤 *name* has hibernated — idle timeout reached |
 | Completion | Completion file detected | ✅ *name* has completed |
 | Spot interrupt | Spot interruption notice received | ⚠️ *name* received a Spot interruption notice |
 | Pre-stop start | Pre-stop hook begins | 🔄 *name* is running its shutdown task |
@@ -58,7 +58,7 @@ Unsubscribe: `/spore unnotify rstudio`
 
 ## Responding to warnings
 
-When you receive a TTL warning, you have 10 minutes to extend if you need more time:
+When you receive a TTL warning, you have 5 minutes to extend if you need more time:
 
 ```
 /spore extend training 4h

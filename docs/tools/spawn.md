@@ -106,13 +106,17 @@ See [Slack Setup](/guides/slack-setup) for the full walkthrough.
 
 ## Key concepts
 
-**TTL** — every instance launched with spawn has a time-to-live. When it expires, the instance terminates. There are no forgotten instances.
+**TTL** — every instance has an absolute termination deadline: `launch_time + TTL`. When it fires, the instance terminates. The deadline is stored in a tag at launch and is **never reset** by stop/wake cycles — it keeps counting even while the instance is stopped. `spawn extend` pushes the deadline forward, not from now.
 
-**Spored** — a small daemon that runs on the instance, enforces the TTL, detects idleness, registers DNS, and sends lifecycle notifications. It's installed automatically at launch. You don't interact with it directly.
+**Idle timeout** — spored monitors CPU, network, disk, GPU, sessions, and configured process names. When all signals indicate inactivity for the configured duration, the instance **stops** (or hibernates with `--hibernate-on-idle`). The idle timer **resets** every time the instance wakes. Idle timeout never terminates — only TTL does that.
 
-**Idle detection** — spored checks CPU usage, network traffic, disk I/O, GPU utilisation, active SSH sessions, and (optionally) specific process names. Only when all signals indicate inactivity does it trigger the idle timeout.
+**Spored** — a small daemon that runs on the instance, enforces the TTL deadline, detects idleness, registers DNS, and sends lifecycle notifications. Installed automatically at launch.
 
-**Pre-stop hooks** — a shell command that runs before any lifecycle-triggered shutdown. Use it to save checkpoints, sync output to S3, or notify downstream systems.
+**Pre-stop hooks** — a shell command that runs before any lifecycle-triggered stop or termination. Use it to save checkpoints, sync output to S3, or notify downstream systems.
+
+::: tip
+See [TTL vs idle timeout](/reference/configuration#ttl-vs-idle-timeout-how-they-interact) for a complete explanation with a worked timeline.
+:::
 
 ## Full command reference
 

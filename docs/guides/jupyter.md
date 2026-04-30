@@ -2,7 +2,7 @@
 
 Interactive compute environments like Jupyter and RStudio have a specific challenge with idle detection: the browser tab maintains a TCP connection to the server even when you haven't touched it in hours. Without careful configuration, the instance would never consider itself idle.
 
-spore.host handles this with process-based idle detection — the instance stays alive as long as the notebook server process is running, and terminates when you explicitly stop it.
+spore.host handles this with process-based idle detection — the instance stays alive as long as the notebook server process is running, and stops when you explicitly disconnect.
 
 ## RStudio
 

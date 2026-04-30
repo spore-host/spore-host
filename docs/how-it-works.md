@@ -58,7 +58,7 @@ Lifecycle events from spored are routed through spore-bot to your Slack DMs:
 
 - *⏱️ training will terminate in 10 minutes* — with time to extend if you need more
 - *✅ training has completed* — your job finished and the instance is terminating
-- *💤 training has hibernated — idle timeout reached* — nothing was happening, so it paused
+- *⏹️ training has stopped — idle timeout reached — nothing was happening, so compute was paused
 
 ### <span class="tool-badge mcp">MCP Server</span> — Control from AI assistants
 

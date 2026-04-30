@@ -117,7 +117,7 @@ spawn launch \
   --command "python process.py --input /data/input --output /data/output"
 ```
 
-The `--pre-stop` hook syncs output to S3 before any shutdown — whether that's TTL expiry, idle termination, or Spot interruption.
+The `--pre-stop` hook syncs output to S3 before any shutdown — whether that's TTL expiry, idle stop, or Spot interruption.
 
 **Using EFS for persistent shared storage:**
 
