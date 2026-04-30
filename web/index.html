@@ -84,8 +84,8 @@
     <section id="demo-section">
       <div class="container">
         <p class="section-label">See it in action</p>
-        <h2 class="section-title">Find. Launch. Connect.</h2>
-        <p class="section-sub">A real workflow: search for AMD EPYC instances with truffle, launch a c8a.2xlarge with spawn, then connect — which automatically wakes the instance if it stopped or hibernated, unlike plain SSH.</p>
+        <h2 class="section-title">A full research workflow</h2>
+        <p class="section-sub">Find an AMD EPYC Genoa instance, launch with a 12h TTL and 10-minute idle timeout, run a simulation in the background, disconnect, check back hours later — then watch the idle timeout terminate it early and show the actual cost versus the maximum.</p>
 
         <div id="demo-wrapper">
           <button id="demo-play-btn" class="demo-play-btn" onclick="loadDemo()" aria-label="Watch demo screencast">
@@ -318,28 +318,30 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
     const btn = document.getElementById('demo-play-btn');
     const player = document.getElementById('demo-player');
     btn.disabled = true;
-    btn.textContent = 'Loading...';
+    btn.innerHTML = '<span class="demo-play-icon">⟳</span> Loading...';
 
     const cdnBase = 'https://cdn.jsdelivr.net/npm/asciinema-player@3.14.0/dist/bundle';
+    const castUrl = window.location.origin + '/assets/demo.cast';
 
-    // Inject CSS
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = cdnBase + '/asciinema-player.min.css';
     document.head.appendChild(link);
 
-    // Inject JS then create player
     const script = document.createElement('script');
     script.src = cdnBase + '/asciinema-player.min.js';
+    script.onerror = function() {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="demo-play-icon">▶</span> Watch demo';
+    };
     script.onload = function() {
       btn.style.display = 'none';
       player.style.display = 'block';
-      AsciinemaPlayer.create('/assets/demo.cast', player, {
+      AsciinemaPlayer.create(castUrl, player, {
         autoPlay: true,
         loop: false,
         speed: 1.0,
-        fit: 'width',
-        theme: 'monokai'
+        fit: 'width'
       });
     };
     document.head.appendChild(script);
