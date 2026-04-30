@@ -28,6 +28,15 @@
 
   --radius:       8px;
   --max-width:    1100px;
+
+  /* ── Backwards compatibility (dashboard.html uses old variable names) ── */
+  --accent-blue:    var(--spawn);
+  --accent-green:   var(--lagotto);
+  --accent-red:     #ef4444;
+  --bg-dark:        var(--bg-subtle);
+  --bg-main:        var(--bg);
+  --text-primary:   var(--text);
+  --text-secondary: var(--text-muted);
 }
 
 [data-theme="dark"] {
@@ -48,6 +57,15 @@
   --code-bg:      #21262d;
   --terminal-bg:  #0d1117;
   --terminal-text:#e2e8f0;
+
+  /* backwards compat — dark overrides */
+  --accent-blue:    #60a5fa;
+  --accent-green:   #34d399;
+  --accent-red:     #f87171;
+  --bg-dark:        #0d1117;
+  --bg-main:        #0d1117;
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
 }
 
 /* ── Reset ── */
