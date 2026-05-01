@@ -60,6 +60,73 @@ func handleListInstances(ctx context.Context, cfg aws.Config, req events.APIGate
 	return jsonResp(http.StatusOK, map[string]any{"instances": out, "count": len(out)}), nil
 }
 
+// LaunchRequest is the JSON body for POST /v1/instances.
+// Only InstanceType, Region, and AMI are required; all lifecycle fields are optional.
+type LaunchRequest struct {
+	Name         string `json:"name"`
+	InstanceType string `json:"instance_type"`
+	Region       string `json:"region"`
+	AMI          string `json:"ami"`
+	KeyName      string `json:"key_name,omitempty"`
+	Spot         bool   `json:"spot,omitempty"`
+	TTL          string `json:"ttl,omitempty"`
+	IdleTimeout  string `json:"idle_timeout,omitempty"`
+	OnComplete   string `json:"on_complete,omitempty"`
+	PreStop      string `json:"pre_stop,omitempty"`
+	CompletionFile string `json:"completion_file,omitempty"`
+	SlackWorkspace string `json:"slack_workspace,omitempty"`
+	ActiveProcesses string `json:"active_processes,omitempty"`
+}
+
+func handleLaunch(ctx context.Context, cfg aws.Config, req events.APIGatewayV2HTTPRequest, p *Principal) (events.APIGatewayV2HTTPResponse, error) {
+	var body LaunchRequest
+	if err := parseJSON(req.Body, &body); err != nil {
+		return errResp(http.StatusBadRequest, "invalid JSON body"), nil
+	}
+	if body.InstanceType == "" || body.Region == "" {
+		return errResp(http.StatusBadRequest, "instance_type and region are required"), nil
+	}
+
+	lc := spawnclient.LaunchConfig{
+		Name:            body.Name,
+		InstanceType:    body.InstanceType,
+		Region:          body.Region,
+		AMI:             body.AMI,
+		KeyName:         body.KeyName,
+		Spot:            body.Spot,
+		TTL:             body.TTL,
+		IdleTimeout:     body.IdleTimeout,
+		OnComplete:      body.OnComplete,
+		PreStop:         body.PreStop,
+		CompletionFile:  body.CompletionFile,
+		SlackWorkspaceID: body.SlackWorkspace,
+		ActiveProcessesRaw: body.ActiveProcesses,
+	}
+
+	// Inject notification URL for hosted spore.host
+	if body.SlackWorkspace != "" && lc.NotifyURL == "" {
+		lc.NotifyURL = "https://awdzf7fbbsvqcrnrzusqjsuybm0iiyvf.lambda-url.us-east-1.on.aws"
+		lc.NotifyCommand = "/spore"
+	}
+
+	client := spawnclient.NewClientFromConfig(cfg)
+	result, err := client.Launch(ctx, lc)
+	if err != nil {
+		return errResp(http.StatusInternalServerError, fmt.Sprintf("launch failed: %v", err)), nil
+	}
+
+	return jsonResp(http.StatusCreated, map[string]any{
+		"instance_id":       result.InstanceID,
+		"name":              result.Name,
+		"public_ip":         result.PublicIP,
+		"private_ip":        result.PrivateIP,
+		"availability_zone": result.AvailabilityZone,
+		"state":             result.State,
+		"key_name":          result.KeyName,
+		"region":            body.Region,
+	}), nil
+}
+
 func handleGetInstance(ctx context.Context, cfg aws.Config, id string, p *Principal) (events.APIGatewayV2HTTPResponse, error) {
 	client := spawnclient.NewClientFromConfig(cfg)
 	instances, err := client.ListInstances(ctx, "", "")

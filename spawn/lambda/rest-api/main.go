@@ -62,6 +62,10 @@ func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 	case method == "GET" && len(parts) == 2 && parts[1] == "instances":
 		return handleListInstances(ctx, cfg, req, principal)
 
+	// POST /v1/instances  (launch)
+	case method == "POST" && len(parts) == 2 && parts[1] == "instances":
+		return handleLaunch(ctx, cfg, req, principal)
+
 	// GET /v1/instances/{id}
 	case method == "GET" && len(parts) == 3 && parts[1] == "instances":
 		return handleGetInstance(ctx, cfg, parts[2], principal)
