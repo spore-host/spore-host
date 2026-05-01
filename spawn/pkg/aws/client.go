@@ -1,3 +1,15 @@
+// Package aws provides spawn-managed EC2 instance launch and lifecycle operations.
+// It is the primary entry point for external consumers of the spawn Go library.
+// Use [NewClient] to create a client from ambient AWS credentials, then call
+// [Client.Launch], [Client.ListInstances], [Client.StopInstance], and related
+// methods to manage the full instance lifecycle.
+//
+// All instances launched through this package are tagged with spawn: metadata
+// (TTL, idle timeout, DNS name, etc.) so the spored daemon can manage their
+// lifecycle independently of the user's machine.
+//
+// Credentials are loaded from the default AWS credential chain
+// (environment variables, ~/.aws/credentials, EC2 IMDS, or ECS task role).
 package aws
 
 import (
@@ -22,10 +34,14 @@ import (
 	"github.com/scttfrdmn/spore-host/pkg/pricing"
 )
 
+// Client wraps an AWS SDK configuration and provides EC2 lifecycle operations
+// for spawn-managed instances. Create one with [NewClient] or [NewClientFromConfig].
 type Client struct {
 	cfg aws.Config
 }
 
+// NewClient creates a Client using the default AWS credential chain.
+// Use [NewClientFromConfig] in tests to inject a pre-configured aws.Config.
 func NewClient(ctx context.Context) (*Client, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -76,23 +92,26 @@ func (c *Client) GetEnabledRegions(ctx context.Context) ([]string, error) {
 	return regions, nil
 }
 
-// LaunchConfig contains all settings for launching an instance
+// LaunchConfig contains all settings for launching a spawn-managed EC2 instance.
+// Most fields are optional — at minimum, provide InstanceType, Region, and AMI.
+// The TTL field should always be set to prevent runaway instances.
 type LaunchConfig struct {
-	InstanceType       string
-	Region             string
-	AvailabilityZone   string
-	AMI                string
-	KeyName            string
-	IamInstanceProfile string
-	SecurityGroupIDs   []string
-	SubnetID           string
-	UserData           string
-	Spot               bool
-	SpotMaxPrice       string
-	ReservationID      string
-	Hibernate          bool
-	PlacementGroup     string
-	EFAEnabled         bool
+	// Core AWS launch parameters
+	InstanceType       string   // EC2 instance type, e.g. "m7i.large" or "p4d.24xlarge"
+	Region             string   // AWS region, e.g. "us-east-1"
+	AvailabilityZone   string   // Optional AZ; leave empty to let EC2 choose
+	AMI                string   // AMI ID, e.g. "ami-0abc1234ef567890"
+	KeyName            string   // EC2 key pair name for SSH access
+	IamInstanceProfile string   // IAM instance profile name (not ARN); spored needs EC2/DynamoDB permissions
+	SecurityGroupIDs   []string // Security group IDs; a default spawn SG is created if empty
+	SubnetID           string   // VPC subnet ID; leave empty to use default subnet
+	UserData           string   // User-data script (plain text or base64); spored is injected automatically
+	Spot               bool     // If true, launch as a Spot instance
+	SpotMaxPrice       string   // Optional Spot max price in $/hr, e.g. "0.50"; empty = on-demand cap
+	ReservationID      string   // On-Demand Capacity Reservation ID to target
+	Hibernate          bool     // If true, configure the instance for hibernation support
+	PlacementGroup     string   // Cluster placement group name (MPI / EFA workloads)
+	EFAEnabled         bool     // If true, attach an Elastic Fabric Adapter network interface
 
 	// spawn-specific tags
 	TTL             string
@@ -162,17 +181,24 @@ type LaunchConfig struct {
 	Tags map[string]string
 }
 
-// LaunchResult contains information about the launched instance
+// LaunchResult contains information about the launched instance returned by [Client.Launch].
 type LaunchResult struct {
-	InstanceID       string
-	Name             string
-	PublicIP         string
-	PrivateIP        string
-	AvailabilityZone string
-	State            string
-	KeyName          string
+	InstanceID       string // EC2 instance ID, e.g. "i-0abc123def456"
+	Name             string // Value of the Name EC2 tag set at launch
+	PublicIP         string // Public IPv4 address; empty if no public IP was assigned
+	PrivateIP        string // Private IPv4 address within the VPC
+	AvailabilityZone string // AZ where the instance was placed, e.g. "us-east-1a"
+	State            string // Initial instance state — typically "pending"
+	KeyName          string // EC2 key pair name used for SSH access
 }
 
+// Launch starts a new EC2 instance as described by launchConfig and returns its
+// ID, IP addresses, and initial state. All spawn: lifecycle tags (TTL, idle
+// timeout, DNS name, cost limit, etc.) are applied at launch time so spored
+// can manage the instance autonomously after the caller disconnects.
+//
+// If LaunchConfig.PricePerHour is 0, Launch queries the AWS Pricing API to
+// determine the on-demand rate and falls back to a static table if unavailable.
 func (c *Client) Launch(ctx context.Context, launchConfig LaunchConfig) (*LaunchResult, error) {
 	// Update config for region
 	cfg := c.cfg.Copy()

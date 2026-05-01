@@ -1,3 +1,24 @@
+// Package find implements the natural language EC2 instance search pipeline
+// used by the truffle tool. It covers three stages:
+//
+//  1. Parsing: [ParseQuery] converts a free-text query ("nvidia h100 8gpu",
+//     "amd epyc genoa 64gb memory") into a structured [ParsedQuery].
+//
+//  2. Criteria building: [ParsedQuery.BuildCriteria] translates the parsed
+//     query into a [SearchCriteria] containing a compiled regexp and
+//     [FilterOptions] ready to pass to truffle/pkg/aws.SearchInstanceTypes.
+//
+//  3. Result enrichment: [ExplainMatch] annotates each result with
+//     human-readable match reasons (e.g., "GPU: A100 (80 GiB, training)").
+//
+// Typical usage:
+//
+//	pq, err := find.ParseQuery("nvidia h100 8gpu")
+//	criteria, err := pq.BuildCriteria()
+//	results, err := client.SearchInstanceTypes(ctx, regions, criteria.InstanceTypePattern, criteria.FilterOptions)
+//	for _, r := range results {
+//	    reasons := find.ExplainMatch(r, pq)
+//	}
 package find
 
 import (
@@ -26,26 +47,27 @@ const (
 	TokenEFA
 )
 
-// Token represents a classified query token
+// Token represents a single classified word from a natural language query.
 type Token struct {
-	Type  TokenType
-	Value string
-	Raw   string
+	Type  TokenType // Semantic classification of this token
+	Value string    // Normalized canonical value, e.g. "nvidia", "128gb"
+	Raw   string    // Original input text before normalization
 }
 
-// ParsedQuery represents the structured output of query parsing
+// ParsedQuery is the structured output of [ParseQuery]. It holds all constraints
+// extracted from the user's free-text input and is consumed by [ParsedQuery.BuildCriteria].
 type ParsedQuery struct {
-	Vendors         []string
-	Processors      []string
-	GPUs            []string
-	Sizes           []string
-	MinVCPU         int
-	MinMemory       float64
-	GPUCount        int
-	Architecture    string
-	MinNetworkGbps  int
-	RequireEFA      bool
-	RawTokens       []Token
+	Vendors        []string // Hardware vendor filters, e.g. ["amd"], ["nvidia"]
+	Processors     []string // Processor code names, e.g. ["genoa", "sapphire rapids"]
+	GPUs           []string // GPU model names, e.g. ["h100", "a100"]
+	Sizes          []string // Size-category filters, e.g. ["large", "xlarge"]
+	MinVCPU        int      // Minimum vCPU count; 0 means unconstrained
+	MinMemory      float64  // Minimum memory in GiB; 0 means unconstrained
+	GPUCount       int      // Minimum number of GPUs; 0 means unconstrained
+	Architecture   string   // "x86_64" or "arm64"; empty means both
+	MinNetworkGbps int      // Minimum network bandwidth in Gbps; 0 means unconstrained
+	RequireEFA     bool     // If true, only match instance families with EFA support
+	RawTokens      []Token  // Parsed tokens in input order, useful for diagnostics
 }
 
 var (

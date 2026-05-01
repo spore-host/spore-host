@@ -50,6 +50,7 @@ export default defineConfig({
             { text: 'Installation', link: '/guides/installation' },
             { text: 'Your First Instance', link: '/guides/first-instance' },
             { text: 'Python SDK', link: '/guides/python-sdk' },
+            { text: 'Go Library', link: '/guides/go-library' },
           ]
         },
         {

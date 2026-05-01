@@ -1,3 +1,13 @@
+// Package aws provides EC2 capacity discovery for the truffle tool.
+// It searches instance type availability, retrieves Spot pricing history,
+// and queries On-Demand Capacity Reservations (ODCRs) and Capacity Blocks
+// for ML workloads across one or more AWS regions concurrently.
+//
+// Typical usage:
+//
+//	client, err := aws.NewClient(ctx)
+//	results, err := client.SearchInstanceTypes(ctx, []string{"us-east-1"}, pattern, filterOpts)
+//	prices, err := client.GetSpotPricing(ctx, results, aws.SpotOptions{ShowSavings: true})
 package aws
 
 import (
@@ -20,51 +30,53 @@ type Client struct {
 	cfg aws.Config
 }
 
-// InstanceTypeResult represents an instance type's availability
+// InstanceTypeResult represents an instance type's availability and specifications
+// in a given region, as returned by [Client.SearchInstanceTypes].
 type InstanceTypeResult struct {
-	InstanceType   string   `json:"instance_type" yaml:"instance_type"`
-	Region         string   `json:"region" yaml:"region"`
-	AvailableAZs   []string `json:"availability_zones,omitempty" yaml:"availability_zones,omitempty"`
-	VCPUs          int32    `json:"vcpus,omitempty" yaml:"vcpus,omitempty"`
-	MemoryMiB      int64    `json:"memory_mib,omitempty" yaml:"memory_mib,omitempty"`
-	Architecture   string   `json:"architecture,omitempty" yaml:"architecture,omitempty"`
-	InstanceFamily string   `json:"instance_family,omitempty" yaml:"instance_family,omitempty"`
-	GPUs            int32   `json:"gpus,omitempty" yaml:"gpus,omitempty"`
-	GPUMemoryMiB    int64   `json:"gpu_memory_mib,omitempty" yaml:"gpu_memory_mib,omitempty"`
-	GPUModel        string  `json:"gpu_model,omitempty" yaml:"gpu_model,omitempty"`
-	GPUManufacturer string  `json:"gpu_manufacturer,omitempty" yaml:"gpu_manufacturer,omitempty"`
-	OnDemandPrice   float64 `json:"on_demand_price,omitempty" yaml:"on_demand_price,omitempty"`
+	InstanceType   string   `json:"instance_type" yaml:"instance_type"`           // EC2 instance type, e.g. "m6i.2xlarge"
+	Region         string   `json:"region" yaml:"region"`                         // AWS region where this type is available
+	AvailableAZs   []string `json:"availability_zones,omitempty" yaml:"availability_zones,omitempty"` // AZs with capacity; populated when FilterOptions.IncludeAZs is true
+	VCPUs          int32    `json:"vcpus,omitempty" yaml:"vcpus,omitempty"`       // Default vCPU count
+	MemoryMiB      int64    `json:"memory_mib,omitempty" yaml:"memory_mib,omitempty"` // Memory in MiB
+	Architecture   string   `json:"architecture,omitempty" yaml:"architecture,omitempty"` // CPU architecture: "x86_64" or "arm64"
+	InstanceFamily string   `json:"instance_family,omitempty" yaml:"instance_family,omitempty"` // Family prefix, e.g. "m6i"
+	GPUs            int32   `json:"gpus,omitempty" yaml:"gpus,omitempty"`         // Number of GPUs; 0 for non-GPU instances
+	GPUMemoryMiB    int64   `json:"gpu_memory_mib,omitempty" yaml:"gpu_memory_mib,omitempty"` // Total GPU memory in MiB across all GPUs
+	GPUModel        string  `json:"gpu_model,omitempty" yaml:"gpu_model,omitempty"`           // GPU model name, e.g. "A100"
+	GPUManufacturer string  `json:"gpu_manufacturer,omitempty" yaml:"gpu_manufacturer,omitempty"` // GPU vendor, e.g. "nvidia"
+	OnDemandPrice   float64 `json:"on_demand_price,omitempty" yaml:"on_demand_price,omitempty"` // On-demand $/hr; 0 if not yet fetched
 }
 
-// SpotPriceResult represents Spot instance pricing
+// SpotPriceResult represents a Spot instance price observation for one AZ,
+// as returned by [Client.GetSpotPricing].
 type SpotPriceResult struct {
-	InstanceType     string  `json:"instance_type" yaml:"instance_type"`
-	Region           string  `json:"region" yaml:"region"`
-	AvailabilityZone string  `json:"availability_zone" yaml:"availability_zone"`
-	SpotPrice        float64 `json:"spot_price" yaml:"spot_price"`
-	OnDemandPrice    float64 `json:"on_demand_price,omitempty" yaml:"on_demand_price,omitempty"`
-	SavingsPercent   float64 `json:"savings_percent,omitempty" yaml:"savings_percent,omitempty"`
-	Timestamp        string  `json:"timestamp" yaml:"timestamp"`
-	ProductType      string  `json:"product_type,omitempty" yaml:"product_type,omitempty"`
+	InstanceType     string  `json:"instance_type" yaml:"instance_type"`   // EC2 instance type
+	Region           string  `json:"region" yaml:"region"`                 // AWS region
+	AvailabilityZone string  `json:"availability_zone" yaml:"availability_zone"` // AZ where this price applies
+	SpotPrice        float64 `json:"spot_price" yaml:"spot_price"`         // Current Spot price in $/hr
+	OnDemandPrice    float64 `json:"on_demand_price,omitempty" yaml:"on_demand_price,omitempty"` // On-demand $/hr for savings calculation; 0 if unavailable
+	SavingsPercent   float64 `json:"savings_percent,omitempty" yaml:"savings_percent,omitempty"` // Discount vs on-demand: 100*(1-spot/ondemand); set when SpotOptions.ShowSavings is true
+	Timestamp        string  `json:"timestamp" yaml:"timestamp"`           // RFC3339 timestamp of the price observation
+	ProductType      string  `json:"product_type,omitempty" yaml:"product_type,omitempty"` // OS description, e.g. "Linux/UNIX"
 }
 
-// FilterOptions contains filtering criteria
+// FilterOptions controls which instance types are returned by [Client.SearchInstanceTypes].
 type FilterOptions struct {
-	IncludeAZs     bool
-	Architecture   string
-	MinVCPUs       int
-	MinMemory      float64
-	InstanceFamily string
-	Verbose        bool
+	IncludeAZs     bool    // If true, populate InstanceTypeResult.AvailableAZs (one extra API call per type)
+	Architecture   string  // Filter to "x86_64" or "arm64"; empty matches both
+	MinVCPUs       int     // Minimum vCPU count; 0 disables this filter
+	MinMemory      float64 // Minimum memory in GiB; 0 disables this filter
+	InstanceFamily string  // Restrict to a family prefix, e.g. "m6i"; empty matches all
+	Verbose        bool    // If true, log per-region progress to stderr
 }
 
-// SpotOptions contains Spot-specific search options
+// SpotOptions controls the behavior of [Client.GetSpotPricing].
 type SpotOptions struct {
-	MaxPrice      float64
-	ShowSavings   bool
-	LookbackHours int
-	OnlyActive    bool
-	Verbose       bool
+	MaxPrice      float64 // Exclude results above this $/hr threshold; 0 disables
+	ShowSavings   bool    // Populate SpotPriceResult.SavingsPercent by comparing with on-demand price
+	LookbackHours int     // Hours of price history to query; 0 uses the AWS default (typically 1 hour)
+	OnlyActive    bool    // Exclude price history entries with no current offering
+	Verbose       bool    // If true, log per-region progress to stderr
 }
 
 // CapacityReservationResult represents an ODCR (On-Demand Capacity Reservation)

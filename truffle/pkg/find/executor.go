@@ -7,10 +7,11 @@ import (
 	"github.com/scttfrdmn/spore-host/truffle/pkg/aws"
 )
 
-// SearchCriteria contains the compiled search criteria from a parsed query
+// SearchCriteria holds the compiled, ready-to-execute form of a [ParsedQuery].
+// Pass InstanceTypePattern and FilterOptions directly to aws.SearchInstanceTypes.
 type SearchCriteria struct {
-	InstanceTypePattern *regexp.Regexp
-	FilterOptions       aws.FilterOptions
+	InstanceTypePattern *regexp.Regexp   // Compiled regexp matching eligible EC2 instance type strings
+	FilterOptions       aws.FilterOptions // Numeric and categorical filters passed to SearchInstanceTypes
 }
 
 // BuildCriteria converts a ParsedQuery into SearchCriteria for execution

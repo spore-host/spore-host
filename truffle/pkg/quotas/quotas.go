@@ -1,3 +1,17 @@
+// Package quotas queries AWS Service Quotas and current EC2 usage to determine
+// whether a given instance type can be launched under an account's limits.
+//
+// EC2 service quotas are expressed as per-family vCPU counts rather than
+// instance counts. This package handles the mapping from instance type to
+// quota family (e.g., p4d.24xlarge → FamilyP) and computes remaining capacity.
+//
+// Typical usage:
+//
+//	client, err := quotas.NewClient(ctx)
+//	info, err := client.GetQuotas(ctx, "us-east-1")
+//	ok, msg := client.CanLaunch("p4d.24xlarge", 96, info, false)
+//
+// Results are cached per region for 5 minutes to avoid redundant API calls.
 package quotas
 
 import (
@@ -48,26 +62,24 @@ const (
 	QuotaCodeSpotTrn      = "L-5480EFD2" // All Trn Spot Instance Requests
 )
 
-// QuotaInfo contains quota and usage information for a region
+// QuotaInfo holds quota limits and current usage for a single region,
+// as returned by [Client.GetQuotas].
 type QuotaInfo struct {
-	Region string
+	Region string // AWS region this snapshot covers, e.g. "us-east-1"
 
-	// On-Demand quotas (vCPUs)
+	// On-Demand quotas — maximum vCPUs per family
 	OnDemand map[QuotaFamily]int32
 
-	// Spot quotas (vCPUs)
+	// Spot quotas — maximum vCPUs per family for Spot instances
 	Spot map[QuotaFamily]int32
 
-	// Current usage (vCPUs)
+	// Current usage — vCPUs currently in use (running + pending) per family
 	Usage map[QuotaFamily]int32
 
-	// Other limits
-	RunningInstances    int32
-	RunningInstancesMax int32
-
-	// Metadata
-	LastUpdated time.Time
-	CredentialsAvailable bool
+	RunningInstances    int32     // Current count of running+pending instances in this region
+	RunningInstancesMax int32     // Per-region instance count limit (typically 20 for new accounts)
+	LastUpdated         time.Time // When this snapshot was fetched
+	CredentialsAvailable bool     // False when quotas were estimated due to missing credentials
 }
 
 // Client handles quota operations
