@@ -265,14 +265,49 @@ Then create a CloudFront distribution pointing at the bucket and configure your 
 
 ## Configuration reference
 
-All spore.host components read from environment variables and AWS tags:
+All spore.host components read from environment variables and config file (`~/.spawn/config.yaml`):
 
-| Setting | Environment variable | spawn defaults key | Default |
-|---------|---------------------|-------------------|---------|
-| DNS domain | `SPORED_DNS_DOMAIN` | `dns-domain` | `spore.host` |
-| DNS API endpoint | (set in go.mod) | (in config.yaml) | hosted Lambda |
-| Tag prefix | `SPORED_TAG_PREFIX` | — | `spawn` |
-| Notify URL | `SPORE_BOT_NOTIFY_URL` | — | hosted Lambda |
+### CLI environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SPORE_ENV` | Deployment environment: `integ` or `prod` | `prod` |
+| `SPORE_API_URL` | REST API Lambda URL | hosted spore.host |
+| `SPORE_API_KEY` | API key for REST API | — |
+| `SPORE_NOTIFY_URL` | Notification Lambda callback URL | hosted spore.host |
+| `SPORE_DNS_URL` | DNS updater Lambda URL | hosted spore.host |
+| `SPORE_BOT_LAMBDA_ROLE_ARN` | Cross-account trust target for bot | hosted spore.host |
+| `SPORE_BOT_REGISTRY_TABLE` | DynamoDB table for bot registrations | `spore-bot-registry` |
+| `SPORE_BOT_WORKSPACES_TABLE` | DynamoDB table for bot workspaces | `spore-bot-workspaces` |
+| `SPAWN_INFRA_PROFILE` | AWS named profile for infra operations (Lambda, DynamoDB, S3) | `spore-host-infra` |
+| `SPAWN_COMPUTE_PROFILE` | AWS named profile for EC2 operations | `spore-host-dev` |
+| `SPAWN_INFRA_ACCOUNT_ID` | Infra AWS account ID (used in Lambda ARN construction) | `966362334030` |
+
+Set `SPAWN_INFRA_PROFILE=""` and `SPAWN_COMPUTE_PROFILE=""` (empty string) to use the
+ambient credential chain instead of named profiles — required for Isengard accounts
+and access-key deployments.
+
+### `~/.spawn/config.yaml` keys
+
+```yaml
+dns:
+  enabled: true
+  domain: spore.research.wwps.aws.dev      # your DNS subdomain
+  api_endpoint: https://your-dns-lambda/   # dns-updater Function URL
+
+infrastructure:
+  mode: self-hosted   # or "shared" for hosted spore.host
+  accounts:
+    infra_profile: ""   # empty = use ambient credentials
+    compute_profile: "" # empty = use ambient credentials
+```
+
+### spored (on-instance daemon) environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SPORED_DNS_DOMAIN` | DNS domain for instance registration | `spore.host` |
+| `SPORED_TAG_PREFIX` | Tag namespace prefix | `spawn` |
 
 A researcher at your institution configures their CLI once:
 
