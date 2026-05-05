@@ -10,13 +10,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.39
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.17
-	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.56.3
-	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.71.1
+	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.57.0
+	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.73.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.3
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.299.1
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.300.0
 	github.com/aws/aws-sdk-go-v2/service/efs v1.41.16
 	github.com/aws/aws-sdk-go-v2/service/fsx v1.65.9
-	github.com/aws/aws-sdk-go-v2/service/iam v1.53.9
+	github.com/aws/aws-sdk-go-v2/service/iam v1.53.10
 	github.com/aws/aws-sdk-go-v2/service/kms v1.51.1
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.90.1
 	github.com/aws/aws-sdk-go-v2/service/pricing v1.41.2
