@@ -303,6 +303,6 @@ See [FedRAMP documentation](fedramp-quickstart.md) for details.
 ## Support
 
 Questions or issues:
-- GitHub Issues: https://github.com/scttfrdmn/spore-host/issues
+- GitHub Issues: https://github.com/spore-host/spore-host/issues
 - Command help: `spawn validate --help`
 - Config help: `spawn config --help`

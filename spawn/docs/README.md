@@ -229,7 +229,7 @@ Documentation contributions are welcome! See [CONTRIBUTING.md](../CONTRIBUTING.m
 
 ## Documentation Feedback
 
-Found an issue with the documentation? Please [open an issue](https://github.com/scttfrdmn/spore-host/issues/new?labels=type:docs,component:spawn).
+Found an issue with the documentation? Please [open an issue](https://github.com/spore-host/spore-host/issues/new?labels=type:docs,component:spawn).
 
 **Common feedback areas:**
 - Unclear explanations

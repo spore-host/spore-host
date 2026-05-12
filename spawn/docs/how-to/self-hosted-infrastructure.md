@@ -608,6 +608,6 @@ aws cloudwatch put-metric-alarm \
 
 ## Support
 
-- GitHub Issues: https://github.com/scttfrdmn/spore-host/issues
+- GitHub Issues: https://github.com/spore-host/spore-host/issues
 - Infrastructure validation: `spawn validate --infrastructure`
 - Config help: `spawn config --help`

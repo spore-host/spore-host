@@ -2,12 +2,12 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
-  <a href="https://github.com/scttfrdmn/spore-host/actions/workflows/ci.yml"><img src="https://github.com/scttfrdmn/spore-host/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://codecov.io/gh/scttfrdmn/spore-host"><img src="https://codecov.io/gh/scttfrdmn/spore-host/branch/main/graph/badge.svg" alt="Coverage"></a>
-  <a href="https://goreportcard.com/report/github.com/scttfrdmn/spore-host/spawn"><img src="https://goreportcard.com/badge/github.com/scttfrdmn/spore-host/spawn" alt="Go Report Card"></a>
-  <a href="https://github.com/scttfrdmn/spore-host/releases/latest"><img src="https://img.shields.io/github/v/release/scttfrdmn/spore-host" alt="Latest Release"></a>
+  <a href="https://github.com/spore-host/spore-host/actions/workflows/ci.yml"><img src="https://github.com/spore-host/spore-host/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/spore-host/spore-host"><img src="https://codecov.io/gh/spore-host/spore-host/branch/main/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://goreportcard.com/report/github.com/spore-host/spore-host/spawn"><img src="https://goreportcard.com/badge/github.com/spore-host/spore-host/spawn" alt="Go Report Card"></a>
+  <a href="https://github.com/spore-host/spore-host/releases/latest"><img src="https://img.shields.io/github/v/release/spore-host/spore-host" alt="Latest Release"></a>
   <a href="https://img.shields.io/badge/go-1.21+-00ADD8"><img src="https://img.shields.io/badge/go-1.21+-00ADD8?logo=go" alt="Go Version"></a>
-  <a href="https://snyk.io/test/github/scttfrdmn/spore-host"><img src="https://snyk.io/test/github/scttfrdmn/spore-host/badge.svg" alt="Known Vulnerabilities"></a>
+  <a href="https://snyk.io/test/github/spore-host/spore-host"><img src="https://snyk.io/test/github/spore-host/spore-host/badge.svg" alt="Known Vulnerabilities"></a>
 </p>
 
 **spore.host** is a suite of CLI tools for launching and managing AWS EC2 instances — with automatic lifecycle management so instances clean up after themselves.
@@ -23,14 +23,14 @@
 **macOS / Linux (Homebrew)**
 
 ```bash
-brew install scttfrdmn/tap/truffle
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/spawn
 ```
 
 **Windows (Scoop)**
 
 ```powershell
-scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
 scoop install truffle
 scoop install spawn
 ```
@@ -38,26 +38,26 @@ scoop install spawn
 **Debian / Ubuntu (.deb)**
 
 ```bash
-curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/truffle_linux_amd64.deb
-curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn_linux_amd64.deb
+curl -LO https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.deb
+curl -LO https://github.com/spore-host/spore-host/releases/latest/download/spawn_linux_amd64.deb
 sudo dpkg -i truffle_linux_amd64.deb spawn_linux_amd64.deb
 ```
 
 **RHEL / Fedora (.rpm)**
 
 ```bash
-sudo rpm -i https://github.com/scttfrdmn/spore-host/releases/latest/download/truffle_linux_amd64.rpm
-sudo rpm -i https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn_linux_amd64.rpm
+sudo rpm -i https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.rpm
+sudo rpm -i https://github.com/spore-host/spore-host/releases/latest/download/spawn_linux_amd64.rpm
 ```
 
 **Direct download**
 
-Pre-built binaries for Linux, macOS, and Windows (amd64/arm64) on the [releases page](https://github.com/scttfrdmn/spore-host/releases/latest).
+Pre-built binaries for Linux, macOS, and Windows (amd64/arm64) on the [releases page](https://github.com/spore-host/spore-host/releases/latest).
 
 **Build from source**
 
 ```bash
-git clone https://github.com/scttfrdmn/spore-host
+git clone https://github.com/spore-host/spore-host
 cd spore-host/truffle && make build && sudo make install
 cd ../spawn && make build && sudo make install
 ```

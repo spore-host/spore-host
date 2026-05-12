@@ -765,6 +765,6 @@ A: Hybrid compute is designed for batch workloads. There's ~30s latency for peer
 
 ## Support
 
-- **Issues**: https://github.com/scttfrdmn/spore-host/issues
-- **Discussions**: https://github.com/scttfrdmn/spore-host/discussions
+- **Issues**: https://github.com/spore-host/spore-host/issues
+- **Discussions**: https://github.com/spore-host/spore-host/discussions
 - **Email**: support@spore-host.dev

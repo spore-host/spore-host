@@ -14,7 +14,7 @@ hero:
       link: /how-it-works
     - theme: alt
       text: GitHub
-      link: https://github.com/scttfrdmn/spore-host
+      link: https://github.com/spore-host/spore-host
 
 features:
   - icon: 🔍

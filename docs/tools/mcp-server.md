@@ -5,7 +5,7 @@ The spore.host MCP server exposes truffle and spawn as tools for AI assistants t
 ## Install
 
 ```sh
-brew install scttfrdmn/tap/spore-host-mcp
+brew install spore-host/tap/spore-host-mcp
 ```
 
 ## Configure
@@ -66,4 +66,4 @@ For a full setup walkthrough, see [AI Assistant (MCP)](/guides/mcp-setup).
 
 ## Source
 
-The MCP server is open source and ships as a single static binary. → [mcp/ on GitHub](https://github.com/scttfrdmn/spore-host/tree/main/mcp)
+The MCP server is open source and ships as a single static binary. → [mcp/ on GitHub](https://github.com/spore-host/spore-host/tree/main/mcp)

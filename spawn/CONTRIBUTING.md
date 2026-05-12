@@ -88,7 +88,7 @@ Documentation improvements are always welcome:
 
 ```bash
 # Clone repository
-git clone https://github.com/scttfrdmn/spore-host.git
+git clone https://github.com/spore-host/spore-host.git
 cd spore-host/spawn
 
 # Install dependencies

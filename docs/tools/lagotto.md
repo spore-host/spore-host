@@ -5,7 +5,7 @@ Lagotto watches for EC2 instance capacity and acts when it appears. It runs as a
 ## Install
 
 ```sh
-brew install scttfrdmn/tap/lagotto
+brew install spore-host/tap/lagotto
 ```
 
 ## The problem it solves

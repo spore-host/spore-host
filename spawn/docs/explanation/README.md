@@ -126,7 +126,7 @@ The following explanation documents are planned but not yet written:
 
 ## Contributing
 
-Found something confusing? Think an explanation could be clearer? Please [open an issue](https://github.com/scttfrdmn/spore-host/issues/new?labels=type:docs,component:spawn).
+Found something confusing? Think an explanation could be clearer? Please [open an issue](https://github.com/spore-host/spore-host/issues/new?labels=type:docs,component:spawn).
 
 ## Related Documentation
 

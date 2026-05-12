@@ -6,7 +6,7 @@
 
 ```bash
 # Download latest release
-curl -L https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-$(uname -s)-$(uname -m) -o spawn
+curl -L https://github.com/spore-host/spore-host/releases/latest/download/spawn-$(uname -s)-$(uname -m) -o spawn
 chmod +x spawn
 sudo mv spawn /usr/local/bin/
 ```
@@ -686,5 +686,5 @@ spawn launch --params sweep.yaml --debug
 
 ## Support
 
-- **GitHub Issues**: https://github.com/scttfrdmn/spore-host/issues
-- **Discussions**: https://github.com/scttfrdmn/spore-host/discussions
+- **GitHub Issues**: https://github.com/spore-host/spore-host/issues
+- **Discussions**: https://github.com/spore-host/spore-host/discussions

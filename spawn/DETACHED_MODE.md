@@ -785,7 +785,7 @@ AWS_PROFILE=spore-host-infra aws lambda list-invocations \
 
 **Workaround:** Cancel command terminates instances, Lambda will eventually mark as COMPLETED when activeCount=0.
 
-**Permanent fix:** See [Issue #26](https://github.com/scttfrdmn/spore-host/issues/26) - add cancellation flag check in Lambda polling loop.
+**Permanent fix:** See [Issue #26](https://github.com/spore-host/spore-host/issues/26) - add cancellation flag check in Lambda polling loop.
 
 ### High Costs
 
@@ -861,17 +861,17 @@ aws dynamodb get-item \
 6. Iterate
 
 **Adding features:**
-- Multi-region support: See [Issue #24](https://github.com/scttfrdmn/spore-host/issues/24)
-- Cost tracking: See [Issue #25](https://github.com/scttfrdmn/spore-host/issues/25)
-- Cancellation flag: See [Issue #26](https://github.com/scttfrdmn/spore-host/issues/26)
+- Multi-region support: See [Issue #24](https://github.com/spore-host/spore-host/issues/24)
+- Cost tracking: See [Issue #25](https://github.com/spore-host/spore-host/issues/25)
+- Cancellation flag: See [Issue #26](https://github.com/spore-host/spore-host/issues/26)
 
 ---
 
 ## Next Steps
 
 - **User guide:** See [PARAMETER_SWEEPS.md](PARAMETER_SWEEPS.md)
-- **Dashboard integration:** See [Issue #23](https://github.com/scttfrdmn/spore-host/issues/23)
-- **Report bugs:** [GitHub Issues](https://github.com/scttfrdmn/spore-host/issues)
+- **Dashboard integration:** See [Issue #23](https://github.com/spore-host/spore-host/issues/23)
+- **Report bugs:** [GitHub Issues](https://github.com/spore-host/spore-host/issues)
 
 ---
 

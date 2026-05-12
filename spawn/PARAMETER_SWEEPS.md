@@ -809,8 +809,8 @@ git commit -m "Initial hyperparameter sweep config"
 ## Next Steps
 
 - **Architecture details:** See [DETACHED_MODE.md](DETACHED_MODE.md)
-- **Report issues:** [GitHub Issues](https://github.com/scttfrdmn/spore-host/issues)
-- **Feature requests:** [Issue #23 (Dashboard)](https://github.com/scttfrdmn/spore-host/issues/23), [#24 (Multi-region)](https://github.com/scttfrdmn/spore-host/issues/24), [#25 (Cost estimation)](https://github.com/scttfrdmn/spore-host/issues/25)
+- **Report issues:** [GitHub Issues](https://github.com/spore-host/spore-host/issues)
+- **Feature requests:** [Issue #23 (Dashboard)](https://github.com/spore-host/spore-host/issues/23), [#24 (Multi-region)](https://github.com/spore-host/spore-host/issues/24), [#25 (Cost estimation)](https://github.com/spore-host/spore-host/issues/25)
 
 ---
 

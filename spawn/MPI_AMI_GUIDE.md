@@ -385,5 +385,5 @@ spawn list --job-array-name prod-run
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/scttfrdmn/spore-host/issues
+- GitHub Issues: https://github.com/spore-host/spore-host/issues
 - Tag issues with `component:spawn` and `type:bug` or `type:feature`

@@ -18,10 +18,10 @@ The assistant has access to eight tools covering instance search, status, and li
 ## Install
 
 ```sh
-brew install scttfrdmn/tap/spore-host-mcp
+brew install spore-host/tap/spore-host-mcp
 ```
 
-Or download from the [releases page](https://github.com/scttfrdmn/spore-host/releases/latest).
+Or download from the [releases page](https://github.com/spore-host/spore-host/releases/latest).
 
 ## Configure Claude Desktop
 

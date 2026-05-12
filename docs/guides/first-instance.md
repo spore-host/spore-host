@@ -21,8 +21,8 @@ A complete walkthrough from a fresh install to a running EC2 instance and back. 
 ## 1. Install
 
 ```sh
-brew install scttfrdmn/tap/truffle
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/spawn
 ```
 
 Verify:

@@ -148,5 +148,5 @@ See `docs/how-to/grafana-dashboards.md` for dashboard screenshots.
 ## Support
 
 For issues or questions:
-- GitHub: https://github.com/scttfrdmn/spore-host/issues
+- GitHub: https://github.com/spore-host/spore-host/issues
 - Documentation: docs/how-to/grafana-dashboards.md

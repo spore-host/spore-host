@@ -1080,8 +1080,8 @@ done
 ## Support
 
 For issues or questions:
-- GitHub: https://github.com/scttfrdmn/spore-host/issues
-- Documentation: https://github.com/scttfrdmn/spore-host/tree/main/spawn
+- GitHub: https://github.com/spore-host/spore-host/issues
+- Documentation: https://github.com/spore-host/spore-host/tree/main/spawn
 
 ## See Also
 

@@ -16,7 +16,7 @@ pip install "spore-host[jupyter]"
 ::: tip Not on PyPI yet?
 Until the package is published, install directly from the repository:
 ```sh
-pip install "git+https://github.com/scttfrdmn/spore-host.git#subdirectory=sdk/python"
+pip install "git+https://github.com/spore-host/spore-host.git#subdirectory=sdk/python"
 ```
 :::
 
@@ -205,7 +205,7 @@ with tqdm(desc="Waiting for job to finish") as pbar:
 print("Done!")
 ```
 
-A [full Jupyter example notebook](https://github.com/scttfrdmn/spore-host/blob/main/sdk/python/examples/jupyter_example.ipynb) is in the repository.
+A [full Jupyter example notebook](https://github.com/spore-host/spore-host/blob/main/sdk/python/examples/jupyter_example.ipynb) is in the repository.
 
 ## marimo notebooks
 
@@ -228,7 +228,7 @@ mo.table([{
 } for r in results])
 ```
 
-A [full marimo example](https://github.com/scttfrdmn/spore-host/blob/main/sdk/python/examples/marimo_example.py) is in the repository — run it with `marimo edit marimo_example.py`.
+A [full marimo example](https://github.com/spore-host/spore-host/blob/main/sdk/python/examples/marimo_example.py) is in the repository — run it with `marimo edit marimo_example.py`.
 
 ## Configuration
 

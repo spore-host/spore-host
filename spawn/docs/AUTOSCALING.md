@@ -986,6 +986,6 @@ A: Just add the queue policy: `spawn autoscale set-policy <group> --scaling-poli
 
 ## Support
 
-- **Issues**: https://github.com/scttfrdmn/spore-host/issues
-- **Documentation**: https://github.com/scttfrdmn/spore-host/tree/main/spawn/docs
+- **Issues**: https://github.com/spore-host/spore-host/issues
+- **Documentation**: https://github.com/spore-host/spore-host/tree/main/spawn/docs
 - **Examples**: See PHASE_4_COMPLETION.md for detailed E2E test examples

@@ -141,5 +141,5 @@ AWS HealthOmics and spawn **serve different markets** and are **complementary, n
 ## References
 
 - Full research document: `docs/research/aws-healthomics.md`
-- Issue #75: https://github.com/scttfrdmn/spore-host/issues/75
+- Issue #75: https://github.com/spore-host/spore-host/issues/75
 - AWS HealthOmics: https://aws.amazon.com/healthomics/

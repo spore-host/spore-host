@@ -1,6 +1,6 @@
 # Tutorial 14: Live Directory Sync with the spore-sync Plugin
 
-**Duration:** 20 minutes | **Level:** Intermediate | **Issue:** [#211](https://github.com/scttfrdmn/spore-host/issues/211)
+**Duration:** 20 minutes | **Level:** Intermediate | **Issue:** [#211](https://github.com/spore-host/spore-host/issues/211)
 
 ---
 

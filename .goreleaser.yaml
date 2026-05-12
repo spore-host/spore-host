@@ -276,12 +276,12 @@ brews:
     ids:
       - truffle-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "Find and discover AWS EC2 instance types"
     license: Apache-2.0
     test: |
@@ -293,16 +293,16 @@ brews:
     ids:
       - spawn-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "Launch ephemeral AWS EC2 instances effortlessly"
     license: Apache-2.0
     dependencies:
-      - name: scttfrdmn/tap/truffle
+      - name: spore-host/tap/truffle
         type: runtime
     test: |
       system "#{bin}/spawn", "version"
@@ -320,16 +320,16 @@ brews:
     ids:
       - lagotto-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "Watch for EC2 instance capacity across regions"
     license: Apache-2.0
     dependencies:
-      - name: scttfrdmn/tap/truffle
+      - name: spore-host/tap/truffle
         type: runtime
     test: |
       system "#{bin}/lagotto", "version"
@@ -340,12 +340,12 @@ brews:
     ids:
       - spore-host-mcp-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "MCP server for AI assistants — manage EC2 instances and discover capacity"
     license: Apache-2.0
     install: |
@@ -357,12 +357,12 @@ scoops:
     ids:
       - truffle-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: scoop-bucket
       branch: main
       token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
     directory: bucket
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "Find and discover AWS EC2 instance types"
     license: Apache-2.0
 
@@ -370,16 +370,16 @@ scoops:
     ids:
       - spawn-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: scoop-bucket
       branch: main
       token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
     directory: bucket
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "Launch ephemeral AWS EC2 instances effortlessly"
     license: Apache-2.0
     depends:
-      - scttfrdmn/truffle
+      - spore-host/truffle
     post_install: "spawn _register-install"
     pre_uninstall: "spawn _unregister-install"
 
@@ -387,27 +387,27 @@ scoops:
     ids:
       - lagotto-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: scoop-bucket
       branch: main
       token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
     directory: bucket
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "Watch for EC2 instance capacity across regions"
     license: Apache-2.0
     depends:
-      - scttfrdmn/truffle
+      - spore-host/truffle
 
   - name: spore-host-mcp
     ids:
       - spore-host-mcp-archive
     repository:
-      owner: scttfrdmn
+      owner: spore-host
       name: scoop-bucket
       branch: main
       token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
     directory: bucket
-    homepage: https://github.com/scttfrdmn/spore-host
+    homepage: https://github.com/spore-host/spore-host
     description: "MCP server for AI assistants — manage EC2 instances and discover capacity"
     license: Apache-2.0
 
@@ -432,14 +432,14 @@ release:
 
     **Homebrew (macOS/Linux):**
     ```bash
-    brew install scttfrdmn/tap/truffle
-    brew install scttfrdmn/tap/spawn
-    brew install scttfrdmn/tap/spore-host-mcp
+    brew install spore-host/tap/truffle
+    brew install spore-host/tap/spawn
+    brew install spore-host/tap/spore-host-mcp
     ```
 
     **Scoop (Windows):**
     ```powershell
-    scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+    scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
     scoop install truffle
     scoop install spawn
     scoop install spore-host-mcp
@@ -447,13 +447,13 @@ release:
 
     **Debian/Ubuntu (.deb):**
     ```bash
-    curl -LO https://github.com/scttfrdmn/spore-host/releases/download/{{ .Tag }}/truffle_{{ .Version }}_linux_amd64.deb
+    curl -LO https://github.com/spore-host/spore-host/releases/download/{{ .Tag }}/truffle_{{ .Version }}_linux_amd64.deb
     sudo dpkg -i truffle_{{ .Version }}_linux_amd64.deb
     ```
 
     **RHEL/Fedora (.rpm):**
     ```bash
-    sudo rpm -i https://github.com/scttfrdmn/spore-host/releases/download/{{ .Tag }}/truffle_{{ .Version }}_linux_amd64.rpm
+    sudo rpm -i https://github.com/spore-host/spore-host/releases/download/{{ .Tag }}/truffle_{{ .Version }}_linux_amd64.rpm
     ```
 
     **Manual Download:**
@@ -462,10 +462,10 @@ release:
     ---
 
     **Documentation:**
-    - [README](https://github.com/scttfrdmn/spore-host/blob/main/README.md)
-    - [Security Guide](https://github.com/scttfrdmn/spore-host/blob/main/SECURITY.md)
-    - [Deployment Guide](https://github.com/scttfrdmn/spore-host/blob/main/DEPLOYMENT_GUIDE.md)
-    - [IAM Permissions](https://github.com/scttfrdmn/spore-host/blob/main/spawn/IAM_PERMISSIONS.md)
+    - [README](https://github.com/spore-host/spore-host/blob/main/README.md)
+    - [Security Guide](https://github.com/spore-host/spore-host/blob/main/SECURITY.md)
+    - [Deployment Guide](https://github.com/spore-host/spore-host/blob/main/DEPLOYMENT_GUIDE.md)
+    - [IAM Permissions](https://github.com/spore-host/spore-host/blob/main/spawn/IAM_PERMISSIONS.md)
 
   name_template: "v{{.Version}}"
 

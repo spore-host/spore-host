@@ -60,7 +60,7 @@ Ensure you have spawn installed:
 
 ```bash
 # Download latest release
-curl -L https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-$(uname -s)-$(uname -m) -o spawn
+curl -L https://github.com/spore-host/spore-host/releases/latest/download/spawn-$(uname -s)-$(uname -m) -o spawn
 chmod +x spawn
 sudo mv spawn /usr/local/bin/
 ```
@@ -791,8 +791,8 @@ See [spawn/examples/slurm/](./examples/slurm/) for complete examples:
 
 ## Getting Help
 
-- **Documentation:** https://github.com/scttfrdmn/spore-host
-- **Issues:** https://github.com/scttfrdmn/spore-host/issues
+- **Documentation:** https://github.com/spore-host/spore-host
+- **Issues:** https://github.com/spore-host/spore-host/issues
 - **Examples:** `spawn/examples/slurm/`
 
 **Reporting Bugs:**

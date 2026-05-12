@@ -1,6 +1,6 @@
 # Tutorial 15: RStudio Server with Environment Replication
 
-**Duration:** 25 minutes | **Level:** Intermediate | **Issue:** [#213](https://github.com/scttfrdmn/spore-host/issues/213)
+**Duration:** 25 minutes | **Level:** Intermediate | **Issue:** [#213](https://github.com/spore-host/spore-host/issues/213)
 
 ---
 

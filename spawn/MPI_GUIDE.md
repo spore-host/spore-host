@@ -427,4 +427,4 @@ Total: ~$6.40 with Spot instances
 ## Feedback
 
 Found a bug or have a feature request? Please create an issue:
-https://github.com/scttfrdmn/spore-host/issues
+https://github.com/spore-host/spore-host/issues

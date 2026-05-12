@@ -9,33 +9,33 @@ truffle searches AWS regions and availability zones for EC2 instance types, comp
 **macOS / Linux (Homebrew)**
 
 ```bash
-brew install scttfrdmn/tap/truffle
+brew install spore-host/tap/truffle
 ```
 
 **Windows (Scoop)**
 
 ```powershell
-scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
 scoop install truffle
 ```
 
 **Debian / Ubuntu (.deb)**
 
 ```bash
-curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/truffle_linux_amd64.deb
+curl -LO https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.deb
 sudo dpkg -i truffle_linux_amd64.deb
 ```
 
 **RHEL / Fedora (.rpm)**
 
 ```bash
-sudo rpm -i https://github.com/scttfrdmn/spore-host/releases/latest/download/truffle_linux_amd64.rpm
+sudo rpm -i https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.rpm
 ```
 
 **Build from source**
 
 ```bash
-git clone https://github.com/scttfrdmn/spore-host
+git clone https://github.com/spore-host/spore-host
 cd spore-host/truffle && make build && sudo make install
 ```
 

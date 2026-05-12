@@ -358,4 +358,4 @@ docker run --rm --entrypoint truffle sporedothost/spawn:latest version
 - Spawn documentation: [spawn/README.md](spawn/README.md)
 - Truffle documentation: [truffle/README.md](truffle/README.md)
 - Docker Hub: https://hub.docker.com/r/sporedothost/spawn
-- GitHub: https://github.com/scttfrdmn/spore-host
+- GitHub: https://github.com/spore-host/spore-host

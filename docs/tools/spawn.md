@@ -5,7 +5,7 @@ Spawn launches EC2 instances and manages their full lifecycle. It provisions the
 ## Install
 
 ```sh
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/spawn
 ```
 
 ## Core commands

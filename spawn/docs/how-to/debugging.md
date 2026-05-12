@@ -657,7 +657,7 @@ If stuck, gather this information:
 6. **What you tried**
 
 Post to:
-- [GitHub Issues](https://github.com/scttfrdmn/spore-host/issues)
+- [GitHub Issues](https://github.com/spore-host/spore-host/issues)
 - Include all information above
 
 ---

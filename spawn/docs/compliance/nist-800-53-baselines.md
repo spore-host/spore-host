@@ -432,6 +432,6 @@ spawn provides **technical control implementation**. You are responsible for:
 
 ## Support
 
-- GitHub Issues: https://github.com/scttfrdmn/spore-host/issues
+- GitHub Issues: https://github.com/spore-host/spore-host/issues
 - Command help: `spawn validate --help`
 - Baseline comparison: `spawn validate --compare-baselines`

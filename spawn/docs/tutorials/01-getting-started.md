@@ -30,7 +30,7 @@ By the end, you'll understand the basic spawn workflow and be ready to launch in
 
 ```bash
 # Download the latest release
-curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)
+curl -LO https://github.com/spore-host/spore-host/releases/latest/download/spawn-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)
 
 # Make it executable
 chmod +x spawn-*
@@ -51,7 +51,7 @@ spawn version 0.13.1
 
 ```powershell
 # Download from GitHub releases
-# https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-windows-amd64.exe
+# https://github.com/spore-host/spore-host/releases/latest/download/spawn-windows-amd64.exe
 
 # Rename to spawn.exe and add to PATH
 # Or run directly: .\spawn-windows-amd64.exe
@@ -60,7 +60,7 @@ spawn version 0.13.1
 ### Build from Source (Optional)
 
 ```bash
-git clone https://github.com/scttfrdmn/spore-host
+git clone https://github.com/spore-host/spore-host
 cd spore-host/spawn
 make build
 sudo make install
@@ -435,6 +435,6 @@ aws ec2 terminate-instances --instance-ids <instance-id>
 
 ---
 
-**Feedback?** Found an issue or have suggestions? [Open an issue](https://github.com/scttfrdmn/spore-host/issues/new?labels=type:docs,component:spawn)
+**Feedback?** Found an issue or have suggestions? [Open an issue](https://github.com/spore-host/spore-host/issues/new?labels=type:docs,component:spawn)
 
 **Next:** [Tutorial 2: Your First Instance](02-first-instance.md) →

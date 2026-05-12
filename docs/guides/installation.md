@@ -12,25 +12,25 @@
 ::: code-group
 
 ```sh [macOS / Linux (Homebrew)]
-brew install scttfrdmn/tap/truffle
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/spawn
 ```
 
 ```powershell [Windows (Scoop)]
-scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
 scoop install truffle
 scoop install spawn
 ```
 
 ```sh [Debian / Ubuntu]
-curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/truffle_linux_amd64.deb
-curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn_linux_amd64.deb
+curl -LO https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.deb
+curl -LO https://github.com/spore-host/spore-host/releases/latest/download/spawn_linux_amd64.deb
 sudo dpkg -i truffle_linux_amd64.deb spawn_linux_amd64.deb
 ```
 
 ```sh [RHEL / Fedora]
-sudo rpm -i https://github.com/scttfrdmn/spore-host/releases/latest/download/truffle_linux_amd64.rpm
-sudo rpm -i https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn_linux_amd64.rpm
+sudo rpm -i https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.rpm
+sudo rpm -i https://github.com/spore-host/spore-host/releases/latest/download/spawn_linux_amd64.rpm
 ```
 
 :::
@@ -49,14 +49,14 @@ Install these as your workflow grows.
 ### Lagotto — capacity watching
 
 ```sh
-brew install scttfrdmn/tap/lagotto   # macOS / Linux
+brew install spore-host/tap/lagotto   # macOS / Linux
 scoop install lagotto                 # Windows
 ```
 
 ### MCP Server — AI assistant integration
 
 ```sh
-brew install scttfrdmn/tap/spore-host-mcp
+brew install spore-host/tap/spore-host-mcp
 ```
 
 Then add to `~/.claude/claude_desktop_config.json`:

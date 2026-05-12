@@ -5,7 +5,7 @@ Truffle finds and compares EC2 instance types. It's read-only — it never launc
 ## Install
 
 ```sh
-brew install scttfrdmn/tap/truffle
+brew install spore-host/tap/truffle
 ```
 
 ## Core commands

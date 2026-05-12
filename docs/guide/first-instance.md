@@ -25,14 +25,14 @@ Estimated time: 15-20 minutes
 ### macOS
 
 ```bash
-brew tap scttfrdmn/tap
+brew tap spore-host/tap
 brew install spawn
 ```
 
 ### Linux
 
 ```bash
-curl -Lo spawn https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-linux-amd64
+curl -Lo spawn https://github.com/spore-host/spore-host/releases/latest/download/spawn-linux-amd64
 chmod +x spawn
 sudo mv spawn /usr/local/bin/
 ```

@@ -143,7 +143,7 @@ git subtree push --prefix web origin gh-pages
 # Settings → Pages → Custom domain: spore.host
 
 # 3. Update DNS
-# Add CNAME record: spore.host → scttfrdmn.github.io
+# Add CNAME record: spore.host → spore-host.github.io
 ```
 
 ### Option 3: Local Testing

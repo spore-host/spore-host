@@ -8,10 +8,10 @@ Each tool lives in its own Go module. Add only the packages you need:
 
 ```sh
 # Instance type discovery
-go get github.com/scttfrdmn/spore-host/truffle
+go get github.com/spore-host/spore-host/truffle
 
 # Instance lifecycle management
-go get github.com/scttfrdmn/spore-host/spawn
+go get github.com/spore-host/spore-host/spawn
 ```
 
 Both modules require Go 1.21+ and load AWS credentials from the standard chain (`AWS_*` environment variables, `~/.aws/credentials`, or EC2/ECS metadata).
@@ -22,8 +22,8 @@ No extra configuration is needed beyond standard AWS credentials:
 
 ```go
 import (
-    truffleaws "github.com/scttfrdmn/spore-host/truffle/pkg/aws"
-    spawnclient "github.com/scttfrdmn/spore-host/spawn/pkg/aws"
+    truffleaws "github.com/spore-host/spore-host/truffle/pkg/aws"
+    spawnclient "github.com/spore-host/spore-host/spawn/pkg/aws"
 )
 
 // Both use the same credential chain as the AWS CLI
@@ -39,8 +39,8 @@ To use a specific profile, set `AWS_PROFILE` in the environment before calling `
 
 ```go
 import (
-    truffleaws "github.com/scttfrdmn/spore-host/truffle/pkg/aws"
-    "github.com/scttfrdmn/spore-host/truffle/pkg/find"
+    truffleaws "github.com/spore-host/spore-host/truffle/pkg/aws"
+    "github.com/spore-host/spore-host/truffle/pkg/find"
 )
 
 // Parse a free-text query into structured criteria
@@ -90,7 +90,7 @@ fmt.Printf("Cheapest: %s %s $%.4f/hr (%.0f%% savings)\n",
 ### Quota check
 
 ```go
-import "github.com/scttfrdmn/spore-host/truffle/pkg/quotas"
+import "github.com/spore-host/spore-host/truffle/pkg/quotas"
 
 qc, err := quotas.NewClient(ctx)
 info, err := qc.GetQuotas(ctx, "us-east-1")
@@ -199,10 +199,10 @@ fmt.Printf("Running: %s\n", r.InstanceID)
 
 Full API documentation is on pkg.go.dev:
 
-- [truffle/pkg/aws](https://pkg.go.dev/github.com/scttfrdmn/spore-host/truffle/pkg/aws) — `Client`, `InstanceTypeResult`, `SpotPriceResult`, `FilterOptions`, `SpotOptions`
-- [truffle/pkg/find](https://pkg.go.dev/github.com/scttfrdmn/spore-host/truffle/pkg/find) — `ParseQuery`, `ParsedQuery`, `SearchCriteria`, `FindResult`, `ExplainMatch`
-- [truffle/pkg/quotas](https://pkg.go.dev/github.com/scttfrdmn/spore-host/truffle/pkg/quotas) — `Client`, `QuotaInfo`, `CanLaunch`, `GetQuotaFamily`
-- [spawn/pkg/aws](https://pkg.go.dev/github.com/scttfrdmn/spore-host/spawn/pkg/aws) — `Client`, `LaunchConfig`, `LaunchResult`, `InstanceInfo`
+- [truffle/pkg/aws](https://pkg.go.dev/github.com/spore-host/spore-host/truffle/pkg/aws) — `Client`, `InstanceTypeResult`, `SpotPriceResult`, `FilterOptions`, `SpotOptions`
+- [truffle/pkg/find](https://pkg.go.dev/github.com/spore-host/spore-host/truffle/pkg/find) — `ParseQuery`, `ParsedQuery`, `SearchCriteria`, `FindResult`, `ExplainMatch`
+- [truffle/pkg/quotas](https://pkg.go.dev/github.com/spore-host/spore-host/truffle/pkg/quotas) — `Client`, `QuotaInfo`, `CanLaunch`, `GetQuotaFamily`
+- [spawn/pkg/aws](https://pkg.go.dev/github.com/spore-host/spore-host/spawn/pkg/aws) — `Client`, `LaunchConfig`, `LaunchResult`, `InstanceInfo`
 
 ## Real-world usage
 

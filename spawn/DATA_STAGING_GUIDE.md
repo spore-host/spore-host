@@ -1172,12 +1172,12 @@ spawn stage estimate \
 ## Getting Help
 
 **Documentation:**
-- Main docs: https://github.com/scttfrdmn/spore-host
+- Main docs: https://github.com/spore-host/spore-host
 - Cost calculator: `spawn stage estimate --help`
 - Examples: `spawn/examples/staging/`
 
 **Issues:**
-- Report bugs: https://github.com/scttfrdmn/spore-host/issues
+- Report bugs: https://github.com/spore-host/spore-host/issues
 - Feature requests: Tag with `enhancement`
 
 **Support:**

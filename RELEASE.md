@@ -7,17 +7,17 @@ This document describes how to create releases for spore-host using GoReleaser.
 1. **GitHub Repository Setup**
    ```bash
    # Create GitHub repo (if not already created)
-   gh repo create scttfrdmn/spore-host --public --source=. --remote=origin
+   gh repo create spore-host/spore-host --public --source=. --remote=origin
 
    # Or set remote manually
-   git remote add origin git@github.com:scttfrdmn/spore-host.git
+   git remote add origin git@github.com:spore-host/spore-host.git
    ```
 
 2. **Tap and Bucket Repositories**
 
    You already have these repositories:
-   - `scttfrdmn/homebrew-tap` (for Homebrew formulas)
-   - `scttfrdmn/scoop-bucket` (for Scoop manifests)
+   - `spore-host/homebrew-tap` (for Homebrew formulas)
+   - `spore-host/scoop-bucket` (for Scoop manifests)
 
 3. **GitHub Personal Access Tokens**
 
@@ -30,7 +30,7 @@ This document describes how to create releases for spore-host using GoReleaser.
    # Scopes: repo (full control)
 
    # Add as GitHub secret
-   gh secret set HOMEBREW_TAP_GITHUB_TOKEN --repo scttfrdmn/spore-host
+   gh secret set HOMEBREW_TAP_GITHUB_TOKEN --repo spore-host/spore-host
    ```
 
    **For Scoop Bucket:**
@@ -40,7 +40,7 @@ This document describes how to create releases for spore-host using GoReleaser.
    # Scopes: repo (full control)
 
    # Add as GitHub secret
-   gh secret set SCOOP_BUCKET_GITHUB_TOKEN --repo scttfrdmn/spore-host
+   gh secret set SCOOP_BUCKET_GITHUB_TOKEN --repo spore-host/spore-host
    ```
 
    **Note:** The `GITHUB_TOKEN` is automatically provided by GitHub Actions.
@@ -95,7 +95,7 @@ The GitHub Actions workflow will:
 5. Update Homebrew tap formulas
 6. Update Scoop bucket manifests
 
-Monitor at: https://github.com/scttfrdmn/spore-host/actions
+Monitor at: https://github.com/spore-host/spore-host/actions
 
 ### 5. Verify Release
 
@@ -103,13 +103,13 @@ After workflow completes:
 
 **Check GitHub Release:**
 ```bash
-gh release view v0.1.0 --repo scttfrdmn/spore-host
+gh release view v0.1.0 --repo spore-host/spore-host
 ```
 
 **Test Homebrew Installation:**
 ```bash
-brew install scttfrdmn/tap/truffle
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/spawn
 
 truffle version
 spawn version
@@ -117,7 +117,7 @@ spawn version
 
 **Test Scoop Installation (Windows):**
 ```powershell
-scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
 scoop install truffle
 scoop install spawn
 
@@ -149,8 +149,8 @@ ls -la dist/
 - [ ] Tag pushed to GitHub
 - [ ] GitHub Actions workflow completed successfully
 - [ ] GitHub Release created
-- [ ] Homebrew formulas updated in scttfrdmn/homebrew-tap
-- [ ] Scoop manifests updated in scttfrdmn/scoop-bucket
+- [ ] Homebrew formulas updated in spore-host/homebrew-tap
+- [ ] Scoop manifests updated in spore-host/scoop-bucket
 - [ ] Installation tested on macOS (Homebrew)
 - [ ] Installation tested on Windows (Scoop)
 - [ ] Installation tested on Linux (manual download)
@@ -165,7 +165,7 @@ ls -la dist/
 **Fix:**
 1. Verify secrets exist:
    ```bash
-   gh secret list --repo scttfrdmn/spore-host
+   gh secret list --repo spore-host/spore-host
    ```
 
 2. Recreate PATs if needed (see Prerequisites above)
@@ -178,7 +178,7 @@ ls -la dist/
 1. Check token has `repo` scope
 2. Verify token is set as secret:
    ```bash
-   gh secret set HOMEBREW_TAP_GITHUB_TOKEN --repo scttfrdmn/spore-host
+   gh secret set HOMEBREW_TAP_GITHUB_TOKEN --repo spore-host/spore-host
    ```
 
 ### Build Fails: "cannot find module"
@@ -249,13 +249,13 @@ Follow semantic versioning (semver):
 ### Installation
 **Homebrew (macOS/Linux):**
 \`\`\`bash
-brew install scttfrdmn/tap/truffle
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/spawn
 \`\`\`
 
 **Scoop (Windows):**
 \`\`\`powershell
-scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
 scoop install truffle spawn
 \`\`\`
 

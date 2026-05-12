@@ -12,13 +12,13 @@ This guide walks you through launching your first EC2 instance with spawn. Estim
 
 **macOS (Homebrew):**
 ```bash
-brew tap scttfrdmn/tap
+brew tap spore-host/tap
 brew install spawn
 ```
 
 **Linux (pre-built binary):**
 ```bash
-curl -Lo spawn https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-linux-amd64
+curl -Lo spawn https://github.com/spore-host/spore-host/releases/latest/download/spawn-linux-amd64
 chmod +x spawn
 sudo mv spawn /usr/local/bin/
 ```

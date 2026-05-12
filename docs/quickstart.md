@@ -7,18 +7,18 @@ This guide gets you from zero to a running EC2 instance in about five minutes. Y
 ::: code-group
 
 ```sh [macOS / Linux (Homebrew)]
-brew install scttfrdmn/tap/truffle
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/spawn
 ```
 
 ```powershell [Windows (Scoop)]
-scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
 scoop install truffle spawn
 ```
 
 ```sh [Manual]
 # Download from GitHub Releases
-# https://github.com/scttfrdmn/spore-host/releases/latest
+# https://github.com/spore-host/spore-host/releases/latest
 tar -xzf spawn_*_$(uname -s)_$(uname -m).tar.gz
 tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz
 ```

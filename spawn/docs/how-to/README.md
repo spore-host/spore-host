@@ -216,4 +216,4 @@ Each how-to guide follows this structure:
 
 ## Contributing
 
-Found an issue or have a suggestion? [Open an issue](https://github.com/scttfrdmn/spore-host/issues/new?labels=type:docs,component:spawn)
+Found an issue or have a suggestion? [Open an issue](https://github.com/spore-host/spore-host/issues/new?labels=type:docs,component:spawn)

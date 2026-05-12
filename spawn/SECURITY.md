@@ -1203,7 +1203,7 @@ Organizations must engage a HITRUST assessor and pursue their own HITRUST certif
 
 Subscribe to security updates:
 - **GitHub Watch:** "Releases only" or "All activity"
-- **Security Advisories:** https://github.com/scttfrdmn/spore-host/security/advisories
+- **Security Advisories:** https://github.com/spore-host/spore-host/security/advisories
 
 ### Release Notes Format
 

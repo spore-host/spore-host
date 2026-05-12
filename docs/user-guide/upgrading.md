@@ -22,7 +22,7 @@ Download the latest release and replace the binary:
 
 ```bash
 # macOS arm64
-curl -Lo /tmp/spawn https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-darwin-arm64
+curl -Lo /tmp/spawn https://github.com/spore-host/spore-host/releases/latest/download/spawn-darwin-arm64
 sudo mv /tmp/spawn /usr/local/bin/spawn
 chmod +x /usr/local/bin/spawn
 ```
@@ -92,12 +92,12 @@ To roll back to a previous version:
 brew switch spawn <version>
 
 # Manual: download specific release
-curl -Lo /tmp/spawn https://github.com/scttfrdmn/spore-host/releases/download/v0.21.0/spawn-darwin-arm64
+curl -Lo /tmp/spawn https://github.com/spore-host/spore-host/releases/download/v0.21.0/spawn-darwin-arm64
 sudo mv /tmp/spawn /usr/local/bin/spawn
 ```
 
 ## Getting Help
 
 If you encounter issues after upgrading:
-1. Check [CHANGELOG](https://github.com/scttfrdmn/spore-host/blob/main/CHANGELOG.md) for breaking changes
-2. File a bug at https://github.com/scttfrdmn/spore-host/issues
+1. Check [CHANGELOG](https://github.com/spore-host/spore-host/blob/main/CHANGELOG.md) for breaking changes
+2. File a bug at https://github.com/spore-host/spore-host/issues

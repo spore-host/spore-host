@@ -33,7 +33,7 @@ Researchers' EC2 instances call back to your infrastructure for DNS registration
 - Two AWS accounts (recommended): one for infrastructure, one for compute. A single account works but separation is cleaner.
 - A domain you control in Route53 (e.g. `compute.university.edu`)
 - AWS CLI configured with admin credentials for the infrastructure account
-- The spore.host CLI installed locally: `brew install scttfrdmn/tap/spawn`
+- The spore.host CLI installed locally: `brew install spore-host/tap/spawn`
 
 ## Step 1: DNS — Route53 hosted zone
 

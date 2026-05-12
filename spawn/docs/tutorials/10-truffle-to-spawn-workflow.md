@@ -382,12 +382,12 @@ jobs:
       - name: Install tools
         run: |
           # Install truffle
-          curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/truffle-linux-amd64
+          curl -LO https://github.com/spore-host/spore-host/releases/latest/download/truffle-linux-amd64
           chmod +x truffle-linux-amd64
           sudo mv truffle-linux-amd64 /usr/local/bin/truffle
 
           # Install spawn
-          curl -LO https://github.com/scttfrdmn/spore-host/releases/latest/download/spawn-linux-amd64
+          curl -LO https://github.com/spore-host/spore-host/releases/latest/download/spawn-linux-amd64
           chmod +x spawn-linux-amd64
           sudo mv spawn-linux-amd64 /usr/local/bin/spawn
 

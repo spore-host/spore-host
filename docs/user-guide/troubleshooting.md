@@ -174,4 +174,4 @@ spawn logs my-instance --tail 200
 spawn ssh my-instance -- sudo systemctl status spored
 ```
 
-File a bug: https://github.com/scttfrdmn/spore-host/issues
+File a bug: https://github.com/spore-host/spore-host/issues
