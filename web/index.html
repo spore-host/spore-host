@@ -41,6 +41,9 @@
     <!-- ── Hero ── -->
     <div class="hero">
       <div class="hero-inner">
+        <div class="hero-logo" aria-label="spore.host">
+          <span class="logo-spore">spore</span><svg class="logo-orb" viewBox="0 0 32 32" aria-hidden="true"><defs><radialGradient id="hg" cx="35%" cy="28%" r="68%"><stop offset="0%" stop-color="#C4FFFB"/><stop offset="18%" stop-color="#42D4D4"/><stop offset="52%" stop-color="#2B68FD"/><stop offset="100%" stop-color="#151B4A"/></radialGradient></defs><circle cx="16" cy="16" r="15" fill="url(#hg)"/></svg><span class="logo-host">host</span>
+        </div>
         <span class="hero-eyebrow">Open Source · Apache 2.0</span>
         <h1>Compute that manages itself</h1>
         <p class="hero-sub">
@@ -60,12 +63,8 @@
         </div>
 
         <div id="demo-wrapper">
-          <button id="demo-play-btn" class="demo-play-btn" onclick="loadDemo()" aria-label="Watch demo screencast">
-            <span class="demo-play-icon">▶</span>
-            Watch a full research workflow
-          </button>
           <p class="demo-hint">AMD EPYC Genoa search · launch with TTL + idle timeout · run a job · check cost · watch it self-terminate</p>
-          <div id="demo-player" style="display:none;"></div>
+          <div id="demo-player"></div>
         </div>
       </div>
     </div>
@@ -294,13 +293,9 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
     hamburger.setAttribute('aria-expanded', open);
   });
 
-  // Lazy-load asciinema player on demand
-  function loadDemo() {
-    const btn = document.getElementById('demo-play-btn');
+  // Auto-load asciinema player on page load
+  (function loadDemo() {
     const player = document.getElementById('demo-player');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="demo-play-icon">⟳</span> Loading...';
-
     const cdnBase = 'https://cdn.jsdelivr.net/npm/asciinema-player@3.14.0/dist/bundle';
     const castUrl = window.location.origin + '/assets/demo.cast?v=8';
 
@@ -311,22 +306,21 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
 
     const script = document.createElement('script');
     script.src = cdnBase + '/asciinema-player.min.js';
-    script.onerror = function() {
-      btn.disabled = false;
-      btn.innerHTML = '<span class="demo-play-icon">▶</span> Watch demo';
-    };
     script.onload = function() {
-      btn.style.display = 'none';
-      player.style.display = 'block';
-      AsciinemaPlayer.create(castUrl, player, {
+      const p = AsciinemaPlayer.create(castUrl, player, {
         autoPlay: true,
-        loop: true,
+        loop: false,        // we handle looping manually to add a pause
         speed: 1.0,
-        fit: 'width'
+        fit: 'width',
+        idleTimeLimit: 2    // compress idle gaps in the cast to max 2s
+      });
+      // Pause 10 seconds at the end so viewers can see the final state, then restart
+      p.addEventListener('ended', function() {
+        setTimeout(function() { p.play(); }, 10000);
       });
     };
     document.head.appendChild(script);
-  }
+  })();
   </script>
 </body>
 </html>
