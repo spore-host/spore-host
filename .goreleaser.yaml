@@ -21,9 +21,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/scttfrdmn/spore-host/truffle/cmd.Version={{.Version}}
-      - -X github.com/scttfrdmn/spore-host/truffle/cmd.GitCommit={{.Commit}}
-      - -X github.com/scttfrdmn/spore-host/truffle/cmd.BuildDate={{.Date}}
+      - -X github.com/spore-host/spore-host/truffle/cmd.Version={{.Version}}
+      - -X github.com/spore-host/spore-host/truffle/cmd.GitCommit={{.Commit}}
+      - -X github.com/spore-host/spore-host/truffle/cmd.BuildDate={{.Date}}
     mod_timestamp: '{{ .CommitTimestamp }}'
 
   # spawn - EC2 instance launcher
@@ -42,7 +42,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/scttfrdmn/spore-host/spawn/cmd.Version={{.Version}}
+      - -X github.com/spore-host/spore-host/spawn/cmd.Version={{.Version}}
     mod_timestamp: '{{ .CommitTimestamp }}'
 
   # lagotto - EC2 capacity watcher
@@ -61,7 +61,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/scttfrdmn/spore-host/lagotto/cmd.Version={{.Version}}
+      - -X github.com/spore-host/spore-host/lagotto/cmd.Version={{.Version}}
     mod_timestamp: '{{ .CommitTimestamp }}'
 
   # spore-host-mcp - MCP server for AI assistants

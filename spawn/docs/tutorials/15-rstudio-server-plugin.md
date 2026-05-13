@@ -109,7 +109,7 @@ Run from inside your project directory (so the plugin finds `renv.lock`):
 ```bash
 cd ~/r-project
 
-spawn plugin install github:scttfrdmn/spore-host-plugin-rstudio/rstudio-server \
+spawn plugin install github:spore-host/spore-host-plugin-rstudio/rstudio-server \
   --instance i-0abc123def456789 \
   --config password=my-secure-password
 ```
@@ -244,7 +244,7 @@ spawn plugin uninstall rstudio-server --instance i-0abc123def456789
 If you have a lockfile but do not have R installed locally (e.g., running from CI):
 
 ```bash
-spawn plugin install github:scttfrdmn/spore-host-plugin-rstudio/rstudio-server \
+spawn plugin install github:spore-host/spore-host-plugin-rstudio/rstudio-server \
   --instance i-0abc123def456789 \
   --config renv_lockfile=path/to/renv.lock \
   --config r_version=4.3.2 \
@@ -261,12 +261,12 @@ For security, install Tailscale first and access RStudio Server over the Tailnet
 
 ```bash
 # Install Tailscale plugin
-spawn plugin install github:scttfrdmn/spore-host-plugin-tailscale/tailscale \
+spawn plugin install github:spore-host/spore-host-plugin-tailscale/tailscale \
   --instance i-0abc123def456789 \
   --config auth_key=tskey-auth-...
 
 # Install RStudio plugin
-spawn plugin install github:scttfrdmn/spore-host-plugin-rstudio/rstudio-server \
+spawn plugin install github:spore-host/spore-host-plugin-rstudio/rstudio-server \
   --instance i-0abc123def456789 \
   --config password=my-secure-password
 ```

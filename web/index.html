@@ -29,7 +29,7 @@
         <a href="#tools" role="menuitem">Tools</a>
         <a href="#install" role="menuitem">Install</a>
         <a href="library.html" role="menuitem">For Developers</a>
-        <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener" role="menuitem" aria-label="GitHub (opens in new tab)">GitHub</a>
+        <a href="https://github.com/spore-host/spore-host" target="_blank" rel="noopener" role="menuitem" aria-label="GitHub (opens in new tab)">GitHub</a>
         <a href="/dashboard.html" class="nav-cta" role="menuitem">Dashboard</a>
         <button class="theme-btn" id="theme-toggle" aria-label="Toggle colour theme">🌙</button>
       </div>
@@ -56,7 +56,7 @@
         </div>
         <div class="hero-actions">
           <a href="#install" class="btn btn-primary">Get started</a>
-          <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener" class="btn btn-outline">View on GitHub</a>
+          <a href="https://github.com/spore-host/spore-host" target="_blank" rel="noopener" class="btn btn-outline">View on GitHub</a>
         </div>
 
         <div id="demo-wrapper">
@@ -89,7 +89,7 @@
               <li>Quota check before you launch</li>
               <li>On-Demand Capacity Reservations</li>
             </ul>
-            <a href="https://github.com/scttfrdmn/spore-host/tree/main/truffle" class="tool-link" target="_blank" rel="noopener">truffle docs</a>
+            <a href="https://github.com/spore-host/spore-host/tree/main/truffle" class="tool-link" target="_blank" rel="noopener">truffle docs</a>
           </div>
 
           <div class="tool-card tool-spawn">
@@ -102,7 +102,7 @@
               <li>Hibernation support</li>
               <li>Spot, GPU, MPI clusters, parameter sweeps</li>
             </ul>
-            <a href="https://github.com/scttfrdmn/spore-host/tree/main/spawn" class="tool-link" target="_blank" rel="noopener">spawn docs</a>
+            <a href="https://github.com/spore-host/spore-host/tree/main/spawn" class="tool-link" target="_blank" rel="noopener">spawn docs</a>
           </div>
 
           <div class="tool-card tool-lagotto">
@@ -115,7 +115,7 @@
               <li>Serverless — runs as a Lambda function</li>
               <li>Slack notifications when capacity appears</li>
             </ul>
-            <a href="https://github.com/scttfrdmn/spore-host/tree/main/lagotto" class="tool-link" target="_blank" rel="noopener">lagotto docs</a>
+            <a href="https://github.com/spore-host/spore-host/tree/main/lagotto" class="tool-link" target="_blank" rel="noopener">lagotto docs</a>
           </div>
 
           <div class="tool-card tool-bot">
@@ -128,7 +128,7 @@
               <li>OAuth — one-click workspace connection</li>
               <li>Works from any device, anywhere</li>
             </ul>
-            <a href="https://github.com/scttfrdmn/spore-host/tree/main/spawn/lambda/spore-bot" class="tool-link" target="_blank" rel="noopener">spore-bot docs</a>
+            <a href="https://github.com/spore-host/spore-host/tree/main/spawn/lambda/spore-bot" class="tool-link" target="_blank" rel="noopener">spore-bot docs</a>
           </div>
 
           <div class="tool-card tool-mcp">
@@ -141,7 +141,7 @@
               <li>Full instance lifecycle via spawn</li>
               <li>Install via Homebrew — one config line</li>
             </ul>
-            <a href="https://github.com/scttfrdmn/spore-host/tree/main/mcp" class="tool-link" target="_blank" rel="noopener">MCP server docs</a>
+            <a href="https://github.com/spore-host/spore-host/tree/main/mcp" class="tool-link" target="_blank" rel="noopener">MCP server docs</a>
           </div>
 
         </div>
@@ -163,18 +163,18 @@
 
         <div id="tab-homebrew" class="tab-content active" role="tabpanel" aria-labelledby="btn-homebrew">
 <pre><code># Core tools
-brew install scttfrdmn/tap/truffle
-brew install scttfrdmn/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/spawn
 
 # Optional: capacity watcher
-brew install scttfrdmn/tap/lagotto
+brew install spore-host/tap/lagotto
 
 # Optional: MCP server for AI assistants
-brew install scttfrdmn/tap/spore-host-mcp</code></pre>
+brew install spore-host/tap/spore-host-mcp</code></pre>
         </div>
 
         <div id="tab-scoop" class="tab-content" role="tabpanel" aria-labelledby="btn-scoop">
-<pre><code>scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+<pre><code>scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
 scoop install truffle spawn
 
 # Optional
@@ -183,7 +183,7 @@ scoop install lagotto spore-host-mcp</code></pre>
 
         <div id="tab-manual" class="tab-content" role="tabpanel" aria-labelledby="btn-manual">
 <pre><code># Download from GitHub Releases
-# https://github.com/scttfrdmn/spore-host/releases/latest
+# https://github.com/spore-host/spore-host/releases/latest
 
 tar -xzf spawn_*_$(uname -s)_$(uname -m).tar.gz
 tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
@@ -191,7 +191,7 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
 
         <p style="margin-top:2rem; font-size:0.875rem; color:var(--text-muted);">
           Debian/Ubuntu and RHEL/Fedora packages (.deb/.rpm) are also available on the
-          <a href="https://github.com/scttfrdmn/spore-host/releases/latest" target="_blank" rel="noopener">releases page</a>.
+          <a href="https://github.com/spore-host/spore-host/releases/latest" target="_blank" rel="noopener">releases page</a>.
         </p>
       </div>
     </section>
@@ -247,17 +247,17 @@ tar -xzf truffle_*_$(uname -s)_$(uname -m).tar.gz</code></pre>
         <div class="footer-tagline">Ephemeral compute for research.</div>
       </div>
       <nav class="footer-links" aria-label="Footer navigation">
-        <a href="https://github.com/scttfrdmn/spore-host" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://github.com/scttfrdmn/spore-host/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/spore-host/spore-host" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/spore-host/spore-host/releases" target="_blank" rel="noopener">Releases</a>
         <a href="library.html">For Developers</a>
-        <a href="https://github.com/scttfrdmn/spore-host/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/spore-host/spore-host/issues" target="_blank" rel="noopener">Issues</a>
         <a href="/privacy.html">Privacy</a>
         <a href="/terms.html">Terms</a>
       </nav>
     </div>
     <div class="footer-bottom">
       <span>© 2026 Scott Friedman. Made with care</span>
-      <span><a href="https://github.com/scttfrdmn/spore-host/blob/main/LICENSE" target="_blank" rel="noopener">Apache 2.0</a></span>
+      <span><a href="https://github.com/spore-host/spore-host/blob/main/LICENSE" target="_blank" rel="noopener">Apache 2.0</a></span>
     </div>
   </footer>
 

@@ -97,7 +97,7 @@ Install the Tailscale plugin using `spawn plugin install`. The `--config` flag p
 
 ```bash
 spawn plugin install \
-  github:scttfrdmn/spore-host-plugin-tailscale/tailscale \
+  github:spore-host/spore-host-plugin-tailscale/tailscale \
   --instance ts-demo \
   --config auth_key=tskey-auth-<YOUR_AUTH_KEY>
 ```
@@ -108,7 +108,7 @@ Replace `tskey-auth-<YOUR_AUTH_KEY>` with your actual auth key.
 ```
 Installing plugin tailscale on ts-demo (i-0a1b2c3d4e5f67890)...
 
-  ✓ Fetching plugin from github:scttfrdmn/spore-host-plugin-tailscale/tailscale
+  ✓ Fetching plugin from github:spore-host/spore-host-plugin-tailscale/tailscale
   ✓ Uploading plugin to instance
   → installing  Downloading Tailscale package...
   → installing  Installing tailscale (tailscale_1.62.0_arm64)

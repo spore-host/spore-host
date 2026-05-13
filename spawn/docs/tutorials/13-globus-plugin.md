@@ -133,7 +133,7 @@ Install the plugin with `spawn plugin install`. The `--config` flags pass the en
 
 ```bash
 spawn plugin install \
-  github:scttfrdmn/spore-host-plugin-globus/globus-connect-personal \
+  github:spore-host/spore-host-plugin-globus/globus-connect-personal \
   --instance globus-demo \
   --config endpoint_name=my-spore-endpoint \
   --config collection_path=/data
@@ -145,7 +145,7 @@ This command takes approximately 2 minutes — the full install, provision, conf
 ```
 Installing plugin globus-connect-personal on globus-demo (i-0b2c3d4e5f6a78901)...
 
-  ✓ Fetching plugin from github:scttfrdmn/spore-host-plugin-globus/globus-connect-personal
+  ✓ Fetching plugin from github:spore-host/spore-host-plugin-globus/globus-connect-personal
   ✓ Uploading plugin to instance
   → installing        Downloading Globus Connect Personal...
   → installing        Installing globusconnectpersonal

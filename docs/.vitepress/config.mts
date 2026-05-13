@@ -130,16 +130,16 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/scttfrdmn/spore-host' },
+      { icon: 'github', link: 'https://github.com/spore-host/spore-host' },
     ],
 
     editLink: {
-      pattern: 'https://github.com/scttfrdmn/spore-host/edit/main/docs/:path',
+      pattern: 'https://github.com/spore-host/spore-host/edit/main/docs/:path',
       text: 'Edit this page on GitHub',
     },
 
     footer: {
-      message: 'Released under the <a href="https://github.com/scttfrdmn/spore-host/blob/main/LICENSE">Apache 2.0 License</a>.',
+      message: 'Released under the <a href="https://github.com/spore-host/spore-host/blob/main/LICENSE">Apache 2.0 License</a>.',
       copyright: '© 2026 Scott Friedman',
     },
 

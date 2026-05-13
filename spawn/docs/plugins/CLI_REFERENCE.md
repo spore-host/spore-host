@@ -70,7 +70,7 @@ spawn plugin install github:myorg/my-plugins/myplugin --instance i-0abc1234
 spawn plugin install ./my-plugin/plugin.yaml --instance i-0abc1234
 
 # Globus with optional config override
-spawn plugin install github:scttfrdmn/spore-host-plugin-globus/globus-personal-endpoint \
+spawn plugin install github:spore-host/spore-host-plugin-globus/globus-personal-endpoint \
   --instance i-0abc1234 \
   --config endpoint_name=my-endpoint \
   --config collection_path=/data

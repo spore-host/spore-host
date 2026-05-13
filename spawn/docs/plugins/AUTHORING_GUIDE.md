@@ -299,5 +299,5 @@ Before publishing a plugin:
 
 | Plugin | Repo | Install command |
 |---|---|---|
-| Tailscale ephemeral node | [spore-host-plugin-tailscale](https://github.com/scttfrdmn/spore-host-plugin-tailscale) | `spawn plugin install github:scttfrdmn/spore-host-plugin-tailscale/tailscale` |
-| Globus Connect Personal | [spore-host-plugin-globus](https://github.com/scttfrdmn/spore-host-plugin-globus) | `spawn plugin install github:scttfrdmn/spore-host-plugin-globus/globus-connect-personal` |
+| Tailscale ephemeral node | [spore-host-plugin-tailscale](https://github.com/spore-host/spore-host-plugin-tailscale) | `spawn plugin install github:spore-host/spore-host-plugin-tailscale/tailscale` |
+| Globus Connect Personal | [spore-host-plugin-globus](https://github.com/spore-host/spore-host-plugin-globus) | `spawn plugin install github:spore-host/spore-host-plugin-globus/globus-connect-personal` |

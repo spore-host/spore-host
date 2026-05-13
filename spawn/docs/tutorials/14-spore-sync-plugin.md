@@ -92,7 +92,7 @@ echo "print('hello from local')" > ~/my-project/main.py
 ## Step 4: Install the spore-sync Plugin
 
 ```bash
-spawn plugin install github:scttfrdmn/spore-host-plugin-spore-sync/spore-sync \
+spawn plugin install github:spore-host/spore-host-plugin-spore-sync/spore-sync \
   --instance i-0abc123def456789 \
   --config local_path=~/my-project \
   --config remote_path=/home/ec2-user/my-project
@@ -198,7 +198,7 @@ The default mode is `two-way-resolved` (both sides can write, conflicts resolved
 mutagen sync terminate spore-i-0abc123def456789
 
 # Recreate with one-way mode
-spawn plugin install github:scttfrdmn/spore-host-plugin-spore-sync/spore-sync \
+spawn plugin install github:spore-host/spore-host-plugin-spore-sync/spore-sync \
   --instance i-0abc123def456789 \
   --config local_path=~/my-project \
   --config remote_path=/home/ec2-user/my-project \
@@ -246,11 +246,11 @@ mutagen sync list
 Install Tailscale first so mutagen connects over the Tailnet instead of a public IP:
 
 ```bash
-spawn plugin install github:scttfrdmn/spore-host-plugin-tailscale/tailscale \
+spawn plugin install github:spore-host/spore-host-plugin-tailscale/tailscale \
   --instance i-0abc123def456789 \
   --config auth_key=tskey-auth-...
 
-spawn plugin install github:scttfrdmn/spore-host-plugin-spore-sync/spore-sync \
+spawn plugin install github:spore-host/spore-host-plugin-spore-sync/spore-sync \
   --instance i-0abc123def456789 \
   --config local_path=~/my-project
 ```
@@ -280,12 +280,12 @@ mutagen picks this up automatically.
 Use different `remote_path` values for each project:
 
 ```bash
-spawn plugin install github:scttfrdmn/spore-host-plugin-spore-sync/spore-sync \
+spawn plugin install github:spore-host/spore-host-plugin-spore-sync/spore-sync \
   --instance i-0abc123def456789 \
   --config local_path=~/project-a \
   --config remote_path=/home/ec2-user/project-a
 
-spawn plugin install github:scttfrdmn/spore-host-plugin-spore-sync/spore-sync \
+spawn plugin install github:spore-host/spore-host-plugin-spore-sync/spore-sync \
   --instance i-0abc123def456789 \
   --config local_path=~/project-b \
   --config remote_path=/home/ec2-user/project-b
