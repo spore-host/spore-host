@@ -88,7 +88,7 @@ build {
       "REGION=$(curl -sf -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token | xargs -I{} curl -sf -H 'X-aws-ec2-metadata-token: {}' http://169.254.169.254/latest/meta-data/placement/region || echo us-east-1)",
       "curl -fsSL https://spawn-binaries-$${REGION}.s3.amazonaws.com/spored-linux-amd64 -o /tmp/spored || curl -fsSL https://spawn-binaries-us-east-1.s3.amazonaws.com/spored-linux-amd64 -o /tmp/spored",
       "chmod +x /tmp/spored && sudo mv /tmp/spored /usr/local/bin/spored",
-      "/usr/local/bin/spored --version 2>&1 || echo 'spored installed'",
+      "/usr/local/bin/spored version 2>&1 || echo 'spored installed'",
     ]
   }
 
