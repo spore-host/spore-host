@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spore-host/spore-host/pkg/catalog"
 	spawnclient "github.com/spore-host/spore-host/spawn/pkg/aws"
+	"github.com/spore-host/spore-host/spawn/pkg/platform"
 )
 
 // ── app command flags ────────────────────────────────────────────────────────
@@ -150,10 +152,12 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 		ami = entry.AMIs[region]
 	}
 	if ami == "" {
-		fmt.Fprintf(os.Stderr, "No catalog AMI for %s in %s — using recommended AL2023 AMI\n", entry.Name, region)
-		ami, err = client.GetRecommendedAMI(ctx, region, instanceType)
+		fmt.Fprintf(os.Stderr, "No catalog AMI for %s in %s — using standard AL2023 AMI (install DCV manually or build catalog AMIs via infra/amis/build.sh)\n", entry.Name, region)
+		// Use standard x86 AL2023 — GPU-specific SSM paths don't exist for AL2023.
+		// Catalog AMIs (built via infra/amis/) will replace this once published (#286).
+		ami, err = client.GetAL2023AMI(ctx, region, "x86_64", false)
 		if err != nil {
-			return fmt.Errorf("get recommended AMI: %w", err)
+			return fmt.Errorf("get AL2023 AMI: %w", err)
 		}
 	}
 
@@ -170,7 +174,18 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Idle timeout: %s (from catalog; override with --idle-timeout)\n", idleTimeout)
 	}
 
-	// 8. Security group for DCV (port 8443)
+	// 8. SSH key pair — resolve local key and import to AWS if needed
+	plat, err := platform.Detect()
+	if err != nil {
+		return fmt.Errorf("detect platform: %w", err)
+	}
+	keyName, err := setupSSHKey(ctx, client, region, plat)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  SSH key setup failed: %v — launching without key (DCV only)\n", err)
+		keyName = ""
+	}
+
+	// 9. Security group for DCV (port 8443)
 	vpcID, err := client.GetDefaultVPC(ctx, region)
 	if err != nil {
 		return fmt.Errorf("get default VPC: %w", err)
@@ -187,12 +202,13 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 	// 10. DCV user-data: start DCV server + create session
 	dcvUserData := buildDCVUserData(entry.LaunchCommand, dcvSessionID)
 
-	// 11. Build LaunchConfig
+	// 13. Build LaunchConfig
 	lc := spawnclient.LaunchConfig{
 		Name:             sessionName,
 		InstanceType:     instanceType,
 		Region:           region,
 		AMI:              ami,
+		KeyName:          keyName,
 		Spot:             appLaunchSpot,
 		TTL:              appLaunchTTL,
 		IdleTimeout:      idleTimeout,
@@ -247,10 +263,10 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// buildDCVUserData returns a minimal user-data script that starts DCV and creates a session.
+// buildDCVUserData returns a base64-encoded user-data script that starts DCV and creates a session.
 // spored is already pre-installed in the catalog AMI.
 func buildDCVUserData(launchCommand, sessionID string) string {
-	return fmt.Sprintf(`#!/bin/bash
+	script := fmt.Sprintf(`#!/bin/bash
 set -e
 
 # Start NICE DCV server
@@ -269,6 +285,7 @@ dcv create-session \
 
 echo "DCV session '%s' created for: %s"
 `, sessionID, launchCommand, sessionID, sessionID, launchCommand)
+	return base64.StdEncoding.EncodeToString([]byte(script))
 }
 
 // waitForDCV polls the DCV endpoint until it responds or the timeout is exceeded.
