@@ -422,6 +422,7 @@ type sessionHTMLData struct {
 	Host         string
 	DCVPort      int
 	LaunchedAt   string
+	AuthToken    string // spawn:ready-token from EC2 tag; empty until #289 is implemented
 }
 
 // openBrowser opens a file or URL in the default browser.
@@ -443,7 +444,10 @@ func openBrowser(path string) error {
 // ── session HTML template ─────────────────────────────────────────────────────
 
 // sessionHTMLTemplate is the DCV session wrapper page.
-// Title format "spore:<id> — <app>" enables tab reuse detection by spawn connect.
+// The DCV Web Client SDK is loaded directly from the DCV server at /js/lib/dcv/dcv.js —
+// no external CDN needed. AuthToken is filled in by spawn app launch once spored writes
+// spawn:ready-token to the instance tags (#289); empty string shows DCV login screen.
+// Title format "spore:<id> — <app> (<instanceID>)" enables tab reuse by spawn connect.
 var sessionHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -454,7 +458,7 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
            background: #0f0f0f; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-    #dcv-container { flex: 1; width: 100%; border: none; }
+    #dcv-container { flex: 1; width: 100%; }
     #status { position: fixed; top: 0; left: 0; right: 0; bottom: 0;
               display: flex; flex-direction: column; align-items: center; justify-content: center;
               background: #0f0f0f; z-index: 10; }
@@ -479,7 +483,7 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
     <h2 id="status-title">Connecting to {{.AppName}}…</h2>
     <p id="status-msg">Starting your session on {{.InstanceType}} ({{.Host}})</p>
     <button class="btn" id="restart-btn" style="display:none"
-            onclick="restartSession()">Restart Session</button>
+            onclick="location.reload()">Restart Session</button>
   </div>
 
   <div id="dcv-container"></div>
@@ -490,13 +494,12 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
   </footer>
 
   <script>
-  // DCV Web Client SDK — loaded lazily to avoid blocking the page
-  const DCV_HOST = '{{.Host}}';
-  const DCV_PORT = {{.DCVPort}};
-  const SESSION_ID = '{{.SessionID}}';
-  const APP_NAME   = '{{.AppName}}';
-
-  const sdkURL = 'https://d1uj6qtbmh3dt5.cloudfront.net/2024.0/Clients/dcv-web-client.js';
+  const DCV_HOST  = '{{.Host}}';
+  const DCV_PORT  = {{.DCVPort}};
+  const APP_NAME  = '{{.AppName}}';
+  // AUTH_TOKEN is set by spawn app launch once spored writes spawn:ready-token (#289).
+  // Empty string causes DCV to show its login screen as fallback.
+  const AUTH_TOKEN = '{{.AuthToken}}';
 
   function setStatus(title, msg, showRestart) {
     document.getElementById('status-title').textContent = title;
@@ -504,55 +507,48 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
     document.getElementById('restart-btn').style.display = showRestart ? 'inline-block' : 'none';
     document.getElementById('status').classList.remove('hidden');
   }
-
-  function hideStatus() {
-    document.getElementById('status').classList.add('hidden');
-  }
-
-  function restartSession() {
-    setStatus('Restarting…', 'Waiting for the instance to wake up…', false);
-    // Reload the page — the DCV polling loop will reconnect once DCV responds
-    location.reload();
-  }
+  function hideStatus() { document.getElementById('status').classList.add('hidden'); }
 
   async function tryConnect() {
-    // Poll until DCV responds, then load the SDK and connect
     const dcvBase = 'https://' + DCV_HOST + ':' + DCV_PORT;
     setStatus('Connecting to ' + APP_NAME + '…', 'Waiting for DCV at ' + dcvBase, false);
 
+    // Poll until DCV server responds (handles instance cold-start and cert acceptance).
     for (let i = 0; i < 60; i++) {
       try {
         await fetch(dcvBase + '/favicon.ico', { mode: 'no-cors', signal: AbortSignal.timeout(4000) });
-        break; // DCV is up
+        break;
       } catch (_) {
         await new Promise(r => setTimeout(r, 5000));
       }
     }
 
-    // Load DCV Web Client SDK
+    // Load the DCV Web Client SDK served by the DCV server itself.
+    // No external CDN — the SDK lives at /js/lib/dcv/dcv.js on the DCV server.
+    setStatus('Connecting to ' + APP_NAME + '…', 'Loading DCV client…', false);
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = sdkURL;
+      s.src = dcvBase + '/js/lib/dcv/dcv.js';
       s.onload = resolve;
-      s.onerror = reject;
+      s.onerror = () => reject(new Error('Failed to load DCV SDK from ' + s.src));
       document.head.appendChild(s);
     });
 
-    // Connect
+    // Connect inline — the app streams directly into this tab.
     try {
-      const conn = await dcv.connect({
-        url:            dcvBase,
-        sessionId:      'console',
-        authToken:      '',
-        divId:          'dcv-container',
+      await dcv.connect({
+        url:       dcvBase,
+        sessionId: 'console',
+        authToken: AUTH_TOKEN,  // empty → DCV shows login; filled → seamless (#289)
+        divId:     'dcv-container',
         callbacks: {
           ready: hideStatus,
           disconnect: (reason) => {
             const msgs = {
-              'idle':    ['Session ended — idle timeout', 'The instance was stopped after ' + APP_NAME + ' was idle.'],
-              'ttl':     ['Session ended — time limit reached', 'The instance reached its TTL and was stopped.'],
+              idle: ['Session paused — idle timeout',   'The instance stopped after ' + APP_NAME + ' was idle. Click Restart to wake it.'],
+              ttl:  ['Session ended — time limit reached', 'The instance reached its time limit and was stopped.'],
             };
-            const [title, msg] = msgs[reason] || ['Session disconnected', 'The DCV session ended: ' + reason];
+            const [title, msg] = msgs[reason] || ['Session disconnected', 'The DCV session ended (' + reason + ').'];
             setStatus(title, msg, true);
           },
         },
