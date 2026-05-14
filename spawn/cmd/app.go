@@ -227,16 +227,33 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("launch failed: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Instance: %s (%s)\n", result.InstanceID, result.PublicIP)
+	fmt.Fprintf(os.Stderr, "Instance: %s\n", result.InstanceID)
 
-	// 13. Determine host (DNS name if available, else public IP)
+	// 13. Wait for public IP (EC2 often doesn't assign it before RunInstances returns)
 	host := result.PublicIP
-	// DNS name will be registered by spored once the instance starts; use it if available
-	dnsName := sessionName
+	if host == "" {
+		fmt.Fprintf(os.Stderr, "Waiting for public IP...")
+		for i := 0; i < 30; i++ {
+			time.Sleep(3 * time.Second)
+			fmt.Fprintf(os.Stderr, ".")
+			ip, err := client.GetInstancePublicIP(ctx, region, result.InstanceID)
+			if err == nil && ip != "" {
+				host = ip
+				fmt.Fprintf(os.Stderr, " %s\n", host)
+				break
+			}
+		}
+		if host == "" {
+			fmt.Fprintf(os.Stderr, " (no public IP assigned)\n")
+		}
+	}
+
+	// 14. Wait for DCV to become ready
+	dnsName := sessionName // spored will register a DNS name; fall back to IP
 	if host != "" {
-		fmt.Fprintf(os.Stderr, "Waiting for DCV to become ready at https://%s:8443...\n", host)
+		fmt.Fprintf(os.Stderr, "Waiting for DCV at https://%s:8443...\n", host)
 		if err := waitForDCV(ctx, host, 3*time.Minute); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  DCV not ready yet: %v\nSession file will auto-reconnect once it starts.\n", err)
+			fmt.Fprintf(os.Stderr, "⚠️  DCV not ready yet — session HTML will auto-retry.\n")
 		}
 	}
 
