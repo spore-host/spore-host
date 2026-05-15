@@ -104,33 +104,32 @@ build {
   }
 
   # Install NVIDIA Container Toolkit for GPU passthrough into Docker containers
-  provisioner "shell" {
-    inline = [
-      # Wait for any background yum processes to finish before installing
-      "while sudo fuser /var/run/yum.pid >/dev/null 2>&1; do echo 'Waiting for yum lock...'; sleep 5; done",
-      # AL2 rpm doesn't support Zstd (used by nvidia-container-toolkit >= 1.14 RPMs).
-      # Workaround: download RPMs and extract with rpm2cpio + cpio, bypassing rpm installer.
-      "curl -fsSL https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo",
-      "sudo yum install -y --downloadonly --downloaddir=/tmp/nctk nvidia-container-toolkit",
-      # Extract RPMs to / so binaries land in their proper system paths
-      "for f in /tmp/nctk/*.rpm; do echo \"Extracting $f\"; (cd / && sudo rpm2cpio $f | sudo cpio -idmu 2>/dev/null); done",
-      "sudo ldconfig",
-      # Verify extraction worked
-      "ls -la /usr/bin/nvidia-ctk /usr/bin/nvidia-container-runtime 2>&1 || (echo 'Finding...' && find / -name 'nvidia-ctk' 2>/dev/null | head -5)",
-      # Configure Docker NVIDIA runtime
-      "sudo mkdir -p /etc/docker",
-      "echo '{\"default-runtime\":\"nvidia\",\"runtimes\":{\"nvidia\":{\"path\":\"/usr/bin/nvidia-container-runtime\",\"runtimeArgs\":[]}}}' | sudo tee /etc/docker/daemon.json",
-      "sudo systemctl restart docker",
-      # Verify GPU passthrough
-      "sudo docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi --query-gpu=name --format=csv,noheader",
-    ]
-    timeout = "10m"
+  # Upload NVIDIA install script and Dockerfile before shell provisioner runs
+  provisioner "file" {
+    source      = "${path.root}/install-nvidia-docker.sh"
+    destination = "/tmp/install-nvidia-docker.sh"
   }
 
-  # Upload Dockerfile and build ParaView Docker image (cached in AMI — no download at launch)
   provisioner "file" {
     source      = "${path.root}/Dockerfile.paraview"
     destination = "/tmp/Dockerfile.paraview"
+  }
+
+  provisioner "shell" {
+    inline = [
+      # Wait for any background yum processes to finish
+      "while sudo fuser /var/run/yum.pid >/dev/null 2>&1; do echo 'Waiting for yum lock...'; sleep 5; done",
+      # Download NVIDIA Container Toolkit RPMs (can't install — AL2 rpm doesn't support Zstd)
+      "sudo mkdir -p /tmp/nctk",
+      "curl -fsSL https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo",
+      "sudo yum install -y --downloadonly --downloaddir=/tmp/nctk nvidia-container-toolkit",
+      # Extract and configure using the uploaded script
+      "sudo bash /tmp/install-nvidia-docker.sh",
+      "sudo systemctl restart docker",
+      # Verify GPU passthrough works before building ParaView image
+      "sudo docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi --query-gpu=name --format=csv,noheader",
+    ]
+    timeout = "15m"
   }
 
   provisioner "shell" {
