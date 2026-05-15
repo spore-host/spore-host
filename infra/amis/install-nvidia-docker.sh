@@ -6,7 +6,7 @@ set -e
 # used in nvidia-container-toolkit >= 1.14
 for f in /tmp/nctk/*.rpm; do
   echo "Extracting $f"
-  cd / && rpm2cpio "$f" | cpio -idmu --quiet 2>/dev/null || true
+  rpm2cpio "$f" | (cd / && cpio -idmu --no-absolute-filenames 2>/dev/null) || true
 done
 
 ldconfig
