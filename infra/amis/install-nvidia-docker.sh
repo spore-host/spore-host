@@ -4,9 +4,23 @@ set -e
 # Extract NVIDIA Container Toolkit RPMs (already downloaded to /tmp/nctk/)
 # rpm2cpio + cpio bypasses AL2's rpm which doesn't support Zstd compression
 # used in nvidia-container-toolkit >= 1.14
+# Check if rpm2cpio supports the RPMs (they use Zstd compression)
+echo "Testing rpm2cpio on first RPM..."
+FIRST_RPM=$(ls /tmp/nctk/*.rpm | head -1)
+rpm2cpio "$FIRST_RPM" | wc -c
+if [ $? -ne 0 ] || [ $(rpm2cpio "$FIRST_RPM" 2>/dev/null | wc -c) -eq 0 ]; then
+  echo "rpm2cpio failed (likely Zstd), trying bsdtar..."
+  yum install -y bsdtar 2>/dev/null || yum install -y libarchive 2>/dev/null
+fi
+
 for f in /tmp/nctk/*.rpm; do
   echo "Extracting $f"
-  rpm2cpio "$f" | (cd / && cpio -idmu --no-absolute-filenames 2>/dev/null) || true
+  # Try bsdtar first (handles Zstd), fall back to rpm2cpio
+  if command -v bsdtar >/dev/null 2>&1; then
+    bsdtar -xf "$f" -C / 2>/dev/null || true
+  else
+    rpm2cpio "$f" | (cd / && cpio -idmu 2>/dev/null) || true
+  fi
 done
 
 ldconfig
