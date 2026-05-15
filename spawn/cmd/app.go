@@ -185,7 +185,15 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 		keyName = ""
 	}
 
-	// 9. Security group for DCV (port 8443)
+	// 9. IAM instance profile — spored needs EC2/tag permissions to write spawn:ready-url
+	iamProfile := ""
+	if p, err := client.SetupSporedIAMRole(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  IAM role setup failed: %v — spored may not be able to write tags\n", err)
+	} else {
+		iamProfile = p
+	}
+
+	// 10. Security group for DCV (port 8443)
 	vpcID, err := client.GetDefaultVPC(ctx, region)
 	if err != nil {
 		return fmt.Errorf("get default VPC: %w", err)
@@ -202,22 +210,23 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 	// 10. DCV user-data: start DCV server + create session
 	dcvUserData := buildDCVUserData(entry.LaunchCommand, dcvSessionID)
 
-	// 13. Build LaunchConfig
+	// 14. Build LaunchConfig
 	lc := spawnclient.LaunchConfig{
-		Name:              sessionName,
-		InstanceType:      instanceType,
-		Region:            region,
-		AMI:               ami,
-		KeyName:           keyName,
-		Spot:              appLaunchSpot,
-		TTL:               appLaunchTTL,
-		IdleTimeout:       idleTimeout,
-		OnComplete:        "stop", // stop (not terminate) so session can be restarted
-		SecurityGroupIDs:  []string{dcvSGID},
-		UserData:          dcvUserData,
-		DCVSessionID:      dcvSessionID,
-		AppName:           entry.Name,
-		RootVolumeSizeGiB: 30, // catalog AMIs have 30 GB root (ParaView ~2 GB extracted)
+		Name:               sessionName,
+		InstanceType:       instanceType,
+		Region:             region,
+		AMI:                ami,
+		KeyName:            keyName,
+		IamInstanceProfile: iamProfile,
+		Spot:               appLaunchSpot,
+		TTL:                appLaunchTTL,
+		IdleTimeout:        idleTimeout,
+		OnComplete:         "stop", // stop (not terminate) so session can be restarted
+		SecurityGroupIDs:   []string{dcvSGID},
+		UserData:           dcvUserData,
+		DCVSessionID:       dcvSessionID,
+		AppName:            entry.Name,
+		RootVolumeSizeGiB:  30, // catalog AMIs have 30 GB root (ParaView ~2 GB extracted)
 	}
 
 	// 12. Launch
@@ -326,6 +335,11 @@ func buildDCVUserData(launchCommand, sessionID string) string {
 	script := fmt.Sprintf(`#!/bin/bash
 set -e
 
+# Start spored (lifecycle daemon — provides DCV token verifier on :8444, idle detection, DNS)
+# Must start before DCV so the token verifier is ready when DCV initializes.
+nohup /usr/local/bin/spored monitor > /var/log/spored.log 2>&1 &
+echo "spored started (PID: $!)"
+
 # Start NICE DCV server
 systemctl enable dcvserver
 systemctl start dcvserver
@@ -333,10 +347,11 @@ systemctl start dcvserver
 # Wait for DCV to initialize
 sleep 15
 
-# Create application streaming session
+# Create application streaming session (owner: ec2-user so they can join)
 dcv create-session \
+    --type virtual \
     --name %s \
-    --owner root \
+    --owner ec2-user \
     --init %q \
     %s 2>/dev/null || true
 
