@@ -26,7 +26,7 @@ apps:
     min_vram_gib: 24
     dcv: true
     idle_timeout_default: 20m
-    launch_command: /usr/local/bin/paraview
+    launch_command: /usr/local/bin/start-paraview-dcv
     aliases: [pv]
     license: open-source
     # spore-paraview-5.13.2-dcv AMI: ParaView 5.13.2 + DCV 2023.1 + NVIDIA 550.90.10 (AL2)

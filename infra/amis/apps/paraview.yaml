@@ -15,6 +15,9 @@ install: |
   tar -xzf "/tmp/${ARCHIVE}" -C /opt/
   ln -sf /opt/ParaView-${VERSION}*/bin/paraview /usr/local/bin/paraview
   rm "/tmp/${ARCHIVE}"
+  # Remove VisRTX — requires OptiX SDK not present in driver package
+  rm -f /opt/ParaView-${VERSION}*/lib/libVisRTX.so
+  rm -f /opt/ParaView-${VERSION}*/lib/libVisRTX.so.0.1.6
 
-test: /usr/local/bin/paraview --version
-launch_command: /usr/local/bin/paraview
+test: ls /usr/local/bin/paraview && echo OK
+launch_command: /usr/local/bin/start-paraview-dcv

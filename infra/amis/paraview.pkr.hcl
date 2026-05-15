@@ -107,9 +107,34 @@ build {
       "sudo tar -xzf /tmp/${local.pv_archive} -C /opt/",
       "sudo ln -sf /opt/${local.pv_dir}/bin/paraview /usr/local/bin/paraview",
       "rm /tmp/${local.pv_archive}",
-      "echo 'ParaView installed: $(/usr/local/bin/paraview --version 2>&1 | head -1)'",
+      # Remove VisRTX — it requires NVIDIA OptiX SDK (separate from driver, not installed here).
+      # Without OptiX, VisRTX crashes ParaView at startup with a segfault.
+      # OpenGL rendering (L4 GPU via standard driver) works fine without it.
+      "sudo rm -f /opt/${local.pv_dir}/lib/libVisRTX.so",
+      "sudo rm -f /opt/${local.pv_dir}/lib/libVisRTX.so.0.1.6",
+      "echo 'ParaView installed and VisRTX disabled'",
     ]
     timeout = "15m"
+  }
+
+  # Create a wrapper script that sets the correct DCV virtual display environment.
+  # DCV creates the xauth file after the session starts — the wrapper waits for it.
+  provisioner "shell" {
+    inline = [
+      "sudo tee /usr/local/bin/start-paraview-dcv > /dev/null << 'WRAPPER'",
+      "#!/bin/bash",
+      "# Wait for DCV virtual session xauth file (created after session init)",
+      "for i in $(seq 1 30); do",
+      "  [ -f /run/user/1000/dcv/console.xauth ] && break",
+      "  sleep 2",
+      "done",
+      "export DISPLAY=:0",
+      "export XAUTHORITY=/run/user/1000/dcv/console.xauth",
+      "exec /usr/local/bin/paraview",
+      "WRAPPER",
+      "sudo chmod +x /usr/local/bin/start-paraview-dcv",
+      "echo 'DCV wrapper script created'",
+    ]
   }
 
   # Configure DCV for application streaming and spored's embedded token verifier
