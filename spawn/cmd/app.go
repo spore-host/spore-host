@@ -500,10 +500,10 @@ func openBrowser(path string) error {
 
 // ── session HTML template ─────────────────────────────────────────────────────
 
-// sessionHTMLTemplate is the DCV session wrapper page.
-// The DCV Web Client SDK is loaded directly from the DCV server at /js/lib/dcv/dcv.js —
-// no external CDN needed. AuthToken is filled in by spawn app launch once spored writes
-// spawn:ready-token to the instance tags (#289); empty string shows DCV login screen.
+// sessionHTMLTemplate is the DCV session launcher page.
+// Rather than embedding the DCV SDK (which has file:// mixed-content issues),
+// this page redirects directly to DCV's own web client with the auth token in the URL.
+// DCV's built-in web UI handles the connection — no SDK loading, no cert issues.
 // Title format "spore:<id> — <app> (<instanceID>)" enables tab reuse by spawn connect.
 var sessionHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
@@ -514,12 +514,8 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-           background: #0f0f0f; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-    #dcv-container { flex: 1; width: 100%; }
-    #status { position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-              display: flex; flex-direction: column; align-items: center; justify-content: center;
-              background: #0f0f0f; z-index: 10; }
-    #status.hidden { display: none; }
+           background: #0f0f0f; color: #e0e0e0; height: 100vh;
+           display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .spinner { width: 48px; height: 48px; border: 4px solid #333;
                border-top: 4px solid #42d4d4; border-radius: 50%;
                animation: spin 1s linear infinite; margin-bottom: 1.5rem; }
@@ -527,7 +523,7 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
     h2 { font-size: 1.4rem; font-weight: 600; margin-bottom: 0.5rem; }
     p  { color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
     .btn { background: #4059e5; color: #fff; border: none; padding: 0.65rem 1.4rem;
-           border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+           border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; text-decoration: none; }
     .btn:hover { opacity: 0.85; }
     footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 0.4rem 1rem;
              background: rgba(0,0,0,0.6); font-size: 0.75rem; color: #555;
@@ -535,15 +531,10 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <div id="status">
-    <div class="spinner"></div>
-    <h2 id="status-title">Connecting to {{.AppName}}…</h2>
-    <p id="status-msg">Starting your session on {{.InstanceType}} ({{.Host}})</p>
-    <button class="btn" id="restart-btn" style="display:none"
-            onclick="location.reload()">Restart Session</button>
-  </div>
-
-  <div id="dcv-container"></div>
+  <div class="spinner" id="spinner"></div>
+  <h2>Connecting to {{.AppName}}…</h2>
+  <p id="msg">Opening DCV session</p>
+  <a class="btn" id="open-btn" href="#" style="display:none">Open {{.AppName}} →</a>
 
   <footer>
     <span>spore:{{.SessionID}} — {{.AppName}} ({{.InstanceType}}) — launched {{.LaunchedAt}}</span>
@@ -551,71 +542,23 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
   </footer>
 
   <script>
-  const DCV_HOST  = '{{.Host}}';
-  const DCV_PORT  = {{.DCVPort}};
-  const APP_NAME  = '{{.AppName}}';
-  // AUTH_TOKEN is set by spawn app launch once spored writes spawn:ready-token (#289).
-  // Empty string causes DCV to show its login screen as fallback.
-  const AUTH_TOKEN = '{{.AuthToken}}';
+  // Redirect to DCV's own web client with the auth token pre-filled.
+  // DCV serves its own SDK and handles the connection — no mixed-content issues.
+  const dcvURL = 'https://{{.Host}}:{{.DCVPort}}/#console{{if .AuthToken}}?authToken={{.AuthToken}}{{end}}';
 
-  function setStatus(title, msg, showRestart) {
-    document.getElementById('status-title').textContent = title;
-    document.getElementById('status-msg').textContent   = msg;
-    document.getElementById('restart-btn').style.display = showRestart ? 'inline-block' : 'none';
-    document.getElementById('status').classList.remove('hidden');
-  }
-  function hideStatus() { document.getElementById('status').classList.add('hidden'); }
+  // Give the spinner a moment to show, then redirect.
+  setTimeout(() => {
+    window.location.href = dcvURL;
+  }, 800);
 
-  async function tryConnect() {
-    const dcvBase = 'https://' + DCV_HOST + ':' + DCV_PORT;
-    setStatus('Connecting to ' + APP_NAME + '…', 'Waiting for DCV at ' + dcvBase, false);
-
-    // Poll until DCV server responds (handles instance cold-start and cert acceptance).
-    for (let i = 0; i < 60; i++) {
-      try {
-        await fetch(dcvBase + '/favicon.ico', { mode: 'no-cors', signal: AbortSignal.timeout(4000) });
-        break;
-      } catch (_) {
-        await new Promise(r => setTimeout(r, 5000));
-      }
-    }
-
-    // Load the DCV Web Client SDK served by the DCV server itself.
-    // No external CDN — the SDK lives at /js/lib/dcv/dcv.js on the DCV server.
-    setStatus('Connecting to ' + APP_NAME + '…', 'Loading DCV client…', false);
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = dcvBase + '/js/lib/dcv/dcv.js';
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('Failed to load DCV SDK from ' + s.src));
-      document.head.appendChild(s);
-    });
-
-    // Connect inline — the app streams directly into this tab.
-    try {
-      await dcv.connect({
-        url:       dcvBase,
-        sessionId: 'console',
-        authToken: AUTH_TOKEN,  // empty → DCV shows login; filled → seamless (#289)
-        divId:     'dcv-container',
-        callbacks: {
-          ready: hideStatus,
-          disconnect: (reason) => {
-            const msgs = {
-              idle: ['Session paused — idle timeout',   'The instance stopped after ' + APP_NAME + ' was idle. Click Restart to wake it.'],
-              ttl:  ['Session ended — time limit reached', 'The instance reached its time limit and was stopped.'],
-            };
-            const [title, msg] = msgs[reason] || ['Session disconnected', 'The DCV session ended (' + reason + ').'];
-            setStatus(title, msg, true);
-          },
-        },
-      });
-    } catch (e) {
-      setStatus('Connection failed', e.message || 'Could not connect to DCV.', true);
-    }
-  }
-
-  tryConnect();
+  // Fallback button in case redirect is blocked.
+  setTimeout(() => {
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('msg').textContent = 'Click below if not redirected automatically:';
+    const btn = document.getElementById('open-btn');
+    btn.href = dcvURL;
+    btn.style.display = 'inline-block';
+  }, 3000);
   </script>
 </body>
 </html>
