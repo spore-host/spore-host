@@ -114,6 +114,9 @@ build {
       "sudo yum install -y --downloadonly --downloaddir=/tmp/nctk nvidia-container-toolkit",
       "for f in /tmp/nctk/*.rpm; do echo \"Extracting $f\"; sudo sh -c \"cd / && rpm2cpio $f | cpio -idmu 2>/dev/null || true\"; done",
       "sudo ldconfig",
+      # Find nvidia-ctk binary (extracted path may vary) and symlink to /usr/local/bin
+      "find / -name nvidia-ctk -type f 2>/dev/null | head -3",
+      "sudo ln -sf $(find / -name nvidia-ctk -type f 2>/dev/null | head -1) /usr/local/bin/nvidia-ctk",
       "nvidia-ctk --version",
       "sudo nvidia-ctk runtime configure --runtime=docker",
       "sudo systemctl restart docker",
