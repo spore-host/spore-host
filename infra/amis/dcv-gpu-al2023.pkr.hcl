@@ -74,13 +74,13 @@ build {
   sources = ["source.amazon-ebs.dcv-gpu-al2023"]
 
   # 1. System update + kernel build tools (required for NVIDIA DKMS)
-  # Note: kernel-devel exact version may lag the running kernel on new AMIs.
-  # Install unversioned package which resolves to current kernel, or fall back to any available.
+  # AL2023 kernel 6.18+ uses prefixed package names: kernel6.18-devel, kernel6.18-headers
+  # The generic kernel-devel/kernel-headers conflict with the versioned packages.
   provisioner "shell" {
     inline = [
       "sudo dnf update -y",
       "sudo dnf install -y gcc make dkms",
-      "sudo dnf install -y kernel-devel-$(uname -r) kernel-headers-$(uname -r) || sudo dnf install -y kernel-devel kernel-headers",
+      "KVER=$(uname -r); KMAJ=$(uname -r | grep -oP '^[0-9]+\\.[0-9]+'); sudo dnf install -y kernel$${KMAJ}-devel-$${KVER} kernel$${KMAJ}-headers-$${KVER} || sudo dnf install -y kernel-devel-$${KVER} kernel-headers-$${KVER} || echo 'WARNING: kernel-devel not found, DKMS may fail'",
     ]
     timeout = "15m"
   }
