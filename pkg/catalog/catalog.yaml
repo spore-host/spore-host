@@ -6,7 +6,7 @@
 # spore-dcv-gpu-al2023 base AMIs — DCV 2025.0.20103 + NVIDIA 595.71.05 on AL2023
 # Built 2026-05-16 with infra/amis/dcv-gpu-al2023.pkr.hcl
 dcv_gpu_amis: &dcv_gpu_amis
-  us-east-1: ami-0350047b2de3630f2  # rebuilt 2026-05-16 without kernel update (NVIDIA module fix)
+  us-east-1: ami-057a81b376797dbeb  # rebuilt 2026-05-16 final: xterm+xsetroot, no create-session
   # Other regions: run packer build -var region=<region> dcv-gpu-al2023.pkr.hcl
   us-east-2: ""
   us-west-1: ""
@@ -35,7 +35,7 @@ apps:
     # DCV configured with auth-token-verifier pointing at spored's embedded verifier (:8444)
     # Built with infra/amis/paraview.pkr.hcl
     amis:
-      us-east-1: ami-047b5296f5e4f2505  # rebuilt 2026-05-16 AL2023+DCV2025+NVIDIA595+Docker (NVIDIA module fix)
+      us-east-1: ami-01658bf56bcf9a03a  # rebuilt 2026-05-16 AL2023+DCV2025+NVIDIA595+Docker (final)
       # Other regions: run packer build -var region=<region> infra/amis/paraview.pkr.hcl
       # Fallback for other regions: uses base DCV AMI (no ParaView installed)
       us-east-2: ami-04239b781533e0ae2

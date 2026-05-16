@@ -35,7 +35,16 @@
       "artifact_id": "us-east-1:ami-0b37473fe300d80a5",
       "packer_run_uuid": "6d1017c2-88f3-5e73-474c-250b9916910c",
       "custom_data": null
+    },
+    {
+      "name": "dcv-gpu-al2023",
+      "builder_type": "amazon-ebs",
+      "build_time": 1778964163,
+      "files": null,
+      "artifact_id": "us-east-1:ami-057a81b376797dbeb",
+      "packer_run_uuid": "d7d15674-4fb9-6107-1ea1-041890394cd4",
+      "custom_data": null
     }
   ],
-  "last_run_uuid": "6d1017c2-88f3-5e73-474c-250b9916910c"
+  "last_run_uuid": "d7d15674-4fb9-6107-1ea1-041890394cd4"
 }
