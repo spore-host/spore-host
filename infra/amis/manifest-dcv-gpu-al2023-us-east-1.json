@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "name": "dcv-gpu-al2023",
+      "builder_type": "amazon-ebs",
+      "build_time": 1778908481,
+      "files": null,
+      "artifact_id": "us-east-1:ami-018eb87640fa546db",
+      "packer_run_uuid": "bbb2ad7c-1697-45c8-0fc0-456d89eb00da",
+      "custom_data": null
+    }
+  ],
+  "last_run_uuid": "bbb2ad7c-1697-45c8-0fc0-456d89eb00da"
+}

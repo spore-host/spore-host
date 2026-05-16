@@ -1,19 +1,21 @@
 # spore.host application catalog
-# GPU apps use the official AWS NICE DCV AMI (owner: 877902723034, free, no Marketplace subscription)
+# GPU base: spore-built AMI on AL2023 — DCV 2025.0.20103 + NVIDIA 595.71.05
+# Built with infra/amis/dcv-gpu-al2023.pkr.hcl
 # CPU apps: AMIs TBD — use standard AL2023 until dedicated AMIs are built (#286)
 
-# DCV GPU AMIs — DCV-AmazonLinux2-x86_64-2023.1.17701-NVIDIA-550.90.10
-# Same AMI version across all regions as of 2026-05-14
+# spore-dcv-gpu-al2023 base AMIs — DCV 2025.0.20103 + NVIDIA 595.71.05 on AL2023
+# Built 2026-05-16 with infra/amis/dcv-gpu-al2023.pkr.hcl
 dcv_gpu_amis: &dcv_gpu_amis
-  us-east-1: ami-0395a52954860831a
-  us-east-2: ami-04239b781533e0ae2
-  us-west-1: ami-055385a154c2c7be7
-  us-west-2: ami-017d0c53440a48b8b
-  eu-west-1: ami-03255242b0ee1097e
-  eu-west-2: ami-072738c544c4799a4
-  eu-central-1: ami-01d899a27cd864289
-  ap-southeast-1: ami-0d1bfd507f4c6aa2b
-  ap-northeast-1: ami-0cd6202cd363b6bc8
+  us-east-1: ami-018eb87640fa546db
+  # Other regions: run packer build -var region=<region> dcv-gpu-al2023.pkr.hcl
+  us-east-2: ""
+  us-west-1: ""
+  us-west-2: ""
+  eu-west-1: ""
+  eu-west-2: ""
+  eu-central-1: ""
+  ap-southeast-1: ""
+  ap-northeast-1: ""
 
 apps:
   - name: paraview
