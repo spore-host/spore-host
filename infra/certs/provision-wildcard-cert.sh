@@ -70,6 +70,7 @@ if ! command -v certbot >/dev/null 2>&1; then
 fi
 certbot certonly --non-interactive --agree-tos \
   --dns-route53 \
+  --key-type rsa --rsa-key-size 2048 \
   -d "$DOMAIN" \
   --email "admin@spore.host" \
   --config-dir "$WORK_DIR/config" \

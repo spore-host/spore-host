@@ -353,10 +353,11 @@ while n: n,d=divmod(n,36); r=chr(48+d if d<10 else 87+d)+r
 print(r or '0')" 2>/dev/null || echo "")
   if [ -n "$ACCOUNT_B36" ]; then
     CERT_BUCKET="spawn-certs-${REGION}"
-    aws s3 cp "s3://${CERT_BUCKET}/${ACCOUNT_B36}/cert.pem" /etc/dcv/dcv.pem 2>/dev/null && \
-    aws s3 cp "s3://${CERT_BUCKET}/${ACCOUNT_B36}/key.pem"  /etc/dcv/dcv.key 2>/dev/null && \
-    chmod 600 /etc/dcv/dcv.key && \
-    sed -i '/^\[security\]/a tls-certificate=/etc/dcv/dcv.pem\ntls-private-key=/etc/dcv/dcv.key' /etc/dcv/dcv.conf && \
+    DCV_CERT_DIR="/var/lib/dcv/.config/NICE/dcv/private"
+    aws s3 cp "s3://${CERT_BUCKET}/${ACCOUNT_B36}/cert.pem" "${DCV_CERT_DIR}/dcv.pem" 2>/dev/null && \
+    aws s3 cp "s3://${CERT_BUCKET}/${ACCOUNT_B36}/key.pem"  "${DCV_CERT_DIR}/dcv.key" 2>/dev/null && \
+    chown dcv:dcv "${DCV_CERT_DIR}/dcv.pem" "${DCV_CERT_DIR}/dcv.key" && \
+    chmod 644 "${DCV_CERT_DIR}/dcv.pem" && chmod 600 "${DCV_CERT_DIR}/dcv.key" && \
     echo "DCV TLS cert installed for *.${ACCOUNT_B36}.spore.host" || \
     echo "DCV TLS cert not available — using self-signed"
   fi
