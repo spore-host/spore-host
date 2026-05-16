@@ -137,6 +137,8 @@ build {
     inline = [
       "sudo sed -i 's/#create-session = true/create-session = true/' /etc/dcv/dcv.conf",
       "sudo sed -i '/^\\[security\\]/a auth-token-verifier=\"http://127.0.0.1:8444\"' /etc/dcv/dcv.conf",
+      # Increase virtual session start timeout to 120s (default 30s is too short for Docker init)
+      "sudo sed -i '/^\\[session-management\\]/a virtual-session-start-timeout=120' /etc/dcv/dcv.conf || sudo sh -c 'echo -e \"\\n[session-management]\\nvirtual-session-start-timeout=120\" >> /etc/dcv/dcv.conf'",
     ]
   }
 
