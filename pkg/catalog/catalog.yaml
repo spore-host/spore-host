@@ -6,7 +6,7 @@
 # spore-dcv-gpu-al2023 base AMIs — DCV 2025.0.20103 + NVIDIA 595.71.05 on AL2023
 # Built 2026-05-16 with infra/amis/dcv-gpu-al2023.pkr.hcl
 dcv_gpu_amis: &dcv_gpu_amis
-  us-east-1: ami-018eb87640fa546db
+  us-east-1: ami-0350047b2de3630f2  # rebuilt 2026-05-16 without kernel update (NVIDIA module fix)
   # Other regions: run packer build -var region=<region> dcv-gpu-al2023.pkr.hcl
   us-east-2: ""
   us-west-1: ""
