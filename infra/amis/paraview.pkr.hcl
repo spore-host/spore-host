@@ -97,21 +97,36 @@ build {
   }
 
   # Create wrapper that runs ParaView in Docker using DCV's virtual display
+  # Key: DCV 2025.0 init script runs concurrently with Xdcv startup.
+  # We wait for the X11 socket, then build a host-network xauth file so
+  # Docker's paraview user can connect to the DCV virtual display.
   provisioner "shell" {
     inline = [
       "sudo tee /usr/local/bin/start-paraview-dcv > /dev/null << 'WRAPPER'",
       "#!/bin/bash",
-      "# Wait for DCV virtual session xauth file (created after session init)",
+      "# Wait for X11 socket (Xdcv starts it as part of session init)",
       "for i in $(seq 1 30); do",
-      "  [ -f /run/user/1000/dcv/console.xauth ] && break",
-      "  sleep 2",
+      "  [ -S /tmp/.X11-unix/X0 ] && break",
+      "  sleep 1",
       "done",
+      "# Wait for xauth file (created by Xdcv once display is ready)",
+      "XAUTH=/run/user/1000/dcv/console.xauth",
+      "for i in $(seq 1 10); do",
+      "  [ -f \"$XAUTH\" ] && break",
+      "  sleep 1",
+      "done",
+      "# Build a Docker-compatible xauth (--network=host requires matching hostname cookie)",
+      "DOCKER_XAUTH=/tmp/paraview.xauth",
+      "COOKIE=$(XAUTHORITY=$XAUTH xauth list 2>/dev/null | head -1 | awk '{print $3}')",
+      "rm -f $DOCKER_XAUTH && touch $DOCKER_XAUTH",
+      "xauth -f $DOCKER_XAUTH add 'localhost/unix:0' MIT-MAGIC-COOKIE-1 $COOKIE",
+      "xauth -f $DOCKER_XAUTH add ':0' MIT-MAGIC-COOKIE-1 $COOKIE",
       "# Run ParaView in Ubuntu 22.04 container with GPU + DCV virtual display",
-      "exec docker run --rm --gpus all \\",
+      "exec docker run --rm --gpus all --network=host \\",
       "  -e DISPLAY=:0 \\",
       "  -e XAUTHORITY=/tmp/.xauth \\",
       "  -v /tmp/.X11-unix:/tmp/.X11-unix \\",
-      "  -v /run/user/1000/dcv/console.xauth:/tmp/.xauth:ro \\",
+      "  -v $DOCKER_XAUTH:/tmp/.xauth:ro \\",
       "  spore-paraview:${var.paraview_version}",
       "WRAPPER",
       "sudo chmod +x /usr/local/bin/start-paraview-dcv",

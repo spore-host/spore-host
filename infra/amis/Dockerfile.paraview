@@ -16,10 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb-render-util0 \
     libxcb-xinerama0 \
     libxcb-xkb1 \
+    libxcb-shape0 \
+    libxcb-xinput0 \
     libxkbcommon-x11-0 \
     libxkbcommon0 \
     libgomp1 \
     libgcc-s1 \
+    libxcursor1 \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
