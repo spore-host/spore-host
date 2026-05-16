@@ -39,4 +39,6 @@ RUN curl -fsSL \
     rm -f /opt/ParaView-${PV_VERSION}-MPI-Linux-Python3.10-x86_64/lib/libVisRTX.so \
           /opt/ParaView-${PV_VERSION}-MPI-Linux-Python3.10-x86_64/lib/libVisRTX.so.0.1.6
 
+RUN useradd -m -u 1000 paraview
+USER paraview
 CMD ["/usr/local/bin/paraview"]
