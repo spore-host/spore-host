@@ -556,9 +556,8 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
 
   function showPaused(reason) {
     document.getElementById('spinner').style.display = 'none';
-    document.getElementById('title').textContent = reason || 'Session paused';
-    document.getElementById('msg').textContent =
-      '{{.AppName}} stopped due to ' + (reason ? reason.toLowerCase() : 'idle timeout') + '.';
+    document.getElementById('title').textContent = 'Session paused';
+    document.getElementById('msg').textContent = reason || '{{.AppName}} was stopped due to inactivity.';
     const btn = document.getElementById('action-btn');
     btn.textContent = 'Restart Session';
     btn.style.display = 'inline-block';
@@ -566,44 +565,46 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
       e.preventDefault();
       btn.textContent = 'Starting…';
       btn.style.opacity = '0.6';
-      document.getElementById('msg').textContent = 'Waking up the instance…';
+      document.getElementById('msg').textContent = 'Starting {{.AppName}}…';
       document.getElementById('spinner').style.display = 'block';
+      document.getElementById('title').textContent = 'Restarting session';
       // Try spawn:// URL scheme (registered at install time).
-      // Falls back gracefully — browser ignores unknown schemes silently.
       window.location.href = 'spawn://connect/{{.InstanceID}}';
-      // After attempting the scheme, start polling so we catch the wake-up.
       pollAndConnect();
     };
   }
 
+  // When AUTH_TOKEN is set, spored confirmed DCV is ready — redirect immediately.
+  // When reconnecting (no token), probe first to detect if the instance is still up.
+  if (AUTH_TOKEN) {
+    window.location.href = dcvURL;
+  } else {
+    tryConnect();
+  }
+
   async function tryConnect() {
-    // Probe DCV — if reachable, redirect into it. If not, show paused state.
     try {
-      await fetch(dcvBase + '/favicon.ico', { mode: 'no-cors', signal: AbortSignal.timeout(5000) });
-      // DCV is up — redirect to it with auth token
+      await fetch(dcvBase + '/favicon.ico', { mode: 'no-cors', signal: AbortSignal.timeout(8000) });
       window.location.href = dcvURL;
     } catch (_) {
-      showPaused('Session paused — instance not reachable');
+      showPaused('{{.AppName}} is not running. Start it again to open a new session.');
     }
   }
 
-  // Poll every 10s so if the instance comes back up, we redirect automatically
   async function pollAndConnect() {
-    for (let i = 0; i < 36; i++) {  // up to 6 minutes
+    for (let i = 0; i < 36; i++) {
       try {
-        await fetch(dcvBase + '/favicon.ico', { mode: 'no-cors', signal: AbortSignal.timeout(5000) });
+        await fetch(dcvBase + '/favicon.ico', { mode: 'no-cors', signal: AbortSignal.timeout(8000) });
         window.location.href = dcvURL;
         return;
       } catch (_) {
         document.getElementById('msg').textContent =
-          'Waiting for instance to wake up… (' + (i+1) + '/36)';
+          'Waiting for {{.AppName}} to start… (' + (i+1) + ' of 36)';
         await new Promise(r => setTimeout(r, 10000));
       }
     }
-    showPaused('Session paused — timed out waiting for instance');
+    showPaused('{{.AppName}} did not start in time. Try again or check your session.');
   }
-
-  tryConnect();
   </script>
 </body>
 </html>

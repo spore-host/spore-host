@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
@@ -487,12 +488,19 @@ func (a *Agent) startDCVAuthVerifier(ctx context.Context) {
 		// spored generates a new token if it restarts (new spawn:ready-url tag).
 		a.dcvTokensMu.Unlock()
 		w.Header().Set("Content-Type", "text/xml")
-		if ok {
-			// username is always an internal system value (e.g. "ec2-user"), not user input.
-			_, _ = w.Write([]byte("<auth result=\"yes\"><username>" + username + "</username></auth>"))
-		} else {
-			_, _ = w.Write([]byte("<auth result=\"no\"><message>invalid or expired token</message></auth>"))
+		type authResp struct {
+			XMLName  xml.Name `xml:"auth"`
+			Result   string   `xml:"result,attr"`
+			Username string   `xml:"username,omitempty"`
+			Message  string   `xml:"message,omitempty"`
 		}
+		var resp authResp
+		if ok {
+			resp = authResp{Result: "yes", Username: username}
+		} else {
+			resp = authResp{Result: "no", Message: "invalid or expired token"}
+		}
+		_ = xml.NewEncoder(w).Encode(resp)
 	})
 	srv := &http.Server{Addr: "127.0.0.1:8444", Handler: mux}
 	go func() { _ = srv.ListenAndServe() }()
