@@ -117,8 +117,8 @@ build {
 
   provisioner "shell" {
     inline = [
-      "sudo dnf install -y libX11-devel gcc",
-      "gcc -lX11 -o /tmp/kiosk-wm /tmp/kiosk-wm.c",
+      "sudo dnf install -y libX11-devel libXrandr-devel gcc",
+      "gcc -lX11 -lXrandr -o /tmp/kiosk-wm /tmp/kiosk-wm.c",
       "sudo mv /tmp/kiosk-wm /usr/local/bin/kiosk-wm",
       "echo 'kiosk-wm built and installed'",
     ]
