@@ -109,34 +109,30 @@ build {
     timeout = "10m"
   }
 
-  # Install metacity window manager (needed to honor --maximize EWMH hint)
+  # Build kiosk-wm — minimal X11 WM that forces all windows fullscreen with no decorations
+  provisioner "file" {
+    source      = "${path.root}/kiosk-wm/kiosk-wm.c"
+    destination = "/tmp/kiosk-wm.c"
+  }
+
   provisioner "shell" {
-    inline = ["sudo dnf install -y metacity"]
+    inline = [
+      "sudo dnf install -y libX11-devel gcc",
+      "gcc -lX11 -o /tmp/kiosk-wm /tmp/kiosk-wm.c",
+      "sudo mv /tmp/kiosk-wm /usr/local/bin/kiosk-wm",
+      "echo 'kiosk-wm built and installed'",
+    ]
   }
 
   # Create wrapper — DCV provides DISPLAY and XAUTHORITY in init script environment
-  # metacity responds to --maximize, then xprop removes title bar (kiosk mode)
+  # kiosk-wm forces all windows to fill the display with no title bar
   provisioner "shell" {
     inline = [
       "sudo tee /usr/local/bin/start-paraview-dcv > /dev/null << 'WRAPPER'",
       "#!/bin/bash",
       "# DCV provides DISPLAY and XAUTHORITY",
-      "metacity --sm-disable &",
-      "sleep 1",
-      "xsetroot -solid '#1a1a2e' &",  # Set desktop background so no black void visible
-      "/opt/ParaView-${var.paraview_version}/bin/paraview --maximize &",
-      "PV_PID=$!",
-      "# Poll for ParaView window, then strip title bar so user cannot drag it off-screen",
-      "for i in $(seq 1 30); do",
-      "  sleep 1",
-      "  for WID in $(xprop -root _NET_CLIENT_LIST 2>/dev/null | grep -oP '0x[0-9a-f]+'); do",
-      "    if xprop -id $WID WM_NAME 2>/dev/null | grep -qi paraview; then",
-      "      xprop -id $WID -format _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS '2, 0, 0, 0, 0'",
-      "      break 2",
-      "    fi",
-      "  done",
-      "done",
-      "wait $PV_PID",
+      "kiosk-wm &",
+      "exec /opt/ParaView-${var.paraview_version}/bin/paraview",
       "WRAPPER",
       "sudo chmod +x /usr/local/bin/start-paraview-dcv",
       "echo 'ParaView kiosk wrapper created'",
