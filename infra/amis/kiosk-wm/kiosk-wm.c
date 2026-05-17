@@ -176,15 +176,11 @@ int main(void) {
                 continue;
             }
 
+            /* Only act on new windows appearing — not on every configure event
+             * (configure events cause resize loops with Qt apps) */
             Window win = 0;
-            if (ev.type == MapNotify)        win = ev.xmap.window;
+            if (ev.type == MapNotify)         win = ev.xmap.window;
             else if (ev.type == CreateNotify) win = ev.xcreatewindow.window;
-            else if (ev.type == ConfigureNotify) {
-                XConfigureEvent ce = ev.xconfigure;
-                if (ce.x != 0 || ce.y != 0 ||
-                    ce.width != width || ce.height != height)
-                    win = ce.window;
-            }
             if (win && win != root) fill_window(win);
         }
     }
