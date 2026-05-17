@@ -580,9 +580,9 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
   const AUTH_TOKEN = '{{.AuthToken}}';
   const APP_NAME  = '{{.AppName}}';
   const dcvBase   = 'https://' + DCV_HOST + ':' + DCV_PORT;
-  // DCV 2025.0 uses query string params (location.search), not hash fragment
-  // fit=fit scales remote desktop to fill the browser viewport
-  const dcvURL    = dcvBase + '/?sessionId=console&fit=fit' + (AUTH_TOKEN ? '&authToken=' + AUTH_TOKEN : '');
+  // DCV web client: sessionId goes in the hash (#), other params in the query string
+  // scaleToFit=true makes the remote desktop scale to fill the browser viewport
+  const dcvURL    = dcvBase + '/#console' + (AUTH_TOKEN ? '?authToken=' + AUTH_TOKEN + '&scaleToFit=true' : '?scaleToFit=true');
 
   function showPaused(reason) {
     document.getElementById('spinner').style.display = 'none';
