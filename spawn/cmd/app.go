@@ -282,9 +282,13 @@ func runAppLaunch(cmd *cobra.Command, args []string) error {
 					dnsName = dns
 				}
 				if readyURL := inst.Tags["spawn:ready-url"]; readyURL != "" {
-					// Extract authToken= query param
+					// Extract authToken= query param — stop at & or # or end
 					if idx := strings.Index(readyURL, "authToken="); idx >= 0 {
-						authToken = readyURL[idx+10:]
+						raw := readyURL[idx+10:]
+						if end := strings.IndexAny(raw, "&#"); end >= 0 {
+							raw = raw[:end]
+						}
+						authToken = raw
 					}
 					// Prefer the host embedded in ready-url (may be FQDN, not raw IP)
 					if start := strings.Index(readyURL, "https://"); start >= 0 {
@@ -582,7 +586,7 @@ var sessionHTMLTemplate = `<!DOCTYPE html>
   const dcvBase   = 'https://' + DCV_HOST + ':' + DCV_PORT;
   // DCV: sessionId in URL hash (#console), authToken in page query string
   // CSS injected into DCV index.html handles viewport filling
-  const dcvURL    = dcvBase + '/?' + (AUTH_TOKEN ? 'authToken=' + AUTH_TOKEN + '&' : '') + 'dynamicResolution=true#console';
+  const dcvURL    = dcvBase + '/?' + (AUTH_TOKEN ? 'authToken=' + AUTH_TOKEN : '') + '#console';
 
   function showPaused(reason) {
     document.getElementById('spinner').style.display = 'none';
