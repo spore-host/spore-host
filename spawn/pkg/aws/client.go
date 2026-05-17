@@ -1065,6 +1065,11 @@ func (c *Client) SetupSporedIAMRole(ctx context.Context) (string, error) {
       "Effect": "Allow",
       "Action": ["s3:GetObject"],
       "Resource": "arn:aws:s3:::spawn-certs-*/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::dcv-license.*/*"
     }
   ]
 }`
