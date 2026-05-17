@@ -109,16 +109,36 @@ build {
     timeout = "10m"
   }
 
-  # Create wrapper — DCV sets DISPLAY and XAUTHORITY in the init script environment
+  # Install metacity window manager (needed to honor --maximize EWMH hint)
+  provisioner "shell" {
+    inline = ["sudo dnf install -y metacity"]
+  }
+
+  # Create wrapper — DCV provides DISPLAY and XAUTHORITY in init script environment
+  # metacity responds to --maximize, then xprop removes title bar (kiosk mode)
   provisioner "shell" {
     inline = [
       "sudo tee /usr/local/bin/start-paraview-dcv > /dev/null << 'WRAPPER'",
       "#!/bin/bash",
-      "# DCV provides DISPLAY and XAUTHORITY — just launch ParaView maximized",
-      "exec /opt/ParaView-${var.paraview_version}/bin/paraview --maximize",
+      "# DCV provides DISPLAY and XAUTHORITY",
+      "metacity --sm-disable &",
+      "sleep 1",
+      "/opt/ParaView-${var.paraview_version}/bin/paraview --maximize &",
+      "PV_PID=$!",
+      "# Poll for ParaView window, then strip title bar so user cannot drag it off-screen",
+      "for i in $(seq 1 30); do",
+      "  sleep 1",
+      "  for WID in $(xprop -root _NET_CLIENT_LIST 2>/dev/null | grep -oP '0x[0-9a-f]+'); do",
+      "    if xprop -id $WID WM_NAME 2>/dev/null | grep -qi paraview; then",
+      "      xprop -id $WID -format _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS '2, 0, 0, 0, 0'",
+      "      break 2",
+      "    fi",
+      "  done",
+      "done",
+      "wait $PV_PID",
       "WRAPPER",
       "sudo chmod +x /usr/local/bin/start-paraview-dcv",
-      "echo 'Native ParaView wrapper created'",
+      "echo 'ParaView kiosk wrapper created'",
     ]
   }
 
