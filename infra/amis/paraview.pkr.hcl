@@ -123,6 +123,7 @@ build {
       "# DCV provides DISPLAY and XAUTHORITY",
       "metacity --sm-disable &",
       "sleep 1",
+      "xsetroot -solid '#1a1a2e' &",  # Set desktop background so no black void visible
       "/opt/ParaView-${var.paraview_version}/bin/paraview --maximize &",
       "PV_PID=$!",
       "# Poll for ParaView window, then strip title bar so user cannot drag it off-screen",

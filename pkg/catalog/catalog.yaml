@@ -35,7 +35,7 @@ apps:
     # DCV configured with auth-token-verifier pointing at spored's embedded verifier (:8444)
     # Built with infra/amis/paraview.pkr.hcl
     amis:
-      us-east-1: ami-069b45ec378d48e63  # rebuilt 2026-05-16 definitive — fonts, xcb, resize, xauth, enable-client-resize
+      us-east-1: ami-092fffd4c55706285  # rebuilt 2026-05-17 — native AL2023, metacity+maximize+xsetroot
       # Other regions: run packer build -var region=<region> infra/amis/paraview.pkr.hcl
       # Fallback for other regions: uses base DCV AMI (no ParaView installed)
       us-east-2: ami-04239b781533e0ae2
