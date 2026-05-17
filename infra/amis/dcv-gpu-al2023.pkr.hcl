@@ -101,11 +101,13 @@ build {
     inline = [
       "aws s3 cp --no-sign-request s3://ec2-linux-nvidia-drivers/latest/NVIDIA-Linux-x86_64-595.71.05-grid-aws.run /tmp/nvidia.run",
       "chmod +x /tmp/nvidia.run",
-      # Do NOT use --no-drm: DCV 2025.0 virtual sessions require nvidia-drm for display output
-      "sudo /tmp/nvidia.run --silent --disable-nouveau --skip-module-load",
-      # Load drm and nvidia modules at boot (drm must load before nvidia on AL2023 kernel 6.18)
+      # Install NVIDIA driver and load modules immediately (Packer runs on a GPU instance)
+      # This allows nvidia-xconfig to probe the GPU and configure DCV-GL at build time.
+      "sudo /tmp/nvidia.run --silent --disable-nouveau",
+      # Ensure drm loads before nvidia on AL2023 6.18 (needed for DCV virtual sessions)
       "echo -e 'drm\\ndrm_kms_helper\\nnvidia\\nnvidia_uvm\\nnvidia_drm' | sudo tee /etc/modules-load.d/nvidia.conf",
-      "echo 'NVIDIA driver installed (module load skipped at build time, will load at instance start)'",
+      "nvidia-smi --query-gpu=name,driver_version --format=csv,noheader",
+      "echo 'NVIDIA driver installed and modules loaded'",
     ]
     timeout = "20m"
   }
@@ -133,43 +135,36 @@ build {
     timeout = "15m"
   }
 
-  # 4a. Install Xorg and set up first-boot DCV-GL configuration service
-  # DCV-GL needs: (1) NVIDIA Xorg on :0 as '3D X server', (2) dcvgladmin enable.
-  # This can only run after NVIDIA kernel modules load (at boot, not build time).
-  # A oneshot systemd service handles this on first boot.
+  # 4a. Configure DCV-GL for GPU-accelerated OpenGL in virtual sessions
+  # NVIDIA modules are loaded (step 2 above), so nvidia-xconfig can probe the GPU.
+  # DCV-GL routes OpenGL calls through an NVIDIA Xorg server on :0.
   provisioner "shell" {
     inline = [
       "sudo dnf install -y xorg-x11-server-Xorg",
-      # First-boot setup: generate xorg.conf, enable dcv-gl, start Xorg service
-      "sudo tee /usr/local/bin/dcv-gl-setup.sh > /dev/null << 'SCRIPT'",
-      "#!/bin/bash",
-      "set -e",
-      "# Generate headless NVIDIA xorg.conf (requires NVIDIA modules loaded)",
-      "nvidia-xconfig --virtual=1280x1024 --allow-empty-initial-configuration",
-      "# Enable DCV-GL GLVND interception",
-      "dcvgladmin enable",
-      "# Start NVIDIA Xorg on :0 for DCV-GL rendering backend",
-      "nohup /usr/libexec/Xorg :0 -config /etc/X11/xorg.conf -noreset -background none &>/var/log/xorg-dcv.log &",
-      "sleep 2",
-      "echo 'DCV-GL setup complete'",
-      "SCRIPT",
-      "sudo chmod +x /usr/local/bin/dcv-gl-setup.sh",
-      # Systemd oneshot that runs before dcvserver on every boot
-      "sudo tee /etc/systemd/system/dcv-gl-setup.service > /dev/null << 'SERVICE'",
+      # Generate headless NVIDIA xorg.conf (GPU is available during Packer build)
+      "sudo nvidia-xconfig --virtual=1280x1024 --allow-empty-initial-configuration",
+      # Add required options for headless GPU operation
+      "sudo sed -i '/Section \"Screen\"/a\\    Option \"AllowEmptyInitialConfiguration\" \"True\"' /etc/X11/xorg.conf",
+      # Add gl-displays to dcv.conf so DCV knows where the NVIDIA X server is
+      # Enable DCV-GL GLVND interception
+      "sudo dcvgladmin enable",
+      # Systemd service to start NVIDIA Xorg on :0 before dcvserver on every boot
+      "sudo tee /etc/systemd/system/dcv-gl-xorg.service > /dev/null << 'SERVICE'",
       "[Unit]",
-      "Description=DCV-GL NVIDIA Xorg setup",
+      "Description=NVIDIA Xorg 3D server for DCV-GL GPU rendering",
       "Before=dcvserver.service",
-      "After=sysinit.target",
+      "After=network.target",
       "[Service]",
-      "Type=oneshot",
-      "ExecStart=/usr/local/bin/dcv-gl-setup.sh",
-      "RemainAfterExit=yes",
+      "Type=simple",
+      "ExecStart=/usr/libexec/Xorg :0 -config /etc/X11/xorg.conf -noreset -background none",
+      "Restart=on-failure",
+      "RestartSec=5",
       "[Install]",
       "WantedBy=multi-user.target",
       "SERVICE",
       "sudo systemctl daemon-reload",
-      "sudo systemctl enable dcv-gl-setup.service",
-      "echo 'DCV-GL setup service installed — runs on each boot before dcvserver'",
+      "sudo systemctl enable dcv-gl-xorg.service",
+      "echo 'DCV-GL configured — NVIDIA Xorg will start on :0 before dcvserver'",
     ]
   }
 
@@ -180,7 +175,8 @@ build {
     inline = [
       "sudo sed -i '/^\\[security\\]/a auth-token-verifier=\"http://127.0.0.1:8444\"' /etc/dcv/dcv.conf",
       # enable-client-resize: virtual display resizes dynamically to match the browser viewport
-      "sudo sed -i '/^\\[display\\]/a enable-client-resize=true' /etc/dcv/dcv.conf",
+      # gl-displays: tell DCV where the NVIDIA 3D X server runs
+      "sudo sed -i '/^\\[display\\]/a enable-client-resize=true\\ngl-displays = \":0.0\"' /etc/dcv/dcv.conf",
       # Web client: inject CSS so the DCV display fills the entire browser viewport
       "sudo python3 -c \"\nimport re\nhtml = open('/usr/share/dcv/www/index.html').read()\ncss = '<style>\\n    body {margin: 0}\\n    html, body, #root { width: 100vw !important; height: 100vh !important; overflow: hidden !important; }\\n    #dcv-display { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; }\\n  </style>'\nnew = html.replace('<style>\\n    body {margin: 0}\\n  </style>', css)\nopen('/usr/share/dcv/www/index.html', 'w').write(new)\n\"",
       # session-management: disable DCV's own idle timeout (spored owns idle via X11 activity file)
