@@ -13,6 +13,11 @@ own changelogs for CLI releases.
 
 ## [Unreleased]
 
+### Security
+- Bumped `google.golang.org/grpc` v1.83.1 → v1.83.2 (indirect) in the
+  `spore-bot` and `accountlifecycle` lambda modules, fixing CVE-2026-84445
+  (HIGH, gRPC-Go xDS-server DoS) flagged by the Trivy gate.
+
 ### Removed
 - **The self-hosted `orion` CI runner fleet and everything that operated it**
   (`infra/ci-runners/`, `.github/workflows/{ci-runner-drift,fleet-canary,fleet-monitor}.yml`).
