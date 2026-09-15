@@ -23,6 +23,29 @@ own changelogs for CLI releases.
   own occasional outages and slower minutes — the tradeoff the fleet originally
   existed to avoid, now accepted deliberately. Also dropped `/infra/ci-runners`
   from `.github/dependabot.yml`'s docker directories (nothing left to scan).
+- **The retired Packer / owned-base-AMI build system under `infra/amis/`** (#546,
+  spore-host#286/#389). The app catalog moved to SSM-resolved AWS GPU DLAMIs +
+  Amazon DCV installed at boot + per-app container images (spawn v0.106.0/v0.107.0,
+  libs v0.44.0/v0.45.0); owning the base AMI was the *cause* of the dangling/
+  unshared-AMI drift in #389, not the fix. Deleted the dead build assets the docs
+  pointed at: `build.sh`, `catalog-update.sh`, `share-base-ami.sh`,
+  `dcv-gpu-al2023.pkr.hcl`, `paraview.pkr.hcl`, `Dockerfile.paraview`,
+  `install-nvidia-docker.sh`, the `manifest-*.json` files, and the `base/` and
+  `apps/` Packer-recipe directories. The container recipes (`infra/amis/containers/`),
+  `kiosk-wm/`, and the `cleanup-orphan-amis.sh` remediation tool remain.
+
+### Documentation
+- **Rewrote `infra/amis/README.md` and `infra/amis/containers/README.md`** to
+  describe only the current app-streaming model — SSM-resolved AWS GPU DLAMI +
+  DCV-at-boot, optional `base_amis:` pin, and the container recipe→`build-push.sh`
+  →public-ECR→bind (`--image`/overlay) flow — and removed the Packer / base-AMI /
+  `share-base-ami.sh` / Marketplace instructions (#546). Corrected the catalog
+  path to `libs/catalog/catalog.yaml` (was the nonexistent `pkg/catalog/`) and
+  reconciled the public-ECR alias to the actual `public.ecr.aws/f8g1e7l5` (the
+  vanity `spore-host` alias awaits async AWS approval), including the
+  `build-push.sh` default registry and the container Dockerfile headers.
+- **Classified application streaming (DCV + web-UI apps) as Beta** in
+  `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
 - **Clicking Disconnect no longer reports the session as having closed on its own**

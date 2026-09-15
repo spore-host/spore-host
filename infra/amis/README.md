@@ -1,122 +1,89 @@
-# spore.host AMI Build Framework
+# spore.host application images
 
-Templatized Packer build system for NICE DCV application streaming AMIs. Adding a new application is writing one ~10-line YAML recipe file.
+App-catalog build assets for spore.host's **container-based** application
+streaming. Each streamable app ships as a Docker image that spawn pulls at
+launch — there is **no owned or shared per-app AMI, and no Packer build**.
 
-## Architecture
+> **The Packer/owned-base-AMI model was retired** (spawn v0.106.0/v0.107.0,
+> libs v0.44.0/v0.45.0 — see spore-host#286/#389). The old per-app, per-region
+> `*.pkr.hcl` builds, the `dcv-*-base` AMIs, `build.sh`, `catalog-update.sh`,
+> `share-base-ami.sh`, and the AWS Marketplace publishing track are **gone**.
+> Owning the base AMI was the *cause* of the dangling/unshared-AMI drift in
+> #389, not the fix. If you are looking for those files, they were deleted in
+> the PR for #546.
+
+## How an app launch works today
+
+`spawn app launch <app>` (e.g. `spawn app launch paraview`):
+
+1. **Base image** — spawn resolves the AWS-maintained **GPU Deep Learning Base
+   AMI (Amazon Linux 2023)** — NVIDIA driver preinstalled, published by AWS in
+   **every region** — via an **SSM public parameter at launch time**. Nothing is
+   owned, copied, or shared. (CPU-only apps use the standard AL2023 AMI.)
+2. **DCV at boot** — for `application`/`desktop` apps, spawn installs the free,
+   self-licensing **Amazon DCV** server at first boot and starts a virtual
+   session. `web` apps skip DCV entirely (see below).
+3. **App image** — spawn pulls the app's container image from public ECR and
+   runs it as the session (bind-mounting the host X socket for GUI apps).
+
+The catalog *may* carry an optional `base_amis:` pin to a custom pre-baked image,
+but should not — the SSM-resolved DLAMI is the default and covers every region by
+construction.
+
+## Launch kinds
+
+Each catalog entry has a `kind`:
+
+| kind | What it is | DCV? |
+|------|------------|------|
+| `application` (default) | A single GUI app streamed over a DCV virtual session (what `dcv: true` means). | yes |
+| `desktop` | A bare Linux desktop over DCV — open a terminal and run anything. | yes |
+| `web` | An app that serves its own web UI on `port` (Jupyter, code-server, …), fronted by a spored TLS reverse proxy. | **no** |
+
+## The catalog
+
+The application catalog lives in the **libs** repo at
+**`libs/catalog/catalog.yaml`** (it was previously `pkg/catalog/catalog.yaml`;
+that path no longer exists). An entry describes the app's resource requirements
+and its image reference:
+
+```yaml
+- name: paraview
+  description: "Scientific visualization — CFD, FEA, large mesh"
+  instance_families: [g6, g5, g4dn]
+  gpu: true
+  dcv: true
+  # Recipe, not cake (#392): spore.host ships the public build recipe; the
+  # image itself is BYO. Build it with the recipe below and bind it in
+  # ~/.spawn/catalog.yaml (image:/tag_default:), or launch with --image.
+  recipe: infra/amis/containers/paraview
+  # image: public.ecr.aws/f8g1e7l5/paraview   # optional, when a public image exists
+  # tag_default: "5.13.2"
+```
+
+- **`recipe:`** points at a build recipe under `infra/amis/containers/<app>/`
+  (Dockerfile + entrypoint). spore.host ships the recipe; the built image is
+  bring-your-own unless a public one is published.
+- **`image:` / `tag_default:`** name a container image in public ECR. There is
+  **no `amis:` / `base_amis:` table to author** — the base is SSM-resolved. (An
+  `amis: {}` entry is rejected by the catalog validator.)
+
+## Building an app image
+
+See **[`containers/README.md`](containers/README.md)** for the full build-and-push
+flow (`containers/build-push.sh` → public ECR → bind via overlay or `--image`).
+
+## What's in this directory
 
 ```
 infra/amis/
-  base/
-    dcv-cpu-al2.pkr.hcl     ← CPU base: AL2 + DCV + spored (no GPU)
-    dcv-gpu-al2.pkr.hcl     ← GPU base: AL2 + DCV + NVIDIA drivers + spored
-    nvidia-versions.yaml    ← locked driver matrix (g4dn, g5, g6, g6e)
-  apps/
-    paraview.yaml           ← per-app recipe
-    igv.yaml
-    chimerax.yaml
-    ...
-  build.sh                  ← build driver
-  catalog-update.sh         ← patch pkg/catalog/catalog.yaml with built AMI IDs
+  containers/            ← app image build recipes + build-push.sh (see its README)
+    build-push.sh
+    paraview/            ← Dockerfile + entrypoint
+    chimerax/
+  kiosk-wm/              ← minimal fullscreen X11 window manager used inside
+                           GUI app sessions
+  cleanup-orphan-amis.sh ← one-shot remediation: deregisters the leftover
+                           per-app AMIs (and their snapshots) from the retired
+                           model. Dry-run by default. Not part of any launch.
 ```
-
-## Prerequisites
-
-1. **Packer** installed: https://developer.hashicorp.com/packer/install
-2. **AWS credentials** for infra account (812107987990) with EC2/AMI permissions
-3. **Marketplace subscriptions** accepted for the NICE DCV AMIs:
-   - CPU variant: search "NICE DCV" in AWS Marketplace → AWS owner
-   - GPU variant: same, GPU/NVIDIA variant
-
-## Building
-
-### Step 1: Build base layers (once)
-
-```sh
-# CPU base (for IGV, QGIS, Fiji, DS9, etc.)
-./build.sh --base dcv-cpu-al2 us-east-1
-
-# GPU base — 535-series drivers for g6/g6e (L4/L40S)
-packer build \
-  -var "region=us-east-1" \
-  -var "instance_type=g6.xlarge" \
-  -var "driver_version=535.129.03" \
-  -var "cuda_version=12.2" \
-  -var "layer_name=dcv-gpu-al2-535" \
-  base/dcv-gpu-al2.pkr.hcl
-
-# GPU base — 525-series drivers for g4dn/g5 (T4/A10G)
-packer build \
-  -var "region=us-east-1" \
-  -var "instance_type=g5.xlarge" \
-  -var "driver_version=525.105.17" \
-  -var "cuda_version=12.0" \
-  -var "layer_name=dcv-gpu-al2-525" \
-  base/dcv-gpu-al2.pkr.hcl
-```
-
-### Step 2: Build an app AMI
-
-```sh
-# Single app, single region
-./build.sh paraview us-east-1
-
-# Single app, all regions
-SPORE_BUILD_REGIONS=us-east-1,us-west-2,eu-west-1 ./build.sh paraview
-
-# All apps (long — plan for several hours)
-./build.sh --all
-```
-
-### Step 3: Update the Go catalog
-
-After a build, Packer writes `packer-manifest-<app>-<region>.json`. Patch the catalog:
-
-```sh
-./catalog-update.sh paraview
-# or
-./catalog-update.sh --all
-```
-
-This updates `pkg/catalog/catalog.yaml` with the new AMI IDs. Commit the result.
-
-## Adding a new application
-
-Create `apps/<appname>.yaml`:
-
-```yaml
-name: myapp
-base: dcv-cpu-al2          # or dcv-gpu-al2-535 for GPU apps
-regions: [us-east-1, us-west-2, eu-west-1]
-catalog_name: myapp        # must match name in pkg/catalog/catalog.yaml
-
-install: |
-  yum install -y <dependencies>
-  curl -fsSL <download-url> -o /tmp/myapp.tar.gz
-  tar -xzf /tmp/myapp.tar.gz -C /opt/
-  ln -sf /opt/myapp/bin/myapp /usr/local/bin/myapp
-
-test: myapp --version
-launch_command: /usr/local/bin/myapp
-```
-
-Also add an entry to `pkg/catalog/catalog.yaml` with `amis: {}`.
-
-## NVIDIA driver matrix
-
-See `base/nvidia-versions.yaml`. Update deliberately — a bad driver breaks GPU
-rendering for all apps built on that base layer.
-
-| Family | GPU | Driver | CUDA | Base layer |
-|--------|-----|--------|------|------------|
-| g4dn | T4 | 525.105.17 | 12.0 | dcv-gpu-al2-525 |
-| g5 | A10G | 525.105.17 | 12.0 | dcv-gpu-al2-525 |
-| g6 | L4 | 535.129.03 | 12.2 | dcv-gpu-al2-535 |
-| g6e | L40S | 535.129.03 | 12.2 | dcv-gpu-al2-535 |
-
-## Publishing to AWS Marketplace
-
-See issue #286 for the full publishing process. Once an AMI is built and tested:
-
-1. Copy it to all required regions (AWS Console or `aws ec2 copy-image`)
-2. Submit for Marketplace listing (spore-host publisher account)
-3. Update `pkg/catalog/catalog.yaml` with final Marketplace AMI IDs

@@ -42,6 +42,7 @@ out where they appear in the docs; the list below is the canonical index.
 
 | Surface | Status | Where |
 |---------|--------|-------|
+| **Application streaming** (`spawn app` — DCV GUI apps + web-UI apps) | <span class="doc-badge beta">Beta</span> | Launch a research app (ParaView, ChimeraX, …) streamed over Amazon DCV, or a web-UI app (Jupyter, code-server) behind a TLS proxy. Shipped in spawn v0.107.0; the container catalog and its interface may still change. See [Jupyter on spawn](/guides/jupyter). |
 | **HTTP API + Python SDK** | <span class="doc-badge beta">Beta</span> | The SDK is the supported entry point; the underlying HTTP API may change. See [Python SDK](/guides/python-sdk). |
 | **Workflow adapters** (Nextflow, WDL, CWL, Snakemake, Airflow) | <span class="doc-badge experimental">Experimental</span> | All five are early — two pre-1.0 prototypes and three `v0.1.0` initial releases. Read the [status & compatibility matrix](/guides/workflow-engines) before relying on one. |
 | **Pipeline stage streaming** (tcp/grpc/zmq) | <span class="doc-badge experimental">Experimental</span> | Operationally involved; prefer the S3 handoff. See [Spawn pipelines](/guides/pipelines#streaming-between-stages). |

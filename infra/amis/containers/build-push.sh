@@ -2,17 +2,19 @@
 # build-push.sh — build a spore.host app container and push it to a public ECR
 # repository (#290 container catalog).
 #
-# Replaces the per-app Packer AMI build (paraview.pkr.hcl): instead of baking the
-# app onto a per-region AMI, we publish ONE container image that runs on the
-# shared spore-dcv-base AMI in every region.
+# Replaces the retired per-app Packer AMI build: instead of baking the app onto a
+# per-region AMI, we publish ONE container image that spawn runs on the
+# SSM-resolved AWS GPU DLAMI (AL2023) in every region (spore-host#286/#389).
 #
 # Usage:
 #   ./build-push.sh <app> <version> [registry]
 #   ./build-push.sh paraview 5.13.2
-#   ./build-push.sh paraview 5.13.2 public.ecr.aws/spore-host
+#   ./build-push.sh paraview 5.13.2 public.ecr.aws/f8g1e7l5
 #
 # Environment:
-#   SPORE_ECR_REGISTRY   default registry (default: public.ecr.aws/spore-host)
+#   SPORE_ECR_REGISTRY   default registry (default: public.ecr.aws/f8g1e7l5 — the
+#                        build account's default ECR Public alias; a vanity
+#                        "spore-host" alias needs async AWS approval)
 #   SPORE_ECR_REGION     region for ECR Public auth (always us-east-1 for public)
 #   SPORE_BUILD_DRYRUN   "true" → build only, do not push
 #
@@ -28,7 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 APP="${1:-}"
 VERSION="${2:-}"
-REGISTRY="${3:-${SPORE_ECR_REGISTRY:-public.ecr.aws/spore-host}}"
+REGISTRY="${3:-${SPORE_ECR_REGISTRY:-public.ecr.aws/f8g1e7l5}}"
 DRYRUN="${SPORE_BUILD_DRYRUN:-false}"
 ECR_REGION="${SPORE_ECR_REGION:-us-east-1}"
 

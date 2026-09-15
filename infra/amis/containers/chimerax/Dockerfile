@@ -7,13 +7,14 @@
 # https://www.cgl.ucsf.edu/chimerax/download.html and place it in THIS directory
 # (infra/amis/containers/chimerax/) before building. build-push.sh checks for it.
 #
-# Runs on the shared spore-dcv-base AMI (DCV, NVIDIA driver, X server, Docker,
-# NVIDIA Container Toolkit, spored). The container brings ChimeraX + a minimal WM
-# + the fullscreen launcher and draws into the host's DCV session display.
+# Runs on the AWS GPU DLAMI (AL2023) that spawn resolves via SSM at launch (NVIDIA
+# driver preinstalled); DCV is installed at boot (X server, the stream). The
+# container brings ChimeraX + a minimal WM + the fullscreen launcher and draws
+# into the host's DCV session display.
 #
 # Build/push: infra/amis/containers/build-push.sh chimerax 1.12   (after placing the .deb)
 #
-# Pinned linux/amd64: the .deb is amd64 and the base AMI runs x86_64 GPU instances.
+# Pinned linux/amd64: the .deb is amd64 and the DLAMI base runs x86_64 GPU instances.
 FROM --platform=linux/amd64 ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive

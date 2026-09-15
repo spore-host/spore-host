@@ -1,18 +1,18 @@
 # ParaView application container for the spore.host container catalog (#290).
 #
-# Runs on the shared spore-dcv-base AMI (which provides DCV, the NVIDIA driver,
-# the X server on :0, Docker, and the NVIDIA Container Toolkit). The container
-# brings ParaView + a minimal window manager + the fullscreen launcher; it draws
-# into the host's DCV display via the bind-mounted X socket. spawn launches it as
-# the DCV session init with:
+# Runs on the AWS GPU DLAMI (AL2023) that spawn resolves via SSM at launch (which
+# provides the NVIDIA driver); DCV is installed at boot and provides the X server
+# on :0. The container brings ParaView + a minimal window manager + the
+# fullscreen launcher; it draws into the host's DCV display via the bind-mounted X
+# socket. spawn launches it as the DCV session init with:
 #
 #   docker run --rm --gpus all --network host -e DISPLAY=:0 \
-#     -v /tmp/.X11-unix:/tmp/.X11-unix public.ecr.aws/spore-host/paraview:<tag>
+#     -v /tmp/.X11-unix:/tmp/.X11-unix public.ecr.aws/f8g1e7l5/paraview:<tag>
 #
 # Build/push: infra/amis/containers/build-push.sh paraview <version>
 #
-# Pinned to linux/amd64: the ParaView tarball below is x86_64, and the
-# spore-dcv-base AMI runs on x86_64 GPU instances (g6/g5/g4dn). Without this
+# Pinned to linux/amd64: the ParaView tarball below is x86_64, and the DLAMI base
+# runs on x86_64 GPU instances (g6/g5/g4dn). Without this
 # pin, building on an arm64 host (e.g. Apple Silicon) produces an arm64 image
 # wrapping an x86_64 binary that cannot exec.
 FROM --platform=linux/amd64 ubuntu:24.04
