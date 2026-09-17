@@ -22,7 +22,7 @@ lagotto watch <instance-type-pattern> [flags]
 | `--regions` | `-r` | stringSlice |  | Regions to watch (comma-separated; empty = all enabled). Widening across regions can break data co-location (cross-region egress) — prefer --azs within your data's region first. |
 | `--sagemaker-config` |  | string |  | YAML/JSON file with the SageMaker job definition (required for --service sagemaker) |
 | `--service` |  | string | `ec2` | Capacity service: ec2, or sagemaker (submits your SageMaker job for ml.* types) |
-| `--spawn-config` |  | string |  | YAML file with spawn LaunchConfig (required for --action spawn) |
+| `--spawn-config` |  | string |  | spawn LaunchConfig YAML (required for --action spawn): a local path, an s3://bucket/key URI, or '-' for stdin. Any user_data_file / iam_policy_file it references is read now and stored inline, so a hosted poller can launch it with no access to this machine. |
 | `--spot` |  | bool |  | Watch for Spot capacity (default: On-Demand) |
 | `--ttl` |  | string | `24h` | How long to keep watching (e.g., 24h, 7d) |
 | `--until` |  | string |  | Fleet completion condition, re-checked each poll: 's3-empty: s3://b/manifest minus s3://b/done/', 'http-200: https://…', or 'shell: &lt;cmd&gt;' (shell = local daemon only). When true the fleet retires. |
