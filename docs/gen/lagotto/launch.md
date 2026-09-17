@@ -32,6 +32,6 @@ lagotto launch [flags]
 | `--region` |  | string |  | AWS region to launch in (default: from your AWS config) |
 | `--reservation-id` |  | string |  | Capacity Block reservation id (cr-…) to launch into |
 | `--retry-interval` |  | duration | `30s` | With --at-reservation-start: how often to retry through the boundary until the launch succeeds |
-| `--spawn-config` |  | string |  | YAML file with the spawn LaunchConfig (required) |
+| `--spawn-config` |  | string |  | spawn LaunchConfig YAML (required): a local path, an s3://bucket/key URI, or '-' for stdin. Referenced user_data_file / iam_policy_file are read now and stored inline. |
 | `--stack-name` |  | string | `lagotto` | Deployed lagotto stack name (provides the poller target) |
 
