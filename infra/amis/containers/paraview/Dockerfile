@@ -15,7 +15,7 @@
 # runs on x86_64 GPU instances (g6/g5/g4dn). Without this
 # pin, building on an arm64 host (e.g. Apple Silicon) produces an arm64 image
 # wrapping an x86_64 binary that cannot exec.
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM --platform=linux/amd64 ubuntu:25.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 
