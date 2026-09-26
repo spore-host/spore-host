@@ -41,6 +41,7 @@ spawn launch <name> [flags]
 | `--command` |  | string |  | Command to run on all instances (executed after spored setup) |
 | `--completion-delay` |  | string | `30s` | Grace period after completion signal |
 | `--completion-file` |  | string | `/tmp/SPAWN_COMPLETE` | File to watch for completion signal |
+| `--completion-webhook-url` |  | string |  | On workload completion (--completion-file detected), spored POSTs a fire-once, best-effort notice to this URL (spawn#497) — lets a caller wait on its own webhook/queue instead of polling an artifact against a pre-guessed deadline; empty = disabled |
 | `--compliance-strict` |  | bool |  | Strict mode: fail on warnings (default: show warnings only) |
 | `--config` |  | string |  | Launch config YAML file (supports plugins: list) |
 | `--cost-limit` |  | float64 |  | Terminate/stop when compute spend reaches this amount in USD (compute cost only; 0 = disabled) |
@@ -50,6 +51,7 @@ spawn launch <name> [flags]
 | `--dns-api-endpoint` |  | string |  | Custom DNS API endpoint (overrides default) |
 | `--dns-domain` |  | string |  | Custom DNS domain (overrides default) |
 | `--dns` |  | string |  | Override DNS name if different from --name (advanced) |
+| `--dry-run` |  | bool |  | Resolve and print the launch configuration without launching anything (no AWS mutation) |
 | `--efa` |  | bool |  | Enable Elastic Fabric Adapter for ultra-low latency MPI (requires supported instance types) |
 | `--efs-id` |  | string |  | EFS filesystem ID to mount (fs-xxx) |
 | `--efs-mount-options` |  | string |  | Custom EFS mount options (overrides profile) |
@@ -60,7 +62,7 @@ spawn launch <name> [flags]
 | `--fsx-export-path` |  | string |  | S3 path to export to (e.g., s3://bucket/prefix) |
 | `--fsx-id` |  | string |  | Existing FSx Lustre filesystem ID to mount (fs-xxx) |
 | `--fsx-import-path` |  | string |  | S3 path to import from (e.g., s3://bucket/prefix) |
-| `--fsx-lifecycle` |  | string |  | FSx lifetime (REQUIRED with --fsx-create): 'ephemeral' (reaped when this instance terminates) or 'durable' (persists; requires --fsx-ttl) |
+| `--fsx-lifecycle` |  | string |  | FSx lifetime (REQUIRED with --fsx-create): 'ephemeral' (reclaimed asynchronously once the instance is gone — by the out-of-band reaper, not by `spawn terminate`) or 'durable' (persists; requires --fsx-ttl) |
 | `--fsx-mount-point` |  | string | `/fsx` | FSx mount point (default: /fsx) |
 | `--fsx-recall` |  | string |  | Recall FSx filesystem by stack name (recreate from S3) |
 | `--fsx-s3-bucket` |  | string |  | S3 bucket for FSx import/export (required with --fsx-create) |
@@ -78,11 +80,13 @@ spawn launch <name> [flags]
 | `--iam-trust-services` |  | stringSlice | `[ec2]` | Services that can assume role |
 | `--idle-timeout` |  | string |  | Auto-terminate if idle (defaults to 1h if neither --ttl nor --idle-timeout set) |
 | `--instance-names` |  | string |  | Instance name template (e.g., 'worker-{index}', default: '{job-array-name}-{index}') |
+| `--instance-profile` |  | string |  | Attach this EXISTING IAM instance profile by name, bypassing all --iam-role/--iam-policy/--iam-policy-file resolution and the spored-instance-profile default entirely. Use when you need a deterministic, auditable choice instead of spawn's create/reuse heuristic (#550) — e.g. a profile you've already scoped to a specific data bucket. |
 | `--instance-type` |  | string |  | Instance type |
 | `--interactive` |  | bool |  | Force interactive wizard |
 | `--job-array-name` |  | string |  | Job array group name (required if --count &gt; 1) |
 | `--key-name` |  | string |  | SSH key pair name (EC2 KeyName) |
 | `--launch-delay` |  | string | `0s` | Delay between instance launches (e.g., 5s) |
+| `--max-concurrent-auto` |  | bool |  | Derive --max-concurrent from the account's real AWS quota headroom for the sweep's instance type(s)/region, instead of a user-supplied number (spawn#492) |
 | `--max-concurrent-per-region` |  | int |  | Max instances running simultaneously per region (0 = unlimited) |
 | `--max-concurrent` |  | int |  | Max instances running simultaneously (0 = unlimited) |
 | `--min-viable` |  | int | `1` | Job array: minimum members that must launch for success (default 1; ignored for --mpi) |
@@ -95,6 +99,7 @@ spawn launch <name> [flags]
 | `--nist-800-171` |  | bool |  | Enable NIST 800-171 Rev 3 compliance mode |
 | `--nist-800-53` |  | string |  | Enable NIST 800-53 compliance (low, moderate, high) |
 | `--no-detach` |  | bool |  | Disable auto-detach for parameter sweeps (requires --ttl or --idle-timeout) |
+| `--no-dns` |  | bool |  | Skip DNS registration entirely (unlike --wait-for-ssh=false, this does not also skip the SSH-readiness wait). Overrides dns.enabled in ~/.spawn/config.yaml for this launch (#549) |
 | `--no-timeout` |  | bool |  | Disable automatic timeout (NOT RECOMMENDED: creates zombie risk) |
 | `--notify-platform` |  | string |  | Chat platform for lifecycle notifications: slack (default), teams, or discord |
 | `--on-complete` |  | string |  | Action when workload signals completion: terminate, stop, hibernate. Use 'terminate' for batch/headless workloads — 'stop' leaves EBS (and any attached EIP) billing indefinitely, which is easy to forget in accounts without a hosted reaper |
@@ -107,6 +112,7 @@ spawn launch <name> [flags]
 | `--plugin` |  | stringArray |  | Plugin to install at launch (ref[@version], repeatable) |
 | `--pre-stop-timeout` |  | string |  | Max time to wait for --pre-stop command (default: 5m, spot: 90s) |
 | `--pre-stop` |  | string |  | Shell command to run on the instance before any lifecycle-triggered stop/terminate (e.g., "aws s3 sync /results s3://bucket/") |
+| `--print-config` |  | bool |  | Alias for --dry-run |
 | `--proximity-from` |  | string |  | Prefer regions close to this region (e.g., us-east-1) |
 | `--queue-template` |  | string |  | Queue template name (use 'spawn queue template list' to see options) |
 | `--quiet` |  | bool |  | Minimal output |
@@ -142,7 +148,7 @@ spawn launch <name> [flags]
 | `--wait-for-ssh` |  | bool | `true` | Wait until SSH is ready |
 | `--wait-timeout` |  | string |  | Timeout for --wait (e.g., 2h, 30m, 0=no timeout) |
 | `--wait` |  | bool |  | Wait for sweep/launch to complete (requires --detach) |
-| `--webhook-correlation` |  | string |  | Opaque blob echoed verbatim in the spot-webhook payload so a consumer can correlate the event to its own record (never parsed by spawn) |
-| `--webhook-timeout` |  | string |  | Hard cap on the spot-webhook POST so it can't eat the reclamation window (default: 2s) |
+| `--webhook-correlation` |  | string |  | Opaque blob echoed verbatim in the spot-webhook/completion-webhook payload so a consumer can correlate the event to its own record (never parsed by spawn) |
+| `--webhook-timeout` |  | string |  | Hard cap on the spot-webhook/completion-webhook POST so it can't eat the reclamation window or delay the completion action (default: 2s) |
 | `--yes` | `-y` | bool |  | Auto-approve cost estimate (skip confirmation) |
 
