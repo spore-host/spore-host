@@ -30,6 +30,7 @@ spawn launch <name> [flags]
 | `--active-ports` |  | string |  | TCP ports to monitor for active connections, prevents idle termination (e.g. '8787' for RStudio, '8787,8888' for RStudio+Jupyter) |
 | `--active-processes` |  | string |  | Process names to monitor, prevents idle termination while any are running (e.g. 'rsession' for RStudio, 'rsession,jupyter' for multiple) |
 | `--allow-cidr` |  | string |  | CIDR allowed to reach the managed Windows security group (RDP 3389 + SSH 22); default 0.0.0.0/0 |
+| `--allow-cost-limit-overrun` |  | bool |  | Proceed even when the storage this launch creates exceeds --cost-limit on its own. You are committing to a bill the cap cannot bound. |
 | `--ami` |  | string |  | AMI ID (ami-...); omit or use 'auto' to auto-detect the latest AL2023 |
 | `--attach-volume` |  | stringArray |  | Attach an EBS volume from a snapshot, mounted at a path: snap-xxx:/mount/point[:ro]. Repeatable. Read-only is the common case for shared reference data. |
 | `--auto-placement-group` |  | bool | `true` | Automatically create placement group for MPI job arrays (default: true) |
@@ -38,18 +39,20 @@ spawn launch <name> [flags]
 | `--budget` |  | float64 |  | Budget limit in dollars for parameter sweeps (0 = no limit) |
 | `--capacity-block` |  | bool |  | The --reservation-id is a Capacity Block for ML (sets MarketType=capacity-block); mutually exclusive with --spot (#216) |
 | `--cartesian` |  | bool |  | Generate cartesian product of parameter lists |
-| `--command` |  | string |  | Command to run on all instances (executed after spored setup) |
+| `--command` |  | string |  | Command to run on all instances. Runs on the BARE instance as the login user, not root (use sudo) — Docker and fuse are NOT installed, unlike 'spawn task run'. Its exit code is recorded to /tmp/SPAWN_EXITCODE and signals completion, so --on-complete fires when the command exits, pass or fail. The instance can only reach spawn's own S3 buckets unless you pass --s3-read/--s3-write, --iam-policy or --iam-policy-file. |
 | `--completion-delay` |  | string | `30s` | Grace period after completion signal |
 | `--completion-file` |  | string | `/tmp/SPAWN_COMPLETE` | File to watch for completion signal |
+| `--completion-webhook-url` |  | string |  | On workload completion (--completion-file detected), spored POSTs a fire-once, best-effort notice to this URL (spawn#497) — lets a caller wait on its own webhook/queue instead of polling an artifact against a pre-guessed deadline; empty = disabled |
 | `--compliance-strict` |  | bool |  | Strict mode: fail on warnings (default: show warnings only) |
 | `--config` |  | string |  | Launch config YAML file (supports plugins: list) |
-| `--cost-limit` |  | float64 |  | Terminate/stop when compute spend reaches this amount in USD (compute cost only; 0 = disabled) |
+| `--cost-limit` |  | float64 |  | Total spend ceiling in USD, covering compute AND storage (0 = disabled). spored stops the instance when compute reaches it; a launch whose storage alone exceeds it is refused up front, because storage outlives the instance and spored cannot reclaim it against the cap. |
 | `--cost-tier` |  | string |  | Prefer cost tier: low, standard, premium |
 | `--count` |  | int | `1` | Number of instances to launch (job array) |
 | `--detach` |  | bool |  | Run sweep orchestration in Lambda (auto-enabled for parameter sweeps) |
 | `--dns-api-endpoint` |  | string |  | Custom DNS API endpoint (overrides default) |
 | `--dns-domain` |  | string |  | Custom DNS domain (overrides default) |
 | `--dns` |  | string |  | Override DNS name if different from --name (advanced) |
+| `--dry-run` |  | bool |  | Resolve and print the launch configuration without launching anything (no AWS mutation) |
 | `--efa` |  | bool |  | Enable Elastic Fabric Adapter for ultra-low latency MPI (requires supported instance types) |
 | `--efs-id` |  | string |  | EFS filesystem ID to mount (fs-xxx) |
 | `--efs-mount-options` |  | string |  | Custom EFS mount options (overrides profile) |
@@ -60,7 +63,7 @@ spawn launch <name> [flags]
 | `--fsx-export-path` |  | string |  | S3 path to export to (e.g., s3://bucket/prefix) |
 | `--fsx-id` |  | string |  | Existing FSx Lustre filesystem ID to mount (fs-xxx) |
 | `--fsx-import-path` |  | string |  | S3 path to import from (e.g., s3://bucket/prefix) |
-| `--fsx-lifecycle` |  | string |  | FSx lifetime (REQUIRED with --fsx-create): 'ephemeral' (reaped when this instance terminates) or 'durable' (persists; requires --fsx-ttl) |
+| `--fsx-lifecycle` |  | string |  | FSx lifetime (REQUIRED with --fsx-create): 'ephemeral' (reclaimed asynchronously once the instance is gone — by the out-of-band reaper, not by `spawn terminate`) or 'durable' (persists; requires --fsx-ttl) |
 | `--fsx-mount-point` |  | string | `/fsx` | FSx mount point (default: /fsx) |
 | `--fsx-recall` |  | string |  | Recall FSx filesystem by stack name (recreate from S3) |
 | `--fsx-s3-bucket` |  | string |  | S3 bucket for FSx import/export (required with --fsx-create) |
@@ -78,11 +81,13 @@ spawn launch <name> [flags]
 | `--iam-trust-services` |  | stringSlice | `[ec2]` | Services that can assume role |
 | `--idle-timeout` |  | string |  | Auto-terminate if idle (defaults to 1h if neither --ttl nor --idle-timeout set) |
 | `--instance-names` |  | string |  | Instance name template (e.g., 'worker-{index}', default: '{job-array-name}-{index}') |
+| `--instance-profile` |  | string |  | Attach this EXISTING IAM instance profile by name, bypassing all --iam-role/--iam-policy/--iam-policy-file resolution and the spored-instance-profile default entirely. Use when you need a deterministic, auditable choice instead of spawn's create/reuse heuristic (#550) — e.g. a profile you've already scoped to a specific data bucket. |
 | `--instance-type` |  | string |  | Instance type |
 | `--interactive` |  | bool |  | Force interactive wizard |
 | `--job-array-name` |  | string |  | Job array group name (required if --count &gt; 1) |
 | `--key-name` |  | string |  | SSH key pair name (EC2 KeyName) |
 | `--launch-delay` |  | string | `0s` | Delay between instance launches (e.g., 5s) |
+| `--max-concurrent-auto` |  | bool |  | Derive --max-concurrent from the account's real AWS quota headroom for the sweep's instance type(s)/region, instead of a user-supplied number (spawn#492) |
 | `--max-concurrent-per-region` |  | int |  | Max instances running simultaneously per region (0 = unlimited) |
 | `--max-concurrent` |  | int |  | Max instances running simultaneously (0 = unlimited) |
 | `--min-viable` |  | int | `1` | Job array: minimum members that must launch for success (default 1; ignored for --mpi) |
@@ -95,6 +100,7 @@ spawn launch <name> [flags]
 | `--nist-800-171` |  | bool |  | Enable NIST 800-171 Rev 3 compliance mode |
 | `--nist-800-53` |  | string |  | Enable NIST 800-53 compliance (low, moderate, high) |
 | `--no-detach` |  | bool |  | Disable auto-detach for parameter sweeps (requires --ttl or --idle-timeout) |
+| `--no-dns` |  | bool |  | Skip DNS registration entirely (unlike --wait-for-ssh=false, this does not also skip the SSH-readiness wait). Overrides dns.enabled in ~/.spawn/config.yaml for this launch (#549) |
 | `--no-timeout` |  | bool |  | Disable automatic timeout (NOT RECOMMENDED: creates zombie risk) |
 | `--notify-platform` |  | string |  | Chat platform for lifecycle notifications: slack (default), teams, or discord |
 | `--on-complete` |  | string |  | Action when workload signals completion: terminate, stop, hibernate. Use 'terminate' for batch/headless workloads — 'stop' leaves EBS (and any attached EIP) billing indefinitely, which is easy to forget in accounts without a hosted reaper |
@@ -107,6 +113,7 @@ spawn launch <name> [flags]
 | `--plugin` |  | stringArray |  | Plugin to install at launch (ref[@version], repeatable) |
 | `--pre-stop-timeout` |  | string |  | Max time to wait for --pre-stop command (default: 5m, spot: 90s) |
 | `--pre-stop` |  | string |  | Shell command to run on the instance before any lifecycle-triggered stop/terminate (e.g., "aws s3 sync /results s3://bucket/") |
+| `--print-config` |  | bool |  | Alias for --dry-run |
 | `--proximity-from` |  | string |  | Prefer regions close to this region (e.g., us-east-1) |
 | `--queue-template` |  | string |  | Queue template name (use 'spawn queue template list' to see options) |
 | `--quiet` |  | bool |  | Minimal output |
@@ -115,6 +122,8 @@ spawn launch <name> [flags]
 | `--regions-geographic` |  | stringSlice |  | Geographic constraints: us, eu, ap, north-america, europe, asia-pacific |
 | `--regions-include` |  | stringSlice |  | Only use these regions (supports wildcards: us-*, eu-*) |
 | `--reservation-id` |  | string |  | Capacity Reservation / Capacity Block ID to launch into (fs-/cr-...) — instance must be in the reservation's AZ (#216) |
+| `--s3-read` |  | stringArray |  | Grant the instance read access to this S3 bucket (repeatable). A launch instance can otherwise only reach spawn's own buckets, so a --command that reads your bucket gets a 403. Scoped to exactly the named buckets — unlike --iam-policy s3:ReadOnly, which grants read on every bucket in the account. |
+| `--s3-write` |  | stringArray |  | Grant the instance write access to this S3 bucket (repeatable). Pair with --s3-read when the workload both reads inputs and writes results. |
 | `--security-group-ids` |  | stringSlice |  | Security group IDs (comma-separated or repeated) |
 | `--session-timeout` |  | string | `30m` | Auto-logout idle shells (0 to disable) |
 | `--skip-mpi-install` |  | bool |  | Skip MPI installation (use with custom AMIs that have MPI pre-installed) |
@@ -142,7 +151,7 @@ spawn launch <name> [flags]
 | `--wait-for-ssh` |  | bool | `true` | Wait until SSH is ready |
 | `--wait-timeout` |  | string |  | Timeout for --wait (e.g., 2h, 30m, 0=no timeout) |
 | `--wait` |  | bool |  | Wait for sweep/launch to complete (requires --detach) |
-| `--webhook-correlation` |  | string |  | Opaque blob echoed verbatim in the spot-webhook payload so a consumer can correlate the event to its own record (never parsed by spawn) |
-| `--webhook-timeout` |  | string |  | Hard cap on the spot-webhook POST so it can't eat the reclamation window (default: 2s) |
+| `--webhook-correlation` |  | string |  | Opaque blob echoed verbatim in the spot-webhook/completion-webhook payload so a consumer can correlate the event to its own record (never parsed by spawn) |
+| `--webhook-timeout` |  | string |  | Hard cap on the spot-webhook/completion-webhook POST so it can't eat the reclamation window or delay the completion action (default: 2s) |
 | `--yes` | `-y` | bool |  | Auto-approve cost estimate (skip confirmation) |
 
