@@ -89,7 +89,8 @@ func executeAction(ctx context.Context, cfg aws.Config, reg *Registry, action *B
 		detail = result
 	}
 
-	// Audit log is fire-and-forget — never blocks the response to Slack/Teams
+	// The audit write finishes before the result is posted (#572). This is
+	// Phase 2, so it does not delay the platform's ack.
 	if auditor != nil {
 		auditor.Log(ctx, newAuditEvent(action, auditResult, detail))
 	}
@@ -274,9 +275,11 @@ func cmdList(ctx context.Context, reg *Registry, action *BotAction) (string, err
 		// Check EC2 state to detect newly terminated instances
 		if r.RoleARN != "" {
 			if isTerminatedInEC2(ctx, r) {
-				go func(rr *BotRegistration) {
-					_ = reg.MarkTerminated(context.Background(), rr)
-				}(r)
+				// Marked before returning, not from a goroutine, which Lambda
+				// would freeze with the handler (#572).
+				if err := reg.MarkTerminated(ctx, r); err != nil {
+					logf("list: mark %s terminated: %v", r.InstanceID, err)
+				}
 				terminated = append(terminated, formatTerminatedEntry(r))
 				continue
 			}

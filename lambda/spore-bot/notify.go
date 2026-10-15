@@ -175,21 +175,11 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 // per-call timeout. The function's timeout is 120s (infra/tofu/spore-bot).
 const notifyDeliveryBudget = 25 * time.Second
 
-// lambdaDeadlineMargin is left between the end of the fan-out and the Lambda
-// deadline, for the response and logging.
-const lambdaDeadlineMargin = 2 * time.Second
-
 // deliveryContext returns the context for a /notify fan-out: ctx (the
 // invocation's, alive until the handler returns) bounded by
 // notifyDeliveryBudget, and by ctx's deadline less lambdaDeadlineMargin.
 func deliveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	budget := notifyDeliveryBudget
-	if dl, ok := ctx.Deadline(); ok {
-		if left := time.Until(dl) - lambdaDeadlineMargin; left < budget {
-			budget = left
-		}
-	}
-	return context.WithTimeout(ctx, budget)
+	return withinDeadline(ctx, notifyDeliveryBudget)
 }
 
 // postIncomingWebhook POSTs a message to a Slack incoming webhook URL.

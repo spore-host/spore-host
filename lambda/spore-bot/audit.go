@@ -49,9 +49,22 @@ func NewAuditor(cfg aws.Config) *Auditor {
 	}
 }
 
-// Log writes an audit event asynchronously (fire-and-forget).
-// It never blocks the EC2 response path.
+// auditWriteBudget bounds one audit write. Log also stops lambdaDeadlineMargin
+// before the invocation's deadline.
+const auditWriteBudget = 3 * time.Second
+
+// Log writes an audit event and returns once the write has finished or failed.
+// It used to write from a goroutine and return at once, but Lambda freezes the
+// execution environment when the handler returns, so a write still in flight
+// was suspended until the next invocation, or lost if there was none (#572).
+// A failed write is logged, not returned: auditing never fails the action.
 func (a *Auditor) Log(ctx context.Context, event AuditEvent) {
+	a.logWithin(ctx, auditWriteBudget, event)
+}
+
+// logWithin is Log with the write bounded by budget instead of
+// auditWriteBudget. ctx is the invocation's context.
+func (a *Auditor) logWithin(ctx context.Context, budget time.Duration, event AuditEvent) {
 	if event.AuditID == "" {
 		event.AuditID = uuid.New().String()
 	}
@@ -62,19 +75,19 @@ func (a *Auditor) Log(ctx context.Context, event AuditEvent) {
 		event.TTL = time.Now().Add(90 * 24 * time.Hour).Unix()
 	}
 
-	go func() {
-		item, err := attributevalue.MarshalMap(event)
-		if err != nil {
-			logf("audit marshal error: %v", err)
-			return
-		}
-		if _, err := a.client.PutItem(ctx, &dynamodb.PutItemInput{
-			TableName: aws.String(a.tableName),
-			Item:      item,
-		}); err != nil {
-			logf("audit write error: %v", err)
-		}
-	}()
+	item, err := attributevalue.MarshalMap(event)
+	if err != nil {
+		logf("audit marshal error: %v", err)
+		return
+	}
+	wctx, cancel := withinDeadline(ctx, budget)
+	defer cancel()
+	if _, err := a.client.PutItem(wctx, &dynamodb.PutItemInput{
+		TableName: aws.String(a.tableName),
+		Item:      item,
+	}); err != nil {
+		logf("audit write error: %v", err)
+	}
 }
 
 // newAuditEvent builds a partially-populated AuditEvent from a BotAction.

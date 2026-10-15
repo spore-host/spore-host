@@ -400,10 +400,8 @@ func TestAuditLog_Write(t *testing.T) {
 		TTL:         9999999999,
 	}
 
-	// Log is async — call synchronously in test by calling the write directly
+	// Log returns once the record is written (#572).
 	a.Log(context.Background(), event)
-	// Give the goroutine a moment
-	time.Sleep(100 * time.Millisecond)
 
 	// Verify record exists in DynamoDB
 	result, err := client.GetItem(context.Background(), &dynamodb.GetItemInput{
@@ -445,7 +443,6 @@ func TestAuditLog_DefaultsPopulated(t *testing.T) {
 	// Empty AuditID and TS — should be auto-filled
 	event := AuditEvent{Command: "status", Result: AuditResultSuccess, TTL: 9999999999}
 	a.Log(context.Background(), event)
-	time.Sleep(100 * time.Millisecond)
 
 	// Scan to find the record (we don't know the UUID)
 	scan, err := client.Scan(context.Background(), &dynamodb.ScanInput{
