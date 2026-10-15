@@ -36,11 +36,26 @@ import (
 // The gate runs from this module but covers every module beside it, since CI
 // runs this module's tests on every PR.
 
-// goroutineAllowlist holds goroutines exempt from the gate, keyed
-// "<module>/<file>:<function>", each with the reason it is safe to outlive the
-// handler. Keep it empty: a justified entry needs to explain why losing the
-// work at a freeze is acceptable. Every entry must still match a goroutine.
-var goroutineAllowlist = map[string]string{}
+// allowedGoroutine exempts the unjoined goroutines in one function from the
+// gate. key is "<module>/<file>:<function>"; reason says why the work is safe
+// to lose when Lambda freezes the environment.
+type allowedGoroutine struct {
+	key, reason string
+}
+
+// goroutineAllowlist is the gate's exemptions. Keep it empty: an entry needs a
+// reason why losing the work at a freeze is acceptable, and every entry must
+// still match an unjoined goroutine.
+var goroutineAllowlist []allowedGoroutine
+
+func allowlisted(key string) bool {
+	for _, a := range goroutineAllowlist {
+		if a.key == key {
+			return true
+		}
+	}
+	return false
+}
 
 // goViolation is a goroutine, or a group's Go(...), not joined in its function.
 type goViolation struct {
@@ -333,7 +348,7 @@ func TestLambdaGoroutinesJoined(t *testing.T) {
 			})
 			for _, v := range checkGoroutines(fset, f, &st) {
 				key := m.name + "/" + filepath.Base(p) + ":" + v.fn
-				if _, ok := goroutineAllowlist[key]; ok {
+				if allowlisted(key) {
 					matched[key] = true
 					continue
 				}
@@ -359,14 +374,14 @@ func TestLambdaGoroutinesJoined(t *testing.T) {
 		t.Fatal("the gate found no goroutines at all (expected at least /notify's wg.Go): discovery is broken")
 	}
 	var stale []string
-	for k := range goroutineAllowlist {
-		if !matched[k] {
-			stale = append(stale, k)
+	for _, a := range goroutineAllowlist {
+		if !matched[a.key] {
+			stale = append(stale, a.key+" ("+a.reason+")")
 		}
 	}
 	sort.Strings(stale)
 	for _, k := range stale {
-		t.Errorf("goroutineAllowlist entry %q matches no unjoined goroutine; remove it", k)
+		t.Errorf("goroutineAllowlist entry %s matches no unjoined goroutine; remove it", k)
 	}
 	t.Logf("checked %d modules, %d handlers, %d go statements, %d group Go calls",
 		len(mods), handlers, st.goStmts, st.groupGos)
