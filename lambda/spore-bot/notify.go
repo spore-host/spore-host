@@ -184,16 +184,16 @@ func sendUserDMs(ctx context.Context, cfg aws.Config, reg *Registry, ws *Workspa
 		userID := parts[2]
 
 		// Send DM via chat.postMessage
-		go postSlackDM(ctx, botToken, userID, text)
+		go postSlackDM(botToken, userID, text)
 	}
 }
 
 // postSlackDM sends a direct message to a Slack user via chat.postMessage.
-// Uses its own 8-second timeout context so caller context cancellation doesn't abort the call.
-func postSlackDM(ctx context.Context, botToken, userID, text string) {
-	dmCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+// Uses its own 8-second timeout context, deliberately not the caller's, so caller
+// context cancellation doesn't abort the call.
+func postSlackDM(botToken, userID, text string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	ctx = dmCtx
 	payload, _ := json.Marshal(map[string]string{
 		"channel": userID, // Using user ID as channel opens a DM
 		"text":    text,

@@ -141,7 +141,7 @@ func (r *Registry) ListAccounts(ctx context.Context) ([]Account, error) {
 			return nil, fmt.Errorf("unmarshal accounts: %w", err)
 		}
 		out = append(out, batch...)
-		if page.LastEvaluatedKey == nil || len(page.LastEvaluatedKey) == 0 {
+		if len(page.LastEvaluatedKey) == 0 {
 			return out, nil
 		}
 		start = page.LastEvaluatedKey

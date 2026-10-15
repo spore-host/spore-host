@@ -34,14 +34,6 @@ type ec2API interface {
 // credentials cannot be obtained at all (assume-role failure).
 type regionalEC2 func(ctx context.Context, acct accountlifecycle.Account, region string) (ec2API, error)
 
-// deniedError marks an assume-role that STS REFUSED, as opposed to one that failed
-// for some other reason (throttling, network, a malformed ARN). Only a refusal is
-// potentially the uninstall signal; everything else is just a failure.
-type deniedError struct{ err error }
-
-func (e *deniedError) Error() string { return e.err.Error() }
-func (e *deniedError) Unwrap() error { return e.err }
-
 // isDenied reports whether an AWS error is an authorization refusal. STS uses
 // AccessDenied for both "the role is gone" and "your principal is not trusted" —
 // deliberately, so as not to leak role existence. Resolving that ambiguity is

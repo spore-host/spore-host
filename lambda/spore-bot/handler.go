@@ -263,6 +263,7 @@ func handleTeamsWebhook(ctx context.Context, reg *Registry, request events.APIGa
 			return nil, fmt.Errorf("TEAMS_APP_ID not configured")
 		}
 		if err := verifyTeamsJWT(ctx, authHeader, appID); err != nil {
+			//lint:ignore ST1005 "Bot Framework" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
 			return nil, fmt.Errorf("Bot Framework token verification failed: %w", err)
 		}
 		// Workspace lookup is optional for Bot Framework — tenant may not have signing secret

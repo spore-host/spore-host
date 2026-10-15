@@ -195,13 +195,6 @@ func makeReg(nickname, instanceID, dnsName string) BotRegistration {
 	}
 }
 
-// mockRegistry implements listUserInstances without DynamoDB.
-type mockRegistry struct {
-	regs []BotRegistration
-}
-
-func (m *mockRegistry) list() []BotRegistration { return m.regs }
-
 // resolveFromList is a testable extraction of the resolution logic.
 func resolveFromList(regs []BotRegistration, target string) (*BotRegistration, string) {
 	if len(regs) == 0 {

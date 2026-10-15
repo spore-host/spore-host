@@ -354,6 +354,7 @@ func resolveSlackEmail(ctx context.Context, reg *Registry, platform, workspaceID
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		//lint:ignore ST1005 "Slack" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
 		return "", fmt.Errorf("Slack API: %w", err)
 	}
 	defer resp.Body.Close()
@@ -373,6 +374,7 @@ func resolveSlackEmail(ctx context.Context, reg *Registry, platform, workspaceID
 		if slackResp.Error == "users_not_found" {
 			return "", fmt.Errorf("no Slack user found with email %q in workspace %s", email, workspaceID)
 		}
+		//lint:ignore ST1005 "Slack" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
 		return "", fmt.Errorf("Slack API error: %s", slackResp.Error)
 	}
 	return slackResp.User.ID, nil

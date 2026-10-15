@@ -193,6 +193,7 @@ func oauthExchangeCode(clientID, clientSecret, code, codeVerifier, redirectURI s
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 	if !token.OK {
+		//lint:ignore ST1005 "Slack" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
 		return nil, fmt.Errorf("Slack error: %s", token.Error)
 	}
 	return &token, nil
