@@ -229,11 +229,12 @@ func postSlackDM(botToken, userID, text string) {
 // woven into the sentence (ttl_warning's remaining time, region_vacated's
 // region) are not listed.
 var detailEvents = map[string]bool{
-	"pre_stop_failed":  true, // hook error + output tail (#186)
-	"pre_stop_timeout": true,
-	"idle_stop_failed": true, // action + EC2 error, e.g. a one-time Spot instance (#558)
-	"fsx_mount_failed": true, // "<fsx-id>: <mount error>"
-	"fsx_dra_failed":   true, // "<fsx-id>: <association error>"
+	"pre_stop_failed":        true, // hook error + output tail (#186)
+	"pre_stop_timeout":       true,
+	"idle_stop_failed":       true, // action + EC2 error, e.g. a one-time Spot instance (#558)
+	"completion_stop_failed": true, // --on-complete action + EC2 error (spawn#978, #563)
+	"fsx_mount_failed":       true, // "<fsx-id>: <mount error>"
+	"fsx_dra_failed":         true, // "<fsx-id>: <association error>"
 }
 
 // formatNotification builds the Slack message text for a lifecycle event.
@@ -269,6 +270,8 @@ func formatNotification(nr NotifyRequest) string {
 		icon, verb = "🟠", fmt.Sprintf("*%s* shutdown task TIMED OUT — output may be incomplete", name)
 	case "idle_stop_failed":
 		icon, verb = "🟠", fmt.Sprintf("*%s* could not be stopped at idle timeout — it is still running (and billing)", name)
+	case "completion_stop_failed":
+		icon, verb = "🟠", fmt.Sprintf("*%s* finished its job but could not be stopped — it is still running (and billing)", name)
 	case "fsx_mount_failed":
 		icon, verb = "🟠", fmt.Sprintf("*%s* could not mount its FSx for Lustre filesystem — the workload has no shared storage", name)
 	case "fsx_dra_failed":
@@ -333,7 +336,7 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest) {
 	if nr.Detail != "" {
 		extra["remaining"] = nr.Detail
 		extra["idle_duration"] = nr.Detail
-		extra["detail"] = nr.Detail // the error for detailEvents (pre_stop_*, idle_stop_failed, fsx_*), the region for region_vacated
+		extra["detail"] = nr.Detail // the error for detailEvents (pre_stop_*, idle_stop_failed, completion_stop_failed, fsx_*), the region for region_vacated
 	}
 	msgText, options := twilioMessage(nr.InstanceName, nr.EventType, extra)
 

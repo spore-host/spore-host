@@ -127,6 +127,9 @@ func twilioMessage(instanceName, eventType string, extra map[string]string) (str
 	case "idle_stop_failed":
 		fmt.Fprintf(&b, "%s could not be stopped at idle timeout — still running and billing.", instanceName)
 		appendSMSDetail(&b, extra["detail"])
+	case "completion_stop_failed":
+		fmt.Fprintf(&b, "%s finished but could not be stopped — still running and billing.", instanceName)
+		appendSMSDetail(&b, extra["detail"])
 	case "fsx_mount_failed":
 		fmt.Fprintf(&b, "%s could not mount its FSx filesystem.", instanceName)
 		appendSMSDetail(&b, extra["detail"])

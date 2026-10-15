@@ -83,6 +83,12 @@ own changelogs for CLI releases.
   `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
+- spore-bot now says when an instance finished its job but its
+  `--on-complete stop|hibernate` failed (spored's new `completion_stop_failed`,
+  spawn#978): Slack, Teams and Discord show "finished its job but could not be
+  stopped — it is still running (and billing)" with the EC2 error, and SMS
+  carries a shortened error. Without this it would have rendered as a bare
+  `completion_stop_failed` (#563).
 - spore-bot now says when an instance could not be stopped or hibernated at
   idle timeout (spored's new `idle_stop_failed`, spawn#948): Slack, Teams and
   Discord show "could not be stopped at idle timeout — it is still running (and
