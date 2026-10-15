@@ -14,6 +14,14 @@ own changelogs for CLI releases.
 ## [Unreleased]
 
 ### Security
+- CI now builds, tests and vuln-scans the Lambdas with Go 1.26.9 (was 1.26.8),
+  picking up the standard-library fixes for GO-2026-6603/6605/6607/6608/6610/
+  6611/6612/6613/6617 (`net/http`, `net/http/httputil`, `net/textproto`,
+  `crypto/tls`) that had turned govulncheck red on every PR (#556).
+- Bumped `golang.org/x/net` v0.58.0 → v0.60.0 (indirect) in the `spore-bot`
+  and `accountlifecycle` lambda modules (and the two portal modules that
+  replace-import `accountlifecycle`), fixing CVE-2026-78669 (HIGH, HTTP/2
+  SETTINGS-frame DoS) flagged by the Trivy gate.
 - Bumped `google.golang.org/grpc` v1.83.1 → v1.83.2 (indirect) in the
   `spore-bot` and `accountlifecycle` lambda modules, fixing CVE-2026-84445
   (HIGH, gRPC-Go xDS-server DoS) flagged by the Trivy gate.
