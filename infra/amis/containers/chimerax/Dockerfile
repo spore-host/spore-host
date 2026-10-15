@@ -15,7 +15,7 @@
 # Build/push: infra/amis/containers/build-push.sh chimerax 1.12   (after placing the .deb)
 #
 # Pinned linux/amd64: the .deb is amd64 and the DLAMI base runs x86_64 GPU instances.
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM --platform=linux/amd64 ubuntu:25.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 
