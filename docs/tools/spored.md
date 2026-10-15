@@ -25,7 +25,7 @@ Once started, spored runs a check every minute:
 
 1. **TTL** — if the absolute deadline (`spawn:ttl-deadline` tag) has passed, terminate.
 2. **Completion signal** — if the sentinel file (`/tmp/SPAWN_COMPLETE` by default) exists, take the configured action.
-3. **Cost limit** — if accumulated **compute** spend (rate × total compute time, carried across stop/resume) has exceeded `spawn:cost-limit`, terminate.
+3. **Cost limit** — if accumulated **compute + EBS** spend (compute rate × total compute time, carried across stop/resume, plus EBS rate × wall-clock time since launch) has exceeded `spawn:cost-limit`, terminate. FSx is not counted; `spawn launch` refuses a filesystem that alone exceeds the cap.
 4. **Idle detection** — if all activity signals have been quiet for `spawn:idle-timeout`, stop (or hibernate).
 
 Spot interruption notices are polled separately every 5 seconds and acted on immediately.
@@ -80,6 +80,14 @@ Shows the current lifecycle state of the instance:
 ```
 
 Cost figures are estimates; definitive billing comes from AWS.
+
+::: warning The `Cost limit` line counts compute only
+The cap itself is enforced on compute **plus EBS**, but this line's "used" and
+"remaining" figures still count compute alone, so it overstates the headroom —
+most visibly on a stopped instance, whose EBS keeps accruing toward the cap while
+the figure stands still. Add the `Storage cost` line to get closer to what the cap
+sees. Tracked in [spawn#959](https://github.com/spore-host/spawn/issues/959).
+:::
 
 ### `spored config get/set/list`
 
@@ -145,7 +153,7 @@ All spored configuration is stored as EC2 tags. Spawn writes them at launch; you
 | `spawn:price-per-hour` | float | On-demand hourly rate — written at launch for cost display. |
 | `spawn:ebs-hourly-cost` | float | EBS volume cost/hr — looked up once by spored on first start and cached here. |
 | `spawn:compute-seconds` | int | Cumulative compute seconds — updated by spored every few minutes. |
-| `spawn:cost-limit` | float | Terminate when total **compute** spend reaches this amount (USD). Compute-only (excludes EBS/storage); accumulates across stop/resume. |
+| `spawn:cost-limit` | float | Terminate when total **compute + EBS** spend reaches this amount (USD). Compute accumulates across stop/resume; EBS accrues on wall-clock time, including while stopped. FSx/EFS are not counted. |
 
 ### Notifications and DNS
 

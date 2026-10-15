@@ -40,6 +40,14 @@ own changelogs for CLI releases.
   `kiosk-wm/`, and the `cleanup-orphan-amis.sh` remediation tool remain.
 
 ### Documentation
+- **Docs: `--cost-limit` is compute + EBS, not compute-only** (#554). The safety
+  page, the spored page, the glossary and the EC2 tag reference all said the cap
+  counted compute only; since spawn#616 spored also counts the instance's EBS
+  volumes on wall-clock time, so a stopped instance keeps moving toward its cap.
+  The safety page now also says what the cap does not cover (FSx, which
+  `spawn launch` refuses up front when it alone exceeds the cap; data transfer;
+  storage spawn didn't create). The spored page warns that `spored status`'s
+  cost-limit line still counts compute only (spawn#959).
 - **Rewrote `infra/amis/README.md` and `infra/amis/containers/README.md`** to
   describe only the current app-streaming model — SSM-resolved AWS GPU DLAMI +
   DCV-at-boot, optional `base_amis:` pin, and the container recipe→`build-push.sh`
