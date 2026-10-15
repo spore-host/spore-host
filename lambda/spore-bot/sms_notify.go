@@ -34,6 +34,7 @@ func twilioSend(ctx context.Context, project, toPhone, message string) error {
 	authToken := os.Getenv("TWILIO_AUTH_TOKEN")
 	fromNumber := twilioProjectNumber(project)
 	if accountSID == "" || authToken == "" || fromNumber == "" {
+		//lint:ignore ST1005 "Twilio" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
 		return fmt.Errorf("Twilio not configured for project %q", project)
 	}
 	apiURL := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", accountSID)

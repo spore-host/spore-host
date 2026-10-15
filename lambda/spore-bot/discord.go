@@ -198,6 +198,7 @@ func verifyDiscordSignature(publicKeyHex, signatureHex, timestamp string, body [
 	}
 	msg := append([]byte(timestamp), body...)
 	if !ed25519.Verify(ed25519.PublicKey(pubKey), msg, sig) {
+		//lint:ignore ST1005 "Discord" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
 		return fmt.Errorf("Discord signature verification failed")
 	}
 	return nil

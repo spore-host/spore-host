@@ -254,6 +254,7 @@ func postTeamsProactive(ctx context.Context, serviceURL, conversationID, text st
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
+		//lint:ignore ST1005 "Teams" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
 		return fmt.Errorf("Teams API %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
