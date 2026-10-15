@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -30,7 +31,7 @@ func TestPostSlackDM_PostsToChatPostMessageWithOwnDeadline(t *testing.T) {
 			Header: http.Header{}}, nil
 	})}
 
-	postSlackDM("xoxb-test", "U123", "hello")
+	postSlackDM(context.Background(), "xoxb-test", "U123", "hello")
 
 	if got == nil {
 		t.Fatal("no request sent")
@@ -50,5 +51,22 @@ func TestPostSlackDM_PostsToChatPostMessageWithOwnDeadline(t *testing.T) {
 	}
 	if d := time.Until(dl); d <= 0 || d > 8*time.Second {
 		t.Errorf("deadline in %v, want within 8s", d)
+	}
+}
+
+func TestDeliveryContext(t *testing.T) {
+	ctx, cancel := deliveryContext(context.Background())
+	defer cancel()
+	if dl, ok := ctx.Deadline(); !ok || time.Until(dl) > notifyDeliveryBudget {
+		t.Errorf("deadline %v, %v; want one within %v", dl, ok, notifyDeliveryBudget)
+	}
+
+	parent, pcancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer pcancel()
+	ctx, cancel = deliveryContext(parent)
+	defer cancel()
+	pdl, _ := parent.Deadline()
+	if dl, _ := ctx.Deadline(); pdl.Sub(dl) < lambdaDeadlineMargin-50*time.Millisecond {
+		t.Errorf("delivery deadline %v is not %v before the Lambda deadline %v", dl, lambdaDeadlineMargin, pdl)
 	}
 }

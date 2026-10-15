@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -119,9 +120,12 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		return jsonOK(), nil
 	}
 
-	// Use a background context for outbound Slack calls — the request context
-	// is cancelled as soon as handleNotify returns, killing in-flight HTTP calls.
-	slackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Every delivery below completes before handleNotify returns (#566). Lambda
+	// freezes the execution environment once the handler returns, so a send
+	// still running in a goroutine at that point is suspended until the next
+	// invocation of this environment, or lost if there is none. deliveryContext
+	// bounds the whole fan-out under the Lambda deadline.
+	dctx, cancel := deliveryContext(ctx)
 	defer cancel()
 
 	// Discord: post a color-coded embed to the channel webhook (#2). Discord
@@ -137,6 +141,8 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		return jsonOK(), nil
 	}
 
+	// The per-user fan-outs run concurrently; each one waits for its own sends.
+	var wg sync.WaitGroup
 	for i := range workspaces {
 		ws := &workspaces[i]
 		// Pattern A: channel webhook — ungated (workspace opted in; no per-user
@@ -146,21 +152,44 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		}
 		// Pattern B: per-user DMs — only for a registered instance (C2).
 		if registered {
-			sendUserDMs(slackCtx, cfg, reg, ws, target, msg)
+			wg.Go(func() { sendUserDMs(dctx, cfg, reg, ws, target, msg) })
 		}
 	}
 
 	// Per-user DM/SMS fan-out (Teams + SMS) — gated on registration like Slack DMs.
 	if registered {
 		if nr.Platform == "slack" || nr.Platform == "" {
-			sendTeamsDMs(slackCtx, reg, nil, target, msg)
+			wg.Go(func() { sendTeamsDMs(dctx, reg, nil, target, msg) })
 		}
-		go sendUserSMS(context.Background(), reg, nr, target)
+		wg.Go(func() { sendUserSMS(dctx, reg, nr, target) })
 	} else {
 		logf("notify: instance %s not registered in %s#%s — channel webhook only, skipping DM/SMS", target, nr.Platform, nr.WorkspaceID)
 	}
+	wg.Wait()
 
 	return jsonOK(), nil
+}
+
+// notifyDeliveryBudget bounds a /notify fan-out (DynamoDB lookups plus every
+// Slack/Teams DM and SMS, run concurrently). Each send also keeps its own
+// per-call timeout. The function's timeout is 120s (infra/tofu/spore-bot).
+const notifyDeliveryBudget = 25 * time.Second
+
+// lambdaDeadlineMargin is left between the end of the fan-out and the Lambda
+// deadline, for the response and logging.
+const lambdaDeadlineMargin = 2 * time.Second
+
+// deliveryContext returns the context for a /notify fan-out: ctx (the
+// invocation's, alive until the handler returns) bounded by
+// notifyDeliveryBudget, and by ctx's deadline less lambdaDeadlineMargin.
+func deliveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	budget := notifyDeliveryBudget
+	if dl, ok := ctx.Deadline(); ok {
+		if left := time.Until(dl) - lambdaDeadlineMargin; left < budget {
+			budget = left
+		}
+	}
+	return context.WithTimeout(ctx, budget)
 }
 
 // postIncomingWebhook POSTs a message to a Slack incoming webhook URL.
@@ -185,7 +214,8 @@ func postIncomingWebhook(webhookURL, text string) {
 	}
 }
 
-// sendUserDMs sends DMs to each Slack user registered for this instance.
+// sendUserDMs sends DMs to each Slack user registered for this instance,
+// concurrently, and returns when every send has finished.
 func sendUserDMs(ctx context.Context, cfg aws.Config, reg *Registry, ws *WorkspaceConfig, instanceID, text string) {
 	if ws.BotToken == "" {
 		return
@@ -208,6 +238,8 @@ func sendUserDMs(ctx context.Context, cfg aws.Config, reg *Registry, ws *Workspa
 	// Get a fresh bot token (handles rotation if enabled)
 	botToken := ws.BotToken
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	for _, item := range result.Items {
 		userKey, ok := item["user_key"].(*dynamodbtypes.AttributeValueMemberS)
 		if !ok {
@@ -221,15 +253,17 @@ func sendUserDMs(ctx context.Context, cfg aws.Config, reg *Registry, ws *Workspa
 		userID := parts[2]
 
 		// Send DM via chat.postMessage
-		go postSlackDM(botToken, userID, text)
+		wg.Go(func() { postSlackDM(ctx, botToken, userID, text) })
 	}
 }
 
-// postSlackDM sends a direct message to a Slack user via chat.postMessage.
-// Uses its own 8-second timeout context, deliberately not the caller's, so caller
-// context cancellation doesn't abort the call.
-func postSlackDM(botToken, userID, text string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+// dmSendTimeout bounds one Slack or Teams DM call.
+const dmSendTimeout = 8 * time.Second
+
+// postSlackDM sends a direct message to a Slack user via chat.postMessage,
+// bounded by ctx and dmSendTimeout. The caller waits for it (#566).
+func postSlackDM(ctx context.Context, botToken, userID, text string) {
+	ctx, cancel := context.WithTimeout(ctx, dmSendTimeout)
 	defer cancel()
 	payload, _ := json.Marshal(map[string]string{
 		"channel": userID, // Using user ID as channel opens a DM
@@ -360,7 +394,8 @@ func formatNotification(nr NotifyRequest) string {
 // sendUserSMS sends SMS notifications to users who have registered a phone number
 // for the instance. It looks up registrations via the instance_id-index GSI, then
 // for each user checks if a _phone record exists in the registry. target is
-// the instance whose registrations are used (notifyTargetInstance).
+// the instance whose registrations are used (notifyTargetInstance). The sends
+// run concurrently, and it returns when every send has finished.
 func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest, target string) {
 	project := strings.TrimPrefix(nr.Command, "/")
 	if project == "" {
@@ -404,9 +439,8 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest, target st
 	}
 	msgText, options := twilioMessage(name, nr.EventType, extra)
 
-	smsCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	seen := map[string]bool{}
 	for _, item := range result.Items {
 		ukAttr, ok := item["user_key"].(*dynamodbtypes.AttributeValueMemberS)
@@ -420,7 +454,7 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest, target st
 		seen[userKey] = true
 
 		// Look up _phone record for this user
-		phoneResult, err := reg.client.GetItem(smsCtx, &dynamodb.GetItemInput{
+		phoneResult, err := reg.client.GetItem(ctx, &dynamodb.GetItemInput{
 			TableName: aws.String(reg.registryTable),
 			Key: map[string]dynamodbtypes.AttributeValue{
 				"user_key": &dynamodbtypes.AttributeValueMemberS{Value: userKey},
@@ -438,17 +472,24 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest, target st
 
 		// Store pending notification so the reply can be matched
 		if len(options) > 0 {
-			_ = twilioStorePending(smsCtx, fromNumber, toPhone, project, nr.InstanceID, nr.Region, nr.EventType, options)
+			_ = twilioStorePending(ctx, fromNumber, toPhone, project, nr.InstanceID, nr.Region, nr.EventType, options)
 		}
 
-		// Send the SMS
-		go func(phone string) {
-			if err := twilioSend(smsCtx, project, phone, msgText); err != nil {
-				logf("SMS to %s failed: %v", phone, err)
+		// Send the SMS. Its context is ctx, which outlives this loop, bounded per
+		// send. (It used to be a context cancelled by a defer as soon as the loop
+		// ended, usually before Twilio answered: #566.)
+		wg.Go(func() {
+			sendCtx, cancel := context.WithTimeout(ctx, smsSendTimeout)
+			defer cancel()
+			if err := twilioSend(sendCtx, project, toPhone, msgText); err != nil {
+				logf("SMS to %s failed: %v", toPhone, err)
 			}
-		}(toPhone)
+		})
 	}
 }
+
+// smsSendTimeout bounds one Twilio send.
+const smsSendTimeout = 10 * time.Second
 
 func jsonOK() events.APIGatewayProxyResponse {
 	return events.APIGatewayProxyResponse{
