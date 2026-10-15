@@ -83,6 +83,16 @@ own changelogs for CLI releases.
   `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
+- spore-bot in Teams now understands the documented `/spore list` form after
+  an @mention. The mention was removed only up to the first `>`, so
+  `@spore /spore list` ran as an unknown `/spore` command and only the bare
+  `@spore list` worked. Mentions are now removed wherever they are (several
+  are fine), HTML entities such as `&nbsp;` are decoded, extra whitespace is
+  ignored, and a leading `/spore` is optional, as in Slack (#575).
+- spore-bot in Discord now accepts the `command` option in any case and with
+  surrounding spaces, an optional leading `/spore`, and the whole command
+  typed into it (`status rstudio`), instead of answering "Unknown command"
+  (#575).
 - spore-bot no longer leaves work running in the background after a request
   finishes, where Lambda freezes it and it can be delayed or lost (#572):
   - Audit log records are written before the request finishes, so they can no

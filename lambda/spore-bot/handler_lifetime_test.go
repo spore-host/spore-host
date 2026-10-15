@@ -132,7 +132,7 @@ func (f *lifetimeFixture) slackRequest(text string) events.APIGatewayProxyReques
 }
 
 func (f *lifetimeFixture) teamsRequest(text string) events.APIGatewayProxyRequest {
-	body := `{"type":"message","text":"<at>spore</at> ` + text + `","from":{"id":"user1"},` +
+	body := `{"type":"message","text":"<at>spore</at> ` + text + `","entities":[{"type":"mention","text":"<at>spore</at>"}],"from":{"id":"user1"},` +
 		`"recipient":{"id":"bot1"},"conversation":{"id":"conv1"},"serviceUrl":"https://smba.trafficmanager.net/teams/",` +
 		`"channelData":{"tenant":{"id":"tenant1"}}}`
 	mac := hmac.New(sha256.New, []byte(f.teamsSecret))
@@ -220,8 +220,9 @@ func TestWebhookNotQueued(t *testing.T) {
 		{"slack", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.slackRequest("help") }, "help"},
 		{"slack", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.slackRequest("list") }, "list"},
 		// Teams "list" used to run in a goroutine even when the queue worked.
-		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("list") }, "list"},
-		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("status gpu1") }, "status"},
+		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("/spore list") }, "list"},
+		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("/spore status gpu1") }, "status"},
+		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("stop gpu1") }, "stop"},
 		{"discord", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.discordRequest("help") }, "help"},
 	}
 	for _, tt := range tests {
@@ -279,7 +280,7 @@ func TestWebhookNotQueued(t *testing.T) {
 // (#572), on a command that is queued normally.
 func TestTeamsWebhookStoresConversationRefBeforeReturning(t *testing.T) {
 	f := setupLifetimeFixture(t, 150*time.Millisecond)
-	sc, err := handleTeamsWebhook(invocationCtx(t), f.reg, f.teamsRequest("help"))
+	sc, err := handleTeamsWebhook(invocationCtx(t), f.reg, f.teamsRequest("/spore help"))
 	if err != nil || sc == nil {
 		t.Fatalf("handleTeamsWebhook = %v, %v", sc, err)
 	}
