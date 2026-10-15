@@ -93,6 +93,15 @@ own changelogs for CLI releases.
   surrounding spaces, an optional leading `/spore`, and the whole command
   typed into it (`status rstudio`), instead of answering "Unknown command"
   (#575).
+- spore-bot's role is now allowed to record pending SMS replies: the Tofu
+  definition of `spore-bot-role` granted nothing on `spore-sms-pending`, so
+  wherever the live role matches it, every write is denied and replying to an
+  SMS (e.g. "1" to extend) matches nothing. The Tofu module now grants
+  `dynamodb:PutItem` on that table only; it takes effect at the next
+  `tofu apply`. The bot now logs a failed write instead of discarding it, and a
+  failed Teams conversation-reference write too. A new test fails CI when the
+  bot makes a DynamoDB, Lambda or STS call the role does not grant, or reads an
+  env var the module README does not document (#576).
 - spore-bot no longer leaves work running in the background after a request
   finishes, where Lambda freezes it and it can be delayed or lost (#572):
   - Audit log records are written before the request finishes, so they can no

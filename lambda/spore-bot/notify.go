@@ -461,8 +461,12 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest, target st
 		toPhone := phoneAttr.Value
 
 		// Store pending notification so the reply can be matched
+		// The SMS is still sent if this fails: the notification itself is
+		// worth delivering, but its reply options will not work, so say so.
 		if len(options) > 0 {
-			_ = twilioStorePending(ctx, fromNumber, toPhone, project, nr.InstanceID, nr.Region, nr.EventType, options)
+			if err := twilioStorePending(ctx, reg.client, fromNumber, toPhone, project, nr.InstanceID, nr.Region, nr.EventType, options); err != nil {
+				logf("ERROR SMS reply tracking failed (instance=%s event=%s); replies to this SMS will not be matched: %v", nr.InstanceID, nr.EventType, err)
+			}
 		}
 
 		// Send the SMS. Its context is ctx, which outlives this loop, bounded per

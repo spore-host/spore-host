@@ -16,12 +16,20 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
+// smsPendingTable holds SMS awaiting a reply, keyed "<from>#<to>", so a reply
+// can be matched to the instance and event it answers. spore-bot only writes it
+// (PutItem). infra/tofu/spore-bot grants exactly that, and iam_gate_test.go
+// fails if the grant goes missing (#576).
 const smsPendingTable = "spore-sms-pending"
+
+// itemPutter is the one DynamoDB call twilioStorePending makes.
+type itemPutter interface {
+	PutItem(ctx context.Context, in *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+}
 
 // twilioProjectNumber returns the Twilio phone number for a project from env vars.
 func twilioProjectNumber(project string) string {
@@ -57,16 +65,15 @@ func twilioSend(ctx context.Context, project, toPhone, message string) error {
 	return nil
 }
 
-// twilioStorePending saves a pending notification to DynamoDB so replies can be matched.
-func twilioStorePending(ctx context.Context, fromNumber, toPhone, project, instanceID, region, eventType string, options map[string]string) error {
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
-	if err != nil {
-		return err
-	}
+// twilioStorePending saves a pending notification to DynamoDB so replies can be
+// matched. A failure means a reply to this SMS cannot be acted on, so the caller
+// must log it: it used to be discarded, which hid an AccessDenied on every write
+// (#576).
+func twilioStorePending(ctx context.Context, client itemPutter, fromNumber, toPhone, project, instanceID, region, eventType string, options map[string]string) error {
 	expires := time.Now().Add(15 * time.Minute).Unix()
 	key := fromNumber + "#" + toPhone
 	opts := encodeOpts(options)
-	_, err = dynamodb.NewFromConfig(cfg).PutItem(ctx, &dynamodb.PutItemInput{
+	_, err := client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(smsPendingTable),
 		Item: map[string]dynamodbtypes.AttributeValue{
 			"pending_key": &dynamodbtypes.AttributeValueMemberS{Value: key},
@@ -78,7 +85,10 @@ func twilioStorePending(ctx context.Context, fromNumber, toPhone, project, insta
 			"ttl":         &dynamodbtypes.AttributeValueMemberN{Value: fmt.Sprintf("%d", expires)},
 		},
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("store pending SMS in %s: %w", smsPendingTable, err)
+	}
+	return nil
 }
 
 // twilioMessage builds the SMS text and reply options for a lifecycle event.
