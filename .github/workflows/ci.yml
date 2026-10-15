@@ -116,6 +116,20 @@ jobs:
       - name: Run scripts/test-branch-preflight.sh
         run: scripts/test-branch-preflight.sh
 
+  # lambda/spore-bot's `make deploy` ran `aws cloudformation deploy` against a
+  # template that did not exist, so every deploy uploaded the zip and then failed
+  # without updating the function (#570). Check every deploy target's commands
+  # (via `make -n deploy`) for file references that aren't in the checkout.
+  deploy-paths:
+    name: Deploy targets reference existing files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run scripts/test-check-deploy-paths.sh
+        run: scripts/test-check-deploy-paths.sh
+      - name: Run scripts/check-deploy-paths.sh
+        run: scripts/check-deploy-paths.sh
+
   lambda-tests:
     name: Lambda module tests
     runs-on: ubuntu-latest

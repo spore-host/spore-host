@@ -90,6 +90,22 @@ own changelogs for CLI releases.
   usually failed outright, because its send was cancelled before Twilio
   answered. Delivery is bounded at 25 seconds, and always ends 2 seconds before
   the Lambda timeout (#566).
+- `make deploy` in `lambda/spore-bot` now updates the live function. It used to
+  upload the zip and then fail on a CloudFormation template that is not in this
+  repo, so the function kept running the old code. It now uploads, runs
+  `update-function-code`, waits, and checks that the live `CodeSha256` matches
+  the zip it built. It fails if any step fails or if the credentials are for
+  the wrong account. The unused `stack-deploy` and `cross-account-role` targets
+  are gone; `spawn bot register` creates the cross-account role (#570).
+- CI now fails if a Makefile's `deploy` target references a file that does not
+  exist (`scripts/check-deploy-paths.sh`, tested by
+  `scripts/test-check-deploy-paths.sh`) (#570).
+- `docs/spore-bot-self-hosting.md` used the old `prism-bot` function and
+  `prism-bot-audit` table names, and its connect-code TTL example would have
+  wiped the function's secret environment variables without warning. It now
+  uses `spore-bot`, ships code with `make deploy`, and warns about the
+  environment variables. The OpenTofu README no longer describes `make deploy`
+  as "unchanged" (#570).
 - `scripts/branch-preflight.sh` no longer fails on a branch that has been
   pushed: it counted the branch's own `origin/<branch>` as "another branch", so
   it could never pass on an open PR. A branch carrying another branch's commits
