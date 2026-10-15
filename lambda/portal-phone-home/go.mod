@@ -1,6 +1,6 @@
 module github.com/spore-host/spore-host/lambda/portal-phone-home
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/aws/aws-lambda-go v1.47.0
