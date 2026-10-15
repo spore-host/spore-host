@@ -94,6 +94,17 @@ jobs:
           }
           echo "no commits shared with another open PR"
 
+  # Each workflow writes its own setup-go `go-version`, so a bump that misses one
+  # file leaves CI testing with one toolchain and vuln-scanning with another —
+  # the drift behind #556. Fail the PR instead (#559).
+  go-version-pins:
+    name: Go version pins match
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Every workflow pins the same Go version
+        run: scripts/check-go-version-pins.sh
+
   lambda-tests:
     name: Lambda module tests
     runs-on: ubuntu-latest
