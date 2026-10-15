@@ -14,6 +14,16 @@ own changelogs for CLI releases.
 ## [Unreleased]
 
 ### Security
+- Bumped `go.opentelemetry.io/otel/sdk` v1.44.0 → v1.45.0 (indirect, with the
+  rest of `otel` to v1.45.0) in the `accountlifecycle` and `spore-bot` lambda
+  modules (and the two portal modules that replace-import `accountlifecycle`),
+  so every Lambda is past the GO-2026-6505 fix, not just `rest-api` (#559).
+- The security workflow now installs govulncheck v1.3.0 instead of `@latest`,
+  matching spawn, truffle and the plugins: v1.4.0 crashes on generic code, and
+  an unpinned scanner can change or break CI without any change here (#559).
+- CI now fails if the workflows' `go-version` pins disagree
+  (`scripts/check-go-version-pins.sh`), so the toolchain drift behind #556
+  can't recur silently (#559).
 - CI now builds, tests and vuln-scans the Lambdas with Go 1.26.9 (was 1.26.8),
   picking up the standard-library fixes for GO-2026-6603/6605/6607/6608/6610/
   6611/6612/6613/6617 (`net/http`, `net/http/httputil`, `net/textproto`,
