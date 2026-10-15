@@ -1,0 +1,261 @@
+package main
+
+import (
+	"bufio"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// legacyEvents are handled for older spored versions but no longer sent, so
+// they are allowed in a handler without being in testdata/spored_events.txt.
+var legacyEvents = map[string]bool{
+	"idle_terminated": true,
+}
+
+// loadSporedEvents reads testdata/spored_events.txt (see its header).
+func loadSporedEvents(t *testing.T) map[string]bool {
+	t.Helper()
+	f, err := os.Open(filepath.Join("testdata", "spored_events.txt"))
+	if err != nil {
+		t.Fatalf("open fixture: %v", err)
+	}
+	defer f.Close()
+	events := map[string]bool{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		if line = strings.TrimSpace(line); line != "" {
+			events[line] = true
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatal("fixture lists no events")
+	}
+	return events
+}
+
+// handledEvents returns the string literals in the case clauses of the switch
+// on the event type inside funcName in file. It parses the source rather than
+// calling the function, so a case cannot be "handled" by the default branch.
+func handledEvents(t *testing.T, file, funcName string) map[string]bool {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, file, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", file, err)
+	}
+	var fn *ast.FuncDecl
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == funcName {
+			fn = fd
+		}
+	}
+	if fn == nil {
+		t.Fatalf("%s: func %s not found", file, funcName)
+	}
+	isEventTag := func(e ast.Expr) bool {
+		switch x := e.(type) {
+		case *ast.Ident:
+			return x.Name == "eventType"
+		case *ast.SelectorExpr:
+			return x.Sel.Name == "EventType"
+		}
+		return false
+	}
+	got := map[string]bool{}
+	found := false
+	ast.Inspect(fn, func(n ast.Node) bool {
+		sw, ok := n.(*ast.SwitchStmt)
+		if !ok || sw.Tag == nil || !isEventTag(sw.Tag) {
+			return true
+		}
+		found = true
+		for _, st := range sw.Body.List {
+			for _, e := range st.(*ast.CaseClause).List {
+				if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					s, _ := strconv.Unquote(lit.Value)
+					got[s] = true
+				}
+			}
+		}
+		return true
+	})
+	if !found {
+		t.Fatalf("%s: no switch on the event type in %s", file, funcName)
+	}
+	return got
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestSporedEventsHandled is the gate for #558: every event spored sends (per
+// testdata/spored_events.txt) has an explicit case in the Slack, Discord and
+// SMS formatters, and no formatter handles an event the list doesn't know.
+func TestSporedEventsHandled(t *testing.T) {
+	sent := loadSporedEvents(t)
+	handlers := []struct{ file, fn string }{
+		{"notify.go", "formatNotification"},
+		{"discord.go", "buildDiscordEmbed"},
+		{"sms_notify.go", "twilioMessage"},
+	}
+	for _, h := range handlers {
+		handled := handledEvents(t, h.file, h.fn)
+		for _, ev := range sortedKeys(sent) {
+			if !handled[ev] {
+				t.Errorf("%s (%s): no case for spored event %q — it falls through to the generic default", h.fn, h.file, ev)
+			}
+		}
+		for _, ev := range sortedKeys(handled) {
+			if !sent[ev] && !legacyEvents[ev] {
+				t.Errorf("%s (%s) handles %q, which is not in testdata/spored_events.txt — add it there (if spored sends it) or to legacyEvents", h.fn, h.file, ev)
+			}
+		}
+	}
+}
+
+// notifyCallRE matches a spored notifier call with a literal event type, e.g.
+// a.notifier.Notify(ctx, "idle_stop_failed", ...).
+var notifyCallRE = regexp.MustCompile(`\.Notify\([^,()]+,\s*"([a-z0-9_]+)"`)
+
+// TestSporedEventsMatchSpawn checks the fixture against a spawn checkout when
+// SPAWN_SRC points at one (skipped otherwise, e.g. in this repo's CI). Every
+// literal event spawn sends must be in the fixture. Events chosen through a
+// variable (idle_stopped/idle_hibernated) are not seen by the regexp, so the
+// reverse direction is not checked.
+func TestSporedEventsMatchSpawn(t *testing.T) {
+	src := os.Getenv("SPAWN_SRC")
+	if src == "" {
+		t.Skip("SPAWN_SRC not set; set it to a spawn checkout to compare event lists")
+	}
+	sent := loadSporedEvents(t)
+	seen := map[string]string{}
+	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); name == "vendor" || name == ".git" || name == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range notifyCallRE.FindAllStringSubmatch(string(b), -1) {
+			seen[m[1]] = path
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", src, err)
+	}
+	if len(seen) == 0 {
+		t.Fatalf("no Notify(..., \"event\") calls found under %s — wrong path, or the call shape changed", src)
+	}
+	for _, ev := range sortedKeys(func() map[string]bool {
+		m := map[string]bool{}
+		for k := range seen {
+			m[k] = true
+		}
+		return m
+	}()) {
+		if !sent[ev] {
+			t.Errorf("spawn sends %q (%s) but testdata/spored_events.txt does not list it", ev, seen[ev])
+		}
+	}
+}
+
+func TestIdleStopFailedCarriesDetail(t *testing.T) {
+	const detail = "idle stop failed, instance still running; retrying with backoff: operation error EC2: StopInstances, api error UnsupportedOperation: You can't stop the Spot Instance"
+	nr := NotifyRequest{EventType: "idle_stop_failed", InstanceName: "gpu1", InstanceID: "i-0abc", Region: "us-east-1", Detail: detail}
+
+	msg := formatNotification(nr)
+	for _, want := range []string{"🟠", "*gpu1*", "still running", "```" + detail + "```"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("slack message missing %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "ℹ️") {
+		t.Errorf("slack message fell through to the generic default:\n%s", msg)
+	}
+
+	e := buildDiscordEmbed(nr)
+	if e.Color != discordColorRed {
+		t.Errorf("discord color = %#x, want red", e.Color)
+	}
+	var hasDetail bool
+	for _, f := range e.Fields {
+		if f.Name == "Details" && strings.Contains(f.Value, "UnsupportedOperation") {
+			hasDetail = true
+		}
+	}
+	if !hasDetail {
+		t.Errorf("discord embed missing Details field: %+v", e.Fields)
+	}
+
+	sms, opts := twilioMessage("gpu1", "idle_stop_failed", map[string]string{"detail": detail})
+	if !strings.Contains(sms, "still running") || !strings.Contains(sms, "UnsupportedOperation") {
+		t.Errorf("sms missing status or error: %q", sms)
+	}
+	if len(opts) != 0 {
+		t.Errorf("sms options = %v, want none", opts)
+	}
+}
+
+func TestFailureEventsRenderDetail(t *testing.T) {
+	for _, ev := range sortedKeys(detailEvents) {
+		nr := NotifyRequest{EventType: ev, InstanceName: "x", Detail: "fs-0123: boom"}
+		if msg := formatNotification(nr); !strings.Contains(msg, "```fs-0123: boom```") || strings.Contains(msg, "ℹ️") {
+			t.Errorf("%s: slack message lacks detail block or is generic:\n%s", ev, msg)
+		}
+		sms, _ := twilioMessage("x", ev, map[string]string{"detail": "fs-0123: boom"})
+		if !strings.Contains(sms, "fs-0123: boom") {
+			t.Errorf("%s: sms lacks detail: %q", ev, sms)
+		}
+	}
+}
+
+func TestRegionVacatedNamesRegion(t *testing.T) {
+	nr := NotifyRequest{EventType: "region_vacated", InstanceName: "x", Detail: "eu-west-2"}
+	if msg := formatNotification(nr); !strings.Contains(msg, "eu-west-2") || strings.Contains(msg, "```") {
+		t.Errorf("slack region_vacated: %s", msg)
+	}
+	if sms, _ := twilioMessage("x", "region_vacated", map[string]string{"detail": "eu-west-2"}); !strings.Contains(sms, "eu-west-2") {
+		t.Errorf("sms region_vacated: %q", sms)
+	}
+}
+
+func TestAppendSMSDetailTruncates(t *testing.T) {
+	var b strings.Builder
+	appendSMSDetail(&b, strings.Repeat("e", smsDetailMax+50))
+	if got := len([]rune(strings.TrimSpace(b.String()))); got != smsDetailMax+1 { // + ellipsis
+		t.Errorf("truncated length = %d, want %d", got, smsDetailMax+1)
+	}
+}

@@ -117,10 +117,40 @@ func twilioMessage(instanceName, eventType string, extra map[string]string) (str
 		fmt.Fprintf(&b, "%s Spot interruption — ~2 min remaining.", instanceName)
 	case "pre_stop_start":
 		fmt.Fprintf(&b, "%s is running its shutdown task before stopping.", instanceName)
+	case "pre_stop_failed":
+		fmt.Fprintf(&b, "%s shutdown task FAILED — output may not have been saved.", instanceName)
+		appendSMSDetail(&b, extra["detail"])
+	case "pre_stop_timeout":
+		fmt.Fprintf(&b, "%s shutdown task timed out — output may be incomplete.", instanceName)
+		appendSMSDetail(&b, extra["detail"])
+	case "idle_stop_failed":
+		fmt.Fprintf(&b, "%s could not be stopped at idle timeout — still running and billing.", instanceName)
+		appendSMSDetail(&b, extra["detail"])
+	case "fsx_mount_failed":
+		fmt.Fprintf(&b, "%s could not mount its FSx filesystem.", instanceName)
+		appendSMSDetail(&b, extra["detail"])
+	case "fsx_dra_failed":
+		fmt.Fprintf(&b, "%s FSx link to S3 failed — data may not import/export.", instanceName)
+		appendSMSDetail(&b, extra["detail"])
+	case "region_vacated":
+		fmt.Fprintf(&b, "%s was the last spawn instance in %s.", instanceName, get("detail", "its region"))
 	default:
 		fmt.Fprintf(&b, "%s: %s", instanceName, eventType)
 	}
 	return b.String(), options
+}
+
+// smsDetailMax bounds the error text appended to an SMS, so a long hook output
+// or EC2 error doesn't split into many billed segments.
+const smsDetailMax = 200
+
+// appendSMSDetail appends a truncated error detail on its own line, if any.
+func appendSMSDetail(b *strings.Builder, detail string) {
+	if detail == "" {
+		return
+	}
+	b.WriteString("\n\n")
+	b.WriteString(truncateDetail(detail, smsDetailMax))
 }
 
 func encodeOpts(opts map[string]string) string {
