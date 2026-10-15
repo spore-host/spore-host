@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,6 +31,38 @@ type NotifyRequest struct {
 	Region       string `json:"region"`
 	DNSName      string `json:"dns_name,omitempty"`
 	Detail       string `json:"detail,omitempty"`
+	// OriginalInstanceID is sent only with spot_replacement_retired (spawn#995,
+	// spawn#1007): the instance a Spot replacement was launched for. See
+	// notifyTargetInstance.
+	OriginalInstanceID string `json:"original_instance_id,omitempty"`
+}
+
+// instanceIDRE matches an EC2 instance id.
+var instanceIDRE = regexp.MustCompile(`^i-[0-9a-f]{8,17}$`)
+
+// notifyTargetInstance is the instance whose registrations a notification is
+// delivered to (per-user Slack and Teams DMs, SMS).
+//
+// Normally that is the sender, nr.InstanceID. The exception is
+// spot_replacement_retired. It comes from a replacement that EC2 launched from
+// a leaked persistent Spot request after the original was terminated outside
+// spawn. The replacement has a new instance id that nobody registered, so gating
+// on it would drop every DM and SMS and leave only channel webhooks. For that
+// event the target is the original, named in original_instance_id.
+//
+// This grants nothing new. The registration gate (C2 in handleNotify) is an
+// authorization check on ids, not an authentication of the sender: a caller
+// that knows a registered instance id can already put it in instance_id and
+// reach the same users. Accepting the original's id from this one field, for
+// this one event, therefore widens no one's reach. It is limited to that event
+// and to a well-formed id that differs from the sender's, so no other event's
+// routing changes.
+func notifyTargetInstance(nr NotifyRequest) string {
+	if nr.EventType == "spot_replacement_retired" &&
+		instanceIDRE.MatchString(nr.OriginalInstanceID) && nr.OriginalInstanceID != nr.InstanceID {
+		return nr.OriginalInstanceID
+	}
+	return nr.InstanceID
 }
 
 // handleNotify receives lifecycle events from spored and routes them to Slack.
@@ -50,9 +83,13 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 	// and trigger platform-billed SMS for an instance that isn't theirs. The
 	// channel WEBHOOK path is left ungated: the workspace owner opted in by
 	// configuring the webhook, and it carries no per-user targeting or SMS cost.
-	registered, err := reg.InstanceRegisteredInWorkspace(ctx, nr.Platform, nr.WorkspaceID, nr.InstanceID)
+	//
+	// The registrations checked, and DMed, are notifyTargetInstance's: the
+	// sender's own, except for a Spot replacement, which names its original.
+	target := notifyTargetInstance(nr)
+	registered, err := reg.InstanceRegisteredInWorkspace(ctx, nr.Platform, nr.WorkspaceID, target)
 	if err != nil {
-		logf("notify: registration check failed for %s in %s#%s: %v", nr.InstanceID, nr.Platform, nr.WorkspaceID, err)
+		logf("notify: registration check failed for %s in %s#%s: %v", target, nr.Platform, nr.WorkspaceID, err)
 		return errorResp(500, "registration check failed"), nil
 	}
 
@@ -109,18 +146,18 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		}
 		// Pattern B: per-user DMs — only for a registered instance (C2).
 		if registered {
-			sendUserDMs(slackCtx, cfg, reg, ws, nr.InstanceID, msg)
+			sendUserDMs(slackCtx, cfg, reg, ws, target, msg)
 		}
 	}
 
 	// Per-user DM/SMS fan-out (Teams + SMS) — gated on registration like Slack DMs.
 	if registered {
 		if nr.Platform == "slack" || nr.Platform == "" {
-			sendTeamsDMs(slackCtx, reg, nil, nr.InstanceID, msg)
+			sendTeamsDMs(slackCtx, reg, nil, target, msg)
 		}
-		go sendUserSMS(context.Background(), reg, nr)
+		go sendUserSMS(context.Background(), reg, nr, target)
 	} else {
-		logf("notify: instance %s not registered in %s#%s — channel webhook only, skipping DM/SMS", nr.InstanceID, nr.Platform, nr.WorkspaceID)
+		logf("notify: instance %s not registered in %s#%s — channel webhook only, skipping DM/SMS", target, nr.Platform, nr.WorkspaceID)
 	}
 
 	return jsonOK(), nil
@@ -235,6 +272,26 @@ var detailEvents = map[string]bool{
 	"completion_stop_failed": true, // --on-complete action + EC2 error (spawn#978, #563)
 	"fsx_mount_failed":       true, // "<fsx-id>: <mount error>"
 	"fsx_dra_failed":         true, // "<fsx-id>: <association error>"
+	// "replacement of <orig> launched by leaked Spot request <sir>; ..." names
+	// the request, which the user needs if the retirement fails.
+	"spot_replacement_retired": true,
+}
+
+// replacementSubject names the instance a spot_replacement_retired message is
+// about: the original. spored reports the original's DNS name when it had one,
+// and otherwise its own (the replacement's) id, which would read as though the
+// replacement had been replaced.
+func replacementSubject(nr NotifyRequest) string {
+	if nr.InstanceName != "" && nr.InstanceName != nr.InstanceID {
+		return nr.InstanceName
+	}
+	if nr.OriginalInstanceID != "" {
+		return nr.OriginalInstanceID
+	}
+	if nr.InstanceName != "" {
+		return nr.InstanceName
+	}
+	return nr.InstanceID
 }
 
 // formatNotification builds the Slack message text for a lifecycle event.
@@ -278,6 +335,8 @@ func formatNotification(nr NotifyRequest) string {
 		icon, verb = "🟠", fmt.Sprintf("*%s* FSx data-repository link to S3 FAILED — imported data may be missing and results may not export", name)
 	case "region_vacated":
 		icon, verb = "🧹", fmt.Sprintf("*%s* was the last spawn-managed instance in %s — the region is now vacated", name, nr.Detail)
+	case "spot_replacement_retired":
+		icon, verb = "♻️", fmt.Sprintf("*%s* was terminated, but its persistent Spot request was left open and launched a replacement instance (no spawn tags, no TTL). The replacement is cancelling the request and shutting itself down", replacementSubject(nr))
 	default:
 		icon, verb = "ℹ️", fmt.Sprintf("*%s*: %s", name, nr.EventType)
 	}
@@ -300,8 +359,9 @@ func formatNotification(nr NotifyRequest) string {
 
 // sendUserSMS sends SMS notifications to users who have registered a phone number
 // for the instance. It looks up registrations via the instance_id-index GSI, then
-// for each user checks if a _phone record exists in the registry.
-func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest) {
+// for each user checks if a _phone record exists in the registry. target is
+// the instance whose registrations are used (notifyTargetInstance).
+func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest, target string) {
 	project := strings.TrimPrefix(nr.Command, "/")
 	if project == "" {
 		project = "spore"
@@ -320,7 +380,7 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest) {
 		IndexName:              aws.String("instance_id-index"),
 		KeyConditionExpression: aws.String("instance_id = :iid"),
 		ExpressionAttributeValues: map[string]dynamodbtypes.AttributeValue{
-			":iid": &dynamodbtypes.AttributeValueMemberS{Value: nr.InstanceID},
+			":iid": &dynamodbtypes.AttributeValueMemberS{Value: target},
 		},
 	})
 	if err != nil || len(result.Items) == 0 {
@@ -338,7 +398,11 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest) {
 		extra["idle_duration"] = nr.Detail
 		extra["detail"] = nr.Detail // the error for detailEvents (pre_stop_*, idle_stop_failed, completion_stop_failed, fsx_*), the region for region_vacated
 	}
-	msgText, options := twilioMessage(nr.InstanceName, nr.EventType, extra)
+	name := nr.InstanceName
+	if nr.EventType == "spot_replacement_retired" {
+		name = replacementSubject(nr)
+	}
+	msgText, options := twilioMessage(name, nr.EventType, extra)
 
 	smsCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

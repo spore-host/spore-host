@@ -138,6 +138,9 @@ func twilioMessage(instanceName, eventType string, extra map[string]string) (str
 		appendSMSDetail(&b, extra["detail"])
 	case "region_vacated":
 		fmt.Fprintf(&b, "%s was the last spawn instance in %s.", instanceName, get("detail", "its region"))
+	case "spot_replacement_retired":
+		fmt.Fprintf(&b, "%s was terminated but its Spot request launched a replacement, which is cancelling the request and shutting down.", instanceName)
+		appendSMSDetail(&b, extra["detail"])
 	default:
 		fmt.Fprintf(&b, "%s: %s", instanceName, eventType)
 	}

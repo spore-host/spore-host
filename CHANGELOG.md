@@ -94,6 +94,18 @@ own changelogs for CLI releases.
   stopped — it is still running (and billing)" with the EC2 error, and SMS
   carries a shortened error. Without this it would have rendered as a bare
   `completion_stop_failed` (#563).
+- spore-bot has a message for spored's new `spot_replacement_retired`
+  (spawn#995, spawn PR #1008). spored sends it when it finds it is running on a
+  replacement that a leftover persistent Spot request launched after the
+  original was terminated. Slack, Teams, Discord and SMS name the original
+  instance, say the replacement is cancelling the request and shutting down, and
+  show the request id. Per-user Slack and Teams DMs and SMS used to be dropped for this event.
+  The replacement's instance id is new and registered by nobody, so it was
+  delivered to channel webhooks only. For this event alone, the bot now
+  delivers to the users registered for the instance named in the new
+  `original_instance_id` field, which spored sends from spawn PR #1021. That
+  gives a sender nothing it could not already do by putting the same id in
+  `instance_id`.
 - spore-bot now says when an instance could not be stopped or hibernated at
   idle timeout (spored's new `idle_stop_failed`, spawn#948): Slack, Teams and
   Discord show "could not be stopped at idle timeout — it is still running (and
