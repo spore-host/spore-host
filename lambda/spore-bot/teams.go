@@ -285,7 +285,8 @@ func postTeamsResponse(responseURL, text string) error {
 	return httpPost(serviceURL, "application/json", data)
 }
 
-// sendTeamsDMs sends a DM notification to each registered Teams user for an instance.
+// sendTeamsDMs sends a DM notification to each registered Teams user for an
+// instance, concurrently, and returns when every send has finished.
 func sendTeamsDMs(ctx context.Context, reg *Registry, ws *WorkspaceConfig, instanceID, text string) {
 	client := dynamodb.NewFromConfig(cfg)
 	result, err := client.Query(ctx, &dynamodb.QueryInput{
@@ -300,6 +301,8 @@ func sendTeamsDMs(ctx context.Context, reg *Registry, ws *WorkspaceConfig, insta
 		return
 	}
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	for _, item := range result.Items {
 		userKeyAttr, ok := item["user_key"].(*dynamodbtypes.AttributeValueMemberS)
 		if !ok {
@@ -330,15 +333,19 @@ func sendTeamsDMs(ctx context.Context, reg *Registry, ws *WorkspaceConfig, insta
 			continue
 		}
 
-		serviceURLAttr := refResult.Item["service_url"].(*dynamodbtypes.AttributeValueMemberS)
-		convIDAttr := refResult.Item["conversation_id"].(*dynamodbtypes.AttributeValueMemberS)
+		serviceURLAttr, ok1 := refResult.Item["service_url"].(*dynamodbtypes.AttributeValueMemberS)
+		convIDAttr, ok2 := refResult.Item["conversation_id"].(*dynamodbtypes.AttributeValueMemberS)
+		if !ok1 || !ok2 {
+			logf("Teams DM: conversation reference for %s is incomplete", userID)
+			continue
+		}
 
-		go func(svcURL, convID string) {
-			dmCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		wg.Go(func() {
+			dmCtx, cancel := context.WithTimeout(ctx, dmSendTimeout)
 			defer cancel()
-			if err := postTeamsProactive(dmCtx, svcURL, convID, text); err != nil {
+			if err := postTeamsProactive(dmCtx, serviceURLAttr.Value, convIDAttr.Value, text); err != nil {
 				logf("Teams DM error for %s: %v", userID, err)
 			}
-		}(serviceURLAttr.Value, convIDAttr.Value)
+		})
 	}
 }

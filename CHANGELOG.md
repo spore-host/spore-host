@@ -83,6 +83,13 @@ own changelogs for CLI releases.
   `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
+- spore-bot's lifecycle notifications to users (Slack and Teams DMs, SMS) are
+  now sent before the `/notify` request finishes, instead of in the background
+  after it. Lambda freezes the function once a request finishes, so a DM or
+  text could arrive late (at the next request) or never. SMS in particular
+  usually failed outright, because its send was cancelled before Twilio
+  answered. Delivery is bounded at 25 seconds, and always ends 2 seconds before
+  the Lambda timeout (#566).
 - `scripts/branch-preflight.sh` no longer fails on a branch that has been
   pushed: it counted the branch's own `origin/<branch>` as "another branch", so
   it could never pass on an open PR. A branch carrying another branch's commits
