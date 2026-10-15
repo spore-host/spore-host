@@ -78,6 +78,8 @@ func buildDiscordEmbed(nr NotifyRequest) discordEmbed {
 		icon, title, color = "🟠", fmt.Sprintf("%s FSx data-repository link to S3 FAILED — imported data may be missing and results may not export", name), discordColorRed
 	case "region_vacated":
 		icon, title, color = "🧹", fmt.Sprintf("%s was the last spawn-managed instance in %s — the region is now vacated", name, nr.Detail), discordColorBlue
+	case "spot_replacement_retired":
+		icon, title, color = "♻️", fmt.Sprintf("%s was terminated, but its Spot request was left open and launched a replacement — the replacement is cancelling the request and shutting down", replacementSubject(nr)), discordColorYellow
 	default:
 		icon, title = "ℹ️", fmt.Sprintf("%s: %s", name, nr.EventType)
 	}

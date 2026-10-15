@@ -302,3 +302,142 @@ func TestAppendSMSDetailTruncates(t *testing.T) {
 		t.Errorf("truncated length = %d, want %d", got, smsDetailMax+1)
 	}
 }
+
+// spot_replacement_retired (spawn#995, #1007) comes from the replacement, whose
+// instance name falls back to its own id. Every channel must name the original
+// and keep the Spot request id from the detail.
+func TestSpotReplacementRetiredNamesTheOriginal(t *testing.T) {
+	const detail = "replacement of i-0aaaaaaaaaaaaaaaa launched by leaked Spot request sir-abc123; cancelling the request and shutting down"
+	for name, nr := range map[string]NotifyRequest{
+		"no dns name": {EventType: "spot_replacement_retired", InstanceName: "i-0bbbbbbbbbbbbbbbb",
+			InstanceID: "i-0bbbbbbbbbbbbbbbb", OriginalInstanceID: "i-0aaaaaaaaaaaaaaaa", Detail: detail},
+		"dns name": {EventType: "spot_replacement_retired", InstanceName: "web1",
+			InstanceID: "i-0bbbbbbbbbbbbbbbb", OriginalInstanceID: "i-0aaaaaaaaaaaaaaaa", Detail: detail},
+	} {
+		t.Run(name, func(t *testing.T) {
+			want := "i-0aaaaaaaaaaaaaaaa"
+			if nr.InstanceName == "web1" {
+				want = "web1"
+			}
+			msg := formatNotification(nr)
+			for _, s := range []string{"*" + want + "*", "replacement", "sir-abc123"} {
+				if !strings.Contains(msg, s) {
+					t.Errorf("slack/teams message missing %q:\n%s", s, msg)
+				}
+			}
+			if strings.Contains(msg, "ℹ️") || strings.Contains(msg, "*i-0bbbbbbbbbbbbbbbb*") {
+				t.Errorf("slack/teams message is generic or names the replacement as the subject:\n%s", msg)
+			}
+
+			e := buildDiscordEmbed(nr)
+			if !strings.HasPrefix(e.Title, "♻️ "+want+" ") {
+				t.Errorf("discord title = %q, want it to start with the original %q", e.Title, want)
+			}
+			var hasDetail bool
+			for _, f := range e.Fields {
+				hasDetail = hasDetail || (f.Name == "Details" && strings.Contains(f.Value, "sir-abc123"))
+			}
+			if !hasDetail {
+				t.Errorf("discord embed lacks the request id: %+v", e.Fields)
+			}
+
+			sms, opts := twilioMessage(replacementSubject(nr), nr.EventType, map[string]string{"detail": detail})
+			if !strings.HasPrefix(sms, want+" ") || !strings.Contains(sms, "sir-abc123") {
+				t.Errorf("sms = %q", sms)
+			}
+			if len(opts) != 0 {
+				t.Errorf("sms offers replies %v for an instance that is shutting down", opts)
+			}
+		})
+	}
+}
+
+// The replacement's own id is registered by nobody, so DMs and SMS for
+// spot_replacement_retired go to the original's registrations, and only for
+// that event and a well-formed, different id.
+func TestNotifyTargetInstance(t *testing.T) {
+	const repl, orig = "i-0bbbbbbbbbbbbbbbb", "i-0aaaaaaaaaaaaaaaa"
+	cases := []struct {
+		name string
+		nr   NotifyRequest
+		want string
+	}{
+		{"replacement names its original", NotifyRequest{EventType: "spot_replacement_retired", InstanceID: repl, OriginalInstanceID: orig}, orig},
+		{"no original: the sender", NotifyRequest{EventType: "spot_replacement_retired", InstanceID: repl}, repl},
+		{"malformed original", NotifyRequest{EventType: "spot_replacement_retired", InstanceID: repl, OriginalInstanceID: "sir-1"}, repl},
+		{"original equals sender", NotifyRequest{EventType: "spot_replacement_retired", InstanceID: repl, OriginalInstanceID: repl}, repl},
+		{"other events ignore the field", NotifyRequest{EventType: "ttl_warning", InstanceID: repl, OriginalInstanceID: orig}, repl},
+	}
+	for _, tc := range cases {
+		if got := notifyTargetInstance(tc.nr); got != tc.want {
+			t.Errorf("%s: target = %s, want %s", tc.name, got, tc.want)
+		}
+	}
+}
+
+// handleNotify must gate and deliver on notifyTargetInstance, not on
+// nr.InstanceID, or a replacement's notification reaches channel webhooks only.
+// handleNotify needs DynamoDB, so this reads its source: every per-user
+// delivery and the registration check take `target`, assigned from
+// notifyTargetInstance(nr).
+func TestHandleNotifyDeliversToTheTarget(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "notify.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fn *ast.FuncDecl
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == "handleNotify" {
+			fn = fd
+		}
+	}
+	if fn == nil {
+		t.Fatal("handleNotify not found")
+	}
+	assigned := false
+	// callee name -> index of the instance-id argument
+	want := map[string]int{"InstanceRegisteredInWorkspace": 3, "sendUserDMs": 4, "sendTeamsDMs": 3, "sendUserSMS": 3}
+	seen := map[string]bool{}
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			if id, ok := n.Lhs[0].(*ast.Ident); ok && id.Name == "target" && len(n.Rhs) == 1 {
+				if c, ok := n.Rhs[0].(*ast.CallExpr); ok {
+					if fid, ok := c.Fun.(*ast.Ident); ok && fid.Name == "notifyTargetInstance" {
+						assigned = true
+					}
+				}
+			}
+		case *ast.CallExpr:
+			var name string
+			switch fun := n.Fun.(type) {
+			case *ast.Ident:
+				name = fun.Name
+			case *ast.SelectorExpr:
+				name = fun.Sel.Name
+			}
+			idx, ok := want[name]
+			if !ok {
+				return true
+			}
+			seen[name] = true
+			if idx >= len(n.Args) {
+				t.Errorf("%s: too few arguments", name)
+				return true
+			}
+			if id, ok := n.Args[idx].(*ast.Ident); !ok || id.Name != "target" {
+				t.Errorf("%s is not given `target` (argument %d)", name, idx)
+			}
+		}
+		return true
+	})
+	if !assigned {
+		t.Error("handleNotify does not assign target := notifyTargetInstance(nr)")
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("handleNotify no longer calls %s", name)
+		}
+	}
+}
