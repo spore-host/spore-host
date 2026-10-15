@@ -22,6 +22,10 @@ own changelogs for CLI releases.
   and `accountlifecycle` lambda modules (and the two portal modules that
   replace-import `accountlifecycle`), fixing CVE-2026-78669 (HIGH, HTTP/2
   SETTINGS-frame DoS) flagged by the Trivy gate.
+- Bumped `go.opentelemetry.io/otel/sdk` v1.43.0 → v1.45.0 (indirect, with the
+  rest of `otel` to v1.45.0) in the `rest-api` lambda module, fixing
+  GO-2026-6505 (OTLP exporter config logging could leak endpoint URLs into info
+  logs), which govulncheck reported as reachable once the stdlib findings cleared.
 - Bumped `google.golang.org/grpc` v1.83.1 → v1.83.2 (indirect) in the
   `spore-bot` and `accountlifecycle` lambda modules, fixing CVE-2026-84445
   (HIGH, gRPC-Go xDS-server DoS) flagged by the Trivy gate.
