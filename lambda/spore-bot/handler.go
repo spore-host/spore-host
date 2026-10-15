@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -72,37 +73,60 @@ func handleWebhook(ctx context.Context, cfg aws.Config, reg *Registry, request e
 		SlashCommand: sc.Command, // e.g. "/spore" or "/prism" — used in help text
 	}
 
-	// Teams (Bot Framework): return response inline in HTTP 200 body.
-	// Phase 2 async is used only for EC2 operations.
+	// Teams (Bot Framework): return the ack inline in the HTTP 200 body. Every
+	// command but help runs in Phase 2, like Slack's: even "list" makes EC2
+	// calls, so none is short enough to promise to finish before returning.
 	if platform == "teams" {
 		botID := os.Getenv("TEAMS_APP_ID")
-		var teamsText string
-		selfContained := map[string]bool{"help": true, "list": true, "connect": true, "notify": true, "unnotify": true}
-		if selfContained[command] {
-			// No EC2 calls needed — execute inline and return result now
-			teamsText = helpText(action.slashCmd()) // default for help
-			if command != "help" {
-				go executeAction(context.Background(), cfg, reg, action) // list/notify handle their own output
-				teamsText = ackMessage(command, nickname)
-			}
-		} else {
-			// EC2 commands — ACK now, async handles the result
-			teamsText = ackMessage(command, nickname)
-			if err := invokeAsync(ctx, action); err != nil {
-				go executeAction(context.Background(), cfg, reg, action)
-			}
+		teamsText := helpText(action.slashCmd())
+		if command != "help" {
+			teamsText = ackOrFailure(queueAction(ctx, action), command, nickname)
 		}
 		logf("teams inline response len=%d", len(teamsText))
 		resp := fmt.Sprintf(`{"type":"message","from":{"id":%q,"name":"spore-bot"},"text":%q}`, botID, teamsText)
 		return jsonResp(200, resp), nil
 	}
 
-	// Slack: invoke async, ACK within 3-second window
-	if err := invokeAsync(ctx, action); err != nil {
-		logf("async invoke failed: %v", err)
-		go executeAction(context.Background(), cfg, reg, action)
+	// Slack: queue Phase 2 and ACK within the 3-second window.
+	return jsonResp(200, fmt.Sprintf(`{"text":%q}`, ackOrFailure(queueAction(ctx, action), command, nickname))), nil
+}
+
+// dispatchFailedText is the reply when Phase 2 could not be queued: the
+// command did not run, and the user is told so rather than shown an ack.
+const dispatchFailedText = "❌ spore-bot couldn't queue that command, so it did not run. Please try again."
+
+// dispatchAuditBudget bounds the audit write for a dispatch failure, which is
+// on the platform's ack path (Slack and Discord allow 3 seconds).
+const dispatchAuditBudget = time.Second
+
+// ackOrFailure is the reply for a command: its ack if it was queued, else
+// dispatchFailedText.
+func ackOrFailure(queued bool, command, nickname string) string {
+	if queued {
+		return ackMessage(command, nickname)
 	}
-	return jsonResp(200, fmt.Sprintf(`{"text":%q}`, ackMessage(command, nickname))), nil
+	return dispatchFailedText
+}
+
+// queueAction queues action for Phase 2 (an async self-invocation, which
+// Lambda queues durably and retries) and reports whether it was queued. If it
+// was not, it records the failure in the audit log.
+//
+// It used to fall back to running the action in a goroutine (#572). Lambda
+// freezes the environment once the handler returns, so that goroutine was
+// suspended until the next invocation or lost, while the user had been told
+// the command was accepted. Running the action inline instead would blow the
+// 3-second ack window that the self-invocation exists to meet.
+func queueAction(ctx context.Context, action *BotAction) bool {
+	err := invokeAsync(ctx, action)
+	if err == nil {
+		return true
+	}
+	logf("async invoke failed (%s %s): %v", action.Platform, action.Command, err)
+	if auditor != nil {
+		auditor.logWithin(ctx, dispatchAuditBudget, newAuditEvent(action, AuditResultError, "not queued: "+err.Error()))
+	}
+	return false
 }
 
 // handleDiscordWebhook verifies a Discord interaction (Ed25519), answers the
@@ -165,9 +189,8 @@ func handleDiscordWebhook(ctx context.Context, cfg aws.Config, reg *Registry, re
 	}
 
 	// Kick off the real work async; the deferred ack below buys >3s.
-	if err := invokeAsync(ctx, action); err != nil {
-		logf("discord async invoke failed: %v", err)
-		go executeAction(context.Background(), cfg, reg, action)
+	if !queueAction(ctx, action) {
+		return jsonResp(200, fmt.Sprintf(`{"type":4,"data":{"content":%q}}`, dispatchFailedText)), nil
 	}
 	// DEFERRED ack: shows "spore-bot is thinking…"; executeAction edits it with
 	// the result via postDiscordResponse.
@@ -283,11 +306,18 @@ func handleTeamsWebhook(ctx context.Context, reg *Registry, request events.APIGa
 	var activity TeamsActivity
 	if jsonErr := json.Unmarshal([]byte(request.Body), &activity); jsonErr == nil {
 		userKey := "teams#" + sc.WorkspaceID + "#" + sc.UserID
-		go storeTeamsConversationRef(context.Background(), reg, userKey, activity)
+		// Stored before returning, not from a goroutine (#572).
+		rctx, cancel := withinDeadline(ctx, teamsRefWriteBudget)
+		storeTeamsConversationRef(rctx, reg, userKey, activity)
+		cancel()
 	}
 
 	return sc, nil
 }
+
+// teamsRefWriteBudget bounds storing a Teams conversation reference, which is
+// on the ack path (Bot Framework allows 15 seconds).
+const teamsRefWriteBudget = 2 * time.Second
 
 // handleAsyncAction is Phase 2: execute the EC2 op and post result to response_url.
 func handleAsyncAction(ctx context.Context, cfg aws.Config, reg *Registry, payload []byte) error {

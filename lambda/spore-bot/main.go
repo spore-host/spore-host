@@ -133,6 +133,25 @@ func invokeAsync(ctx context.Context, action *BotAction) error {
 	return err
 }
 
+// lambdaDeadlineMargin is left between the end of any bounded work in a
+// handler and the Lambda deadline, for the response and logging.
+const lambdaDeadlineMargin = 2 * time.Second
+
+// withinDeadline returns ctx bounded by budget, and by ctx's deadline less
+// lambdaDeadlineMargin. Work a handler starts must finish before the handler
+// returns, because Lambda freezes the execution environment then (#566, #572);
+// this is the context to do it under. ctx should be the invocation's context:
+// a shorter deadline on ctx is also treated as the Lambda deadline, margin and
+// all.
+func withinDeadline(ctx context.Context, budget time.Duration) (context.Context, context.CancelFunc) {
+	if dl, ok := ctx.Deadline(); ok {
+		if left := time.Until(dl) - lambdaDeadlineMargin; left < budget {
+			budget = left
+		}
+	}
+	return context.WithTimeout(ctx, budget)
+}
+
 // httpPost is a shared helper for posting JSON responses back to Slack/Teams.
 func httpPost(url, contentType string, body []byte) error {
 	resp, err := httpClient.Post(url, contentType, bytes.NewReader(body))

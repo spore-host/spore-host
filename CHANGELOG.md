@@ -83,6 +83,18 @@ own changelogs for CLI releases.
   `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
+- spore-bot no longer leaves work running in the background after a request
+  finishes, where Lambda freezes it and it can be delayed or lost (#572):
+  - Audit log records are written before the request finishes, so they can no
+    longer go missing.
+  - When spore-bot can't queue a chat command (e.g. `stop`, `extend`), it now
+    tells you the command did not run, and records that in the audit log.
+    Before, it showed "Stopping..." and tried to run the command in the
+    background, where it could run late or not at all.
+  - In Teams, `list`, `connect`, `notify` and `unnotify` are queued like other
+    commands instead of being run in the background.
+  - The Teams conversation that DM notifications are sent to is saved before
+    the request finishes, as are the instances `list` finds terminated.
 - spore-bot's lifecycle notifications to users (Slack and Teams DMs, SMS) are
   now sent before the `/notify` request finishes, instead of in the background
   after it. Lambda freezes the function once a request finishes, so a DM or
