@@ -223,6 +223,19 @@ func postSlackDM(ctx context.Context, botToken, userID, text string) {
 	}
 }
 
+// detailEvents are the events whose Detail is an error or output tail that the
+// user needs to see verbatim (why it failed), rendered as a code block on Slack
+// and as a "Details" field on Discord. Events whose Detail is a short value
+// woven into the sentence (ttl_warning's remaining time, region_vacated's
+// region) are not listed.
+var detailEvents = map[string]bool{
+	"pre_stop_failed":  true, // hook error + output tail (#186)
+	"pre_stop_timeout": true,
+	"idle_stop_failed": true, // action + EC2 error, e.g. a one-time Spot instance (#558)
+	"fsx_mount_failed": true, // "<fsx-id>: <mount error>"
+	"fsx_dra_failed":   true, // "<fsx-id>: <association error>"
+}
+
 // formatNotification builds the Slack message text for a lifecycle event.
 func formatNotification(nr NotifyRequest) string {
 	name := nr.InstanceName
@@ -252,16 +265,21 @@ func formatNotification(nr NotifyRequest) string {
 		icon, verb = "🔄", fmt.Sprintf("*%s* is running its shutdown task before terminating", name)
 	case "pre_stop_failed":
 		icon, verb = "🟠", fmt.Sprintf("*%s* shutdown task FAILED — output may NOT have been saved", name)
-		if nr.Detail != "" {
-			verb += fmt.Sprintf("\n  ```%s```", nr.Detail)
-		}
 	case "pre_stop_timeout":
 		icon, verb = "🟠", fmt.Sprintf("*%s* shutdown task TIMED OUT — output may be incomplete", name)
-		if nr.Detail != "" {
-			verb += fmt.Sprintf("\n  ```%s```", nr.Detail)
-		}
+	case "idle_stop_failed":
+		icon, verb = "🟠", fmt.Sprintf("*%s* could not be stopped at idle timeout — it is still running (and billing)", name)
+	case "fsx_mount_failed":
+		icon, verb = "🟠", fmt.Sprintf("*%s* could not mount its FSx for Lustre filesystem — the workload has no shared storage", name)
+	case "fsx_dra_failed":
+		icon, verb = "🟠", fmt.Sprintf("*%s* FSx data-repository link to S3 FAILED — imported data may be missing and results may not export", name)
+	case "region_vacated":
+		icon, verb = "🧹", fmt.Sprintf("*%s* was the last spawn-managed instance in %s — the region is now vacated", name, nr.Detail)
 	default:
 		icon, verb = "ℹ️", fmt.Sprintf("*%s*: %s", name, nr.EventType)
+	}
+	if detailEvents[nr.EventType] && nr.Detail != "" {
+		verb += fmt.Sprintf("\n  ```%s```", nr.Detail)
 	}
 
 	msg := fmt.Sprintf("%s %s", icon, verb)
@@ -315,7 +333,7 @@ func sendUserSMS(ctx context.Context, reg *Registry, nr NotifyRequest) {
 	if nr.Detail != "" {
 		extra["remaining"] = nr.Detail
 		extra["idle_duration"] = nr.Detail
-		extra["detail"] = nr.Detail // pre_stop_failed/timeout carry the hook's error/output tail (#186)
+		extra["detail"] = nr.Detail // the error for detailEvents (pre_stop_*, idle_stop_failed, fsx_*), the region for region_vacated
 	}
 	msgText, options := twilioMessage(nr.InstanceName, nr.EventType, extra)
 

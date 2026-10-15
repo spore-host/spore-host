@@ -83,6 +83,19 @@ own changelogs for CLI releases.
   `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
+- spore-bot now says when an instance could not be stopped or hibernated at
+  idle timeout (spored's new `idle_stop_failed`, spawn#948): Slack, Teams and
+  Discord show "could not be stopped at idle timeout — it is still running (and
+  billing)" with the EC2 error, and SMS carries a shortened error. It used to
+  render as a bare `idle_stop_failed` with the reason dropped (#558).
+- Three other events spored already sends — `fsx_mount_failed`,
+  `fsx_dra_failed` and `region_vacated` — get real messages instead of the
+  generic fallback, the FSx ones with their error. SMS also gains messages for
+  `pre_stop_failed` and `pre_stop_timeout`, which previously texted just the
+  event name (#558).
+- The spore-bot tests now fail if a notification event spored sends lacks a
+  Slack, Discord or SMS message, against a list kept in
+  `lambda/spore-bot/testdata/spored_events.txt` (#558).
 - **Clicking Disconnect no longer reports the session as having closed on its own**
   (#530). Two writers raced and the user-initiated one lost: the Disconnect handler
   wrote `disconnected` synchronously, then `attachTerminal`'s `onClosed` callback wrote

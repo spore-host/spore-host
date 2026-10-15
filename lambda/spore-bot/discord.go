@@ -68,6 +68,14 @@ func buildDiscordEmbed(nr NotifyRequest) discordEmbed {
 		icon, title, color = "🟠", fmt.Sprintf("%s shutdown task FAILED — output may NOT have been saved", name), discordColorRed
 	case "pre_stop_timeout":
 		icon, title, color = "🟠", fmt.Sprintf("%s shutdown task TIMED OUT — output may be incomplete", name), discordColorRed
+	case "idle_stop_failed":
+		icon, title, color = "🟠", fmt.Sprintf("%s could not be stopped at idle timeout — it is still running (and billing)", name), discordColorRed
+	case "fsx_mount_failed":
+		icon, title, color = "🟠", fmt.Sprintf("%s could not mount its FSx for Lustre filesystem — the workload has no shared storage", name), discordColorRed
+	case "fsx_dra_failed":
+		icon, title, color = "🟠", fmt.Sprintf("%s FSx data-repository link to S3 FAILED — imported data may be missing and results may not export", name), discordColorRed
+	case "region_vacated":
+		icon, title, color = "🧹", fmt.Sprintf("%s was the last spawn-managed instance in %s — the region is now vacated", name, nr.Detail), discordColorBlue
 	default:
 		icon, title = "ℹ️", fmt.Sprintf("%s: %s", name, nr.EventType)
 	}
@@ -81,8 +89,8 @@ func buildDiscordEmbed(nr NotifyRequest) discordEmbed {
 		embed.URL = "https://" + nr.DNSName
 		embed.Fields = append(embed.Fields, discordEmbedField{Name: "URL", Value: "https://" + nr.DNSName, Inline: false})
 	}
-	// Surface the hook's error/output tail for failed/timed-out pre-stop (#186).
-	if (nr.EventType == "pre_stop_failed" || nr.EventType == "pre_stop_timeout") && nr.Detail != "" {
+	// Surface the error/output tail for failure events (#186, #558).
+	if detailEvents[nr.EventType] && nr.Detail != "" {
 		embed.Fields = append(embed.Fields, discordEmbedField{Name: "Details", Value: "```" + truncateDetail(nr.Detail, 1000) + "```", Inline: false})
 	}
 	if nr.InstanceID != "" {
