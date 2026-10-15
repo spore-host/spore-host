@@ -26,7 +26,7 @@ spore.host tags every instance it launches with `spawn:*` tags. These tags drive
 | `spawn:idle-timeout` | `30m` | Terminate/stop if idle for this duration. |
 | `spawn:hibernate-on-idle` | `true` | Hibernate instead of stopping when idle. |
 | `spawn:session-timeout` | `2h` | Terminate if no SSH session for this duration. |
-| `spawn:cost-limit` | `50.00` | Terminate when cumulative **compute** cost exceeds this amount (USD). Compute-only (excludes storage); accumulates across stop/resume. |
+| `spawn:cost-limit` | `50.00` | Terminate when cumulative **compute + EBS** cost exceeds this amount (USD). Compute accumulates across stop/resume; EBS accrues on wall-clock time, including while stopped. FSx/EFS are not counted. |
 
 ## Naming and purpose
 

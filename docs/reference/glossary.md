@@ -36,7 +36,7 @@ throughout; avoid using "spore" as a noun for a machine.
 | **completion signal** | An explicit "my work is done" marker — a sentinel file (default `/tmp/SPAWN_COMPLETE`) or `spored complete`. Triggers the configured `on-complete` action. |
 | **completion sentinel** | The file spored watches for the completion signal. Its *appearance* — not your command merely finishing — is what triggers the action. |
 | **pre-stop hook** | A shell command spored runs before any lifecycle-triggered stop or terminate, to save work (e.g. `aws s3 sync /results s3://…`). |
-| **cost limit** | An optional **compute** spend ceiling (instance rate × total compute time, carried across stop/resume); spored terminates when it's crossed. Independent of the TTL — first ceiling to fire wins. |
+| **cost limit** | An optional **compute + EBS** spend ceiling (instance rate × total compute time, carried across stop/resume, plus EBS × wall-clock time); spored terminates when it's crossed. Independent of the TTL — first ceiling to fire wins. |
 | **reaper** | The out-of-band backstop that terminates managed instances past their TTL even if spored is unhealthy. See [Costs & safety guarantees](/safety). |
 
 ## Compute-shape concepts
