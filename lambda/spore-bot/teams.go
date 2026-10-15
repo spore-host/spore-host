@@ -161,10 +161,12 @@ func storeTeamsConversationRef(ctx context.Context, reg *Registry, userKey strin
 		"platform":        &dynamodbtypes.AttributeValueMemberS{Value: "teams"},
 		"updated_at":      &dynamodbtypes.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
 	}
-	_, _ = reg.client.PutItem(ctx, &dynamodb.PutItemInput{
+	if _, err := reg.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(reg.registryTable),
 		Item:      ref,
-	})
+	}); err != nil {
+		logf("ERROR store Teams conversation ref in %s; Teams DMs to this user will not be delivered: %v", reg.registryTable, err)
+	}
 }
 
 // ── Bot Framework Token ───────────────────────────────────────────────────────

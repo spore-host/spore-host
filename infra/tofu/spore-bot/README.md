@@ -10,7 +10,11 @@ is still imperative `setup-*.sh`; this is the start of migrating off that.
 - `aws_iam_role.spore_bot` — **`spore-bot-role`**, least-privilege, dedicated.
   (Replaces the prior wrong setup where spore-bot ran under
   `prism-bot-PrismBotFunctionRole`.) DynamoDB RW on the three `spore-bot-*`
-  tables, Lambda self-invoke, `SpawnBotCrossAccount` assume, and scoped logs.
+  tables, `PutItem` on `spore-sms-pending` (pending SMS replies, #576), Lambda
+  self-invoke, `SpawnBotCrossAccount` assume, and scoped logs.
+  `lambda/spore-bot/iam_gate_test.go` fails if the code makes a DynamoDB, Lambda
+  or STS call this policy does not grant, or the policy grants a table the code
+  never touches.
 - `aws_lambda_function.spore_bot` — the function's **shape** (role, runtime,
   arm64, memory, timeout).
 - `aws_lambda_function_url.spore_bot` + public invoke permission — the Function
@@ -28,6 +32,40 @@ is still imperative `setup-*.sh`; this is the start of migrating off that.
   key). Tofu ignores `environment`, so secrets stay out of source and aren't
   clobbered. Set them with `aws lambda update-function-configuration` (or a
   secrets store later).
+
+## Environment variables
+
+Tofu ignores `environment`, so this table is the record of what the function
+reads. It must list exactly the variables `lambda/spore-bot` reads:
+`iam_gate_test.go` discovers them from the code and fails on any difference
+(#576). `<PLATFORM>` is the first path segment of an OAuth route (`/<platform>/oauth`),
+upper-cased; `<PROJECT>` is the slash command without its `/`, upper-cased.
+
+| Variable | Purpose |
+|---|---|
+| `AWS_LAMBDA_FUNCTION_NAME` | Set by the Lambda runtime; used for the async self-invoke. Do not set it. |
+| `DISCORD_PUBLIC_KEY` | Discord application Ed25519 public key (hex); verifies every Discord interaction. |
+| `SLACK_SIGNING_SECRET` | App-level Slack signing secret, used when a workspace record stores none. |
+| `<PLATFORM>_SLACK_CLIENT_ID` | Slack OAuth client id for that platform's app. |
+| `<PLATFORM>_SLACK_CLIENT_SECRET` | Slack OAuth client secret for that platform's app. |
+| `<PLATFORM>_OAUTH_SUCCESS_URL` | Where the OAuth callback redirects on completion. |
+| `BOT_OAUTH_SECRET` | Signs OAuth `state`. Required: OAuth fails closed if unset or `change-me`. |
+| `TEAMS_APP_ID` | Microsoft Teams bot app id. |
+| `TEAMS_APP_SECRET` | Teams bot app secret (Bot Framework token). |
+| `TEAMS_TENANT_ID` | Teams tenant id (Bot Framework token). |
+| `TWILIO_ACCOUNT_SID` | Twilio account for SMS notifications. |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token. |
+| `TWILIO_NUMBER_<PROJECT>` | Twilio sending number per project; SMS is skipped for a project without one. |
+| `BOT_SLASH_COMMAND` | Slash command name; default `/spore`. |
+| `BOT_CONNECT_CODE_TTL_HOURS` | Connect-code lifetime in hours; default 24. |
+| `BOT_REGISTRY_TABLE` | Registry table; default `spore-bot-registry`. |
+| `BOT_WORKSPACES_TABLE` | Workspaces table; default `spore-bot-workspaces`. |
+| `BOT_AUDIT_TABLE` | Audit table; default `spore-bot-audit`. |
+
+The role grants DynamoDB only on the default table names (`local.tables`) and
+`PutItem` on `spore-sms-pending`. Overriding a `BOT_*_TABLE` variable to another
+name needs a matching change to `local.tables`, or every call on that table is
+AccessDenied.
 
 ## State
 

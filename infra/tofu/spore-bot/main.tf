@@ -49,6 +49,11 @@ locals {
     workspaces = "spore-bot-workspaces"
     audit      = "spore-bot-audit"
   }
+  # Written by spore-bot (PutItem only) so an SMS reply can be matched to the
+  # instance it answers (lambda/spore-bot/sms_notify.go). Not one of the bot's
+  # own tables, so it is not in local.tables and gets only the action the code
+  # performs (#576).
+  sms_pending_table = "spore-sms-pending"
   table_arns = flatten([
     for t in values(local.tables) : [
       "arn:aws:dynamodb:${var.region}:${local.account_id}:table/${t}",
@@ -94,6 +99,12 @@ resource "aws_iam_role_policy" "spore_bot" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem", "dynamodb:DescribeTable", "dynamodb:ConditionCheckItem"]
         Resource = local.table_arns
+      },
+      {
+        Sid      = "SporeBotSmsPendingWrite"
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = "arn:aws:dynamodb:${var.region}:${local.account_id}:table/${local.sms_pending_table}"
       },
       {
         Sid      = "SporeBotSelfInvoke"
