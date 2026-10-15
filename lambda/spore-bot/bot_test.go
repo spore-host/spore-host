@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -309,9 +310,10 @@ func TestResolveRegistration_Empty(t *testing.T) {
 func TestParseTeamsActivity(t *testing.T) {
 	body := `{
 		"type": "message",
-		"text": "<at>BotName</at> /prism stop rstudio",
+		"text": "<at>BotName</at> /spore stop rstudio",
 		"from": {"id": "user-abc-123", "name": "Alice"},
 		"serviceUrl": "https://smba.trafficmanager.net/apis/",
+		"conversation": {"id": "conv-1"},
 		"channelData": {"tenant": {"id": "tenant-xyz-789"}}
 	}`
 
@@ -325,9 +327,118 @@ func TestParseTeamsActivity(t *testing.T) {
 	if sc.WorkspaceID != "tenant-xyz-789" {
 		t.Errorf("WorkspaceID = %q, want tenant-xyz-789", sc.WorkspaceID)
 	}
-	// Mention should be stripped; text should contain the command
-	if !strings.Contains(sc.Text, "stop") {
-		t.Errorf("Text should contain 'stop', got: %q", sc.Text)
+	if sc.ResponseURL != "https://smba.trafficmanager.net/apis/|conv-1" {
+		t.Errorf("ResponseURL = %q", sc.ResponseURL)
+	}
+	if sc.Command != "/spore" || sc.Text != "stop rstudio" {
+		t.Errorf("Command, Text = %q, %q; want \"/spore\", \"stop rstudio\"", sc.Command, sc.Text)
+	}
+}
+
+// TestParseTeamsActivityMentions: the @mention is removed wherever it is and
+// whatever it contains, so the command parses the same as Slack's (#575). The
+// parser used to cut at the first '>', the end of the opening <at> tag, which
+// left "bot</at>" as the command and the rest, "/spore list", as its text.
+func TestParseTeamsActivityMentions(t *testing.T) {
+	type entity struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	mention := func(text string) entity { return entity{"mention", text} }
+	tests := []struct {
+		name      string
+		slashEnv  string // BOT_SLASH_COMMAND
+		text      string
+		entities  []entity
+		wantCmd   string
+		wantText  string
+		wantParse [3]string // parseCommandText(Text)
+	}{
+		{name: "mention then /spore", text: "<at>spore</at> /spore list",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "mention without prefix", text: "<at>spore</at> list",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "mention then /spore, no entities", text: "<at>spore</at> /spore status gpu1",
+			wantCmd: "/spore", wantText: "status gpu1", wantParse: [3]string{"status", "gpu1", ""}},
+		{name: "no mention (personal chat)", text: "/spore extend rstudio 2h",
+			wantCmd: "/spore", wantText: "extend rstudio 2h", wantParse: [3]string{"extend", "rstudio", "2h"}},
+		{name: "bare command", text: "list",
+			wantCmd: "", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "mention name with a space and markup in the entity", text: "<at>Spore Bot</at> /spore stop rstudio",
+			entities: []entity{mention("<at>Spore Bot</at>")},
+			wantCmd:  "/spore", wantText: "stop rstudio", wantParse: [3]string{"stop", "rstudio", ""}},
+		{name: "entity text preferred over markup shape", text: "@spore /spore list",
+			entities: []entity{mention("@spore")},
+			wantCmd:  "/spore", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "at element with attributes, no entities", text: `<at id="0">spore</at> /spore list`,
+			wantCmd: "/spore", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "mention after the prefix", text: "/spore <at>spore</at> stop rstudio",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "stop rstudio", wantParse: [3]string{"stop", "rstudio", ""}},
+		{name: "multiple mentions", text: "<at>spore</at> <at>Alice</at> /spore stop <at>Bob</at> rstudio",
+			entities: []entity{mention("<at>spore</at>"), mention("<at>Alice</at>"), mention("<at>Bob</at>")},
+			wantCmd:  "/spore", wantText: "stop rstudio", wantParse: [3]string{"stop", "rstudio", ""}},
+		{name: "multiple mentions, one without an entity", text: "<at>spore</at> <at>Alice</at> stop rstudio",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "", wantText: "stop rstudio", wantParse: [3]string{"stop", "rstudio", ""}},
+		{name: "non-mention entities ignored", text: "<at>spore</at> /spore list",
+			entities: []entity{{"clientInfo", "list"}, mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "extra whitespace, tabs and newlines", text: "  <at>spore</at>\t /spore \n  status   gpu1  ",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "status gpu1", wantParse: [3]string{"status", "gpu1", ""}},
+		{name: "mention with no separating space", text: "<at>spore</at>/spore list",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "html entities: nbsp separators", text: "<at>spore</at>&nbsp;/spore&nbsp;status&nbsp;gpu1",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "status gpu1", wantParse: [3]string{"status", "gpu1", ""}},
+		{name: "html entities in mention name", text: "<at>R&amp;D bot</at> /spore list",
+			entities: []entity{mention("<at>R&amp;D bot</at>")},
+			wantCmd:  "/spore", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "html entities in mention name, no entities", text: "<at>a&gt;b</at> /spore list",
+			wantCmd: "/spore", wantText: "list", wantParse: [3]string{"list", "", ""}},
+		{name: "uppercase prefix and command", text: "<at>spore</at> /SPORE List",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "List", wantParse: [3]string{"list", "", ""}},
+		{name: "configured slash command", slashEnv: "/prism", text: "<at>BotName</at> /prism stop rstudio",
+			entities: []entity{mention("<at>BotName</at>")},
+			wantCmd:  "/prism", wantText: "stop rstudio", wantParse: [3]string{"stop", "rstudio", ""}},
+		{name: "unknown slash word is not a prefix", text: "<at>spore</at> /foo list",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "", wantText: "/foo list", wantParse: [3]string{"/foo", "list", ""}},
+		{name: "mention only", text: "<at>spore</at>",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "", wantText: "", wantParse: [3]string{"help", "", ""}},
+		{name: "prefix only", text: "<at>spore</at> /spore",
+			entities: []entity{mention("<at>spore</at>")},
+			wantCmd:  "/spore", wantText: "", wantParse: [3]string{"help", "", ""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BOT_SLASH_COMMAND", tt.slashEnv)
+			body, err := json.Marshal(map[string]any{
+				"type": "message", "text": tt.text, "entities": tt.entities,
+				"from":        map[string]string{"id": "user1"},
+				"channelData": map[string]any{"tenant": map[string]string{"id": "tenant1"}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sc, _, err := parseTeamsActivity(string(body))
+			if err != nil {
+				t.Fatalf("parseTeamsActivity: %v", err)
+			}
+			if sc.Command != tt.wantCmd || sc.Text != tt.wantText {
+				t.Errorf("Command, Text = %q, %q; want %q, %q", sc.Command, sc.Text, tt.wantCmd, tt.wantText)
+			}
+			c, n, a := parseCommandText(sc.Text)
+			if got := [3]string{c, n, a}; got != tt.wantParse {
+				t.Errorf("parseCommandText(%q) = %q; want %q", sc.Text, got, tt.wantParse)
+			}
+		})
 	}
 }
 

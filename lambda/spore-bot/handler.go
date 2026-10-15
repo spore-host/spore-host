@@ -173,18 +173,15 @@ func handleDiscordWebhook(ctx context.Context, cfg aws.Config, reg *Registry, re
 
 	// Map the slash command. We model `/spore <command> <nickname> [arg]` as
 	// subcommand options so it mirrors the Slack/Teams text parse.
-	command := it.optionString("command")
-	if command == "" {
-		command = "help"
-	}
+	command, nickname, arg := discordCommand(&it)
 	action := &BotAction{
 		Platform:     "discord",
 		WorkspaceID:  it.GuildID,
 		UserID:       it.discordUserID(),
 		ResponseURL:  discordFollowupURL(it.AppID, it.Token),
 		Command:      command,
-		Nickname:     it.optionString("name"),
-		Arg:          it.optionString("arg"),
+		Nickname:     nickname,
+		Arg:          arg,
 		SlashCommand: "/" + it.Data.Name,
 	}
 
@@ -346,6 +343,26 @@ func handleAsyncAction(ctx context.Context, cfg aws.Config, reg *Registry, paylo
 
 	executeAction(ctx, cfg, reg, &action)
 	return nil
+}
+
+// splitSlashPrefix removes a leading slash-command name from text, so that
+// "/spore list" and "list" both yield "list", the text Slack delivers after its
+// own command. It returns the prefix, lowercased ("" if there was none), and
+// the rest with runs of whitespace collapsed to single spaces. "/spore" and
+// BOT_SLASH_COMMAND are always accepted; names adds more (e.g. Discord's
+// registered command). Any other leading "/word" is left in place.
+func splitSlashPrefix(text string, names ...string) (prefix, rest string) {
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return "", ""
+	}
+	accepted := append([]string{"/spore", getEnv("BOT_SLASH_COMMAND", "/spore")}, names...)
+	for _, name := range accepted {
+		if name != "" && strings.EqualFold(fields[0], name) {
+			return strings.ToLower(fields[0]), strings.Join(fields[1:], " ")
+		}
+	}
+	return "", strings.Join(fields, " ")
 }
 
 // parseCommandText splits "extend rstudio 2h" into ("extend", "rstudio", "2h").

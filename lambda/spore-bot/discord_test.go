@@ -161,3 +161,49 @@ func TestDiscordFollowupURL(t *testing.T) {
 		t.Errorf("followup url = %q, want %q", got, want)
 	}
 }
+
+// TestDiscordCommand: the command option is free text, so it is trimmed,
+// lowercased and may carry a "/spore" prefix or the whole command, as Slack
+// and Teams text may (#575).
+func TestDiscordCommand(t *testing.T) {
+	tests := []struct {
+		name                       string
+		cmdName                    string // data.name
+		command, nick, arg         string
+		wantCmd, wantNick, wantArg string
+	}{
+		{name: "plain", cmdName: "spore", command: "status", nick: "rstudio",
+			wantCmd: "status", wantNick: "rstudio"},
+		{name: "empty is help", cmdName: "spore", wantCmd: "help"},
+		{name: "case and whitespace", cmdName: "spore", command: "  List ", wantCmd: "list"},
+		{name: "spore prefix", cmdName: "spore", command: "/spore list", wantCmd: "list"},
+		{name: "registered name prefix", cmdName: "prism", command: "/prism stop", nick: "rstudio",
+			wantCmd: "stop", wantNick: "rstudio"},
+		{name: "prefix only", cmdName: "spore", command: "/spore", wantCmd: "help"},
+		{name: "whole command in the option", cmdName: "spore", command: "/spore extend  rstudio 2h",
+			wantCmd: "extend", wantNick: "rstudio", wantArg: "2h"},
+		{name: "options win over extra words", cmdName: "spore", command: "extend other", nick: " rstudio ", arg: "2h",
+			wantCmd: "extend", wantNick: "rstudio", wantArg: "2h"},
+		{name: "arg without name stays the arg", cmdName: "spore", command: "extend", arg: "2h",
+			wantCmd: "extend", wantArg: "2h"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var opts []map[string]string
+			for k, v := range map[string]string{"command": tt.command, "name": tt.nick, "arg": tt.arg} {
+				if v != "" {
+					opts = append(opts, map[string]string{"name": k, "value": v})
+				}
+			}
+			body, _ := json.Marshal(map[string]any{"type": 2, "data": map[string]any{"name": tt.cmdName, "options": opts}})
+			var it discordInteraction
+			if err := json.Unmarshal(body, &it); err != nil {
+				t.Fatal(err)
+			}
+			c, n, a := discordCommand(&it)
+			if c != tt.wantCmd || n != tt.wantNick || a != tt.wantArg {
+				t.Errorf("discordCommand = %q, %q, %q; want %q, %q, %q", c, n, a, tt.wantCmd, tt.wantNick, tt.wantArg)
+			}
+		})
+	}
+}

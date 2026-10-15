@@ -8,10 +8,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +43,12 @@ type TeamsActivity struct {
 		IsGroup          bool   `json:"isGroup"`
 		ConversationType string `json:"conversationType"`
 	} `json:"conversation"`
+	// Entities carries, among others, one "mention" entity per @mention in
+	// Text; its Text is the exact markup to strip (e.g. "<at>spore</at>").
+	Entities []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"entities"`
 	ChannelID   string `json:"channelId"`
 	ServiceURL  string `json:"serviceUrl"`
 	ChannelData struct {
@@ -92,19 +100,11 @@ func parseTeamsActivity(body string) (*SlashCommand, string, error) {
 		return nil, "", fmt.Errorf("parse Teams activity: %w", err)
 	}
 
-	text := strings.TrimSpace(activity.Text)
-	// Strip @mention prefix: "<at>BotName</at> /prism stop" → "/prism stop"
-	if idx := strings.Index(text, ">"); idx >= 0 {
-		text = strings.TrimSpace(text[idx+1:])
-	}
-	parts := strings.Fields(text)
-	cmd, args := "", ""
-	if len(parts) > 0 {
-		cmd = parts[0]
-		if len(parts) > 1 {
-			args = strings.Join(parts[1:], " ")
-		}
-	}
+	text := teamsCommandText(activity)
+	// "/spore list" and "list" both mean list, as in Slack, where the command
+	// arrives separately from the text. With no prefix, cmd is "" and the
+	// configured slash command is used in replies.
+	cmd, args := splitSlashPrefix(text)
 
 	logf("teams activity: channel=%s tenant=%s conv=%s serviceURL=%s text=%q",
 		activity.ChannelID, activity.ChannelData.Tenant.ID,
@@ -125,6 +125,27 @@ func parseTeamsActivity(body string) (*SlashCommand, string, error) {
 		ChannelID:   activity.Conversation.ID,
 	}
 	return sc, activity.ServiceURL, nil
+}
+
+// teamsAtElement matches an <at>…</at> mention element, which Teams puts
+// inline in the activity text.
+var teamsAtElement = regexp.MustCompile(`(?is)<at(?:\s[^>]*)?>.*?</at>`)
+
+// teamsCommandText returns the activity text with every @mention removed,
+// HTML entities decoded and whitespace normalised: "<at>spore</at> /spore
+// list" becomes "/spore list". Mentions are removed by the exact text of the
+// activity's mention entities; any <at>…</at> element left over (no entities,
+// or entities that don't match) is removed as well.
+func teamsCommandText(activity TeamsActivity) string {
+	text := activity.Text
+	for _, e := range activity.Entities {
+		if strings.EqualFold(e.Type, "mention") && e.Text != "" {
+			text = strings.ReplaceAll(text, e.Text, " ")
+		}
+	}
+	text = teamsAtElement.ReplaceAllString(text, " ")
+	text = html.UnescapeString(text)
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // storeTeamsConversationRef saves the conversation reference for proactive messaging.

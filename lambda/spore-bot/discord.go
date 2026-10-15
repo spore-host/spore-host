@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -228,6 +229,23 @@ func (i *discordInteraction) optionString(name string) string {
 		}
 	}
 	return ""
+}
+
+// discordCommand returns the command, nickname and arg of a slash-command
+// interaction. The command option is free text, so it is normalised the way
+// Slack and Teams text is: trimmed, lowercased, with an optional leading
+// "/spore" (or "/<registered name>") removed. If the user typed the whole
+// command into it ("status rstudio") and left name and arg empty, it is split
+// like Slack text. Empty means help.
+func discordCommand(it *discordInteraction) (command, nickname, arg string) {
+	_, text := splitSlashPrefix(it.optionString("command"), "/"+it.Data.Name)
+	nickname = strings.TrimSpace(it.optionString("name"))
+	arg = strings.TrimSpace(it.optionString("arg"))
+	if nickname == "" && arg == "" {
+		return parseCommandText(text)
+	}
+	command, _, _ = parseCommandText(text)
+	return command, nickname, arg
 }
 
 // discordFollowupURL is the webhook URL for posting the deferred result of an
