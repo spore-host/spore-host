@@ -229,6 +229,49 @@ func TestIdleStopFailedCarriesDetail(t *testing.T) {
 	}
 }
 
+// TestCompletionStopFailedCarriesDetail covers spored's completion_stop_failed
+// (spawn#978, PR #1005): sent once when --on-complete stop|hibernate fails, with
+// the action and the EC2 error as Detail (#563).
+func TestCompletionStopFailedCarriesDetail(t *testing.T) {
+	const detail = "on-complete hibernate failed, instance still running; retrying with backoff: operation error EC2: StopInstances, api error UnsupportedOperation: hibernation is not enabled"
+	nr := NotifyRequest{EventType: "completion_stop_failed", InstanceName: "job7", InstanceID: "i-0def", Region: "us-west-2", Detail: detail}
+
+	msg := formatNotification(nr)
+	for _, want := range []string{"🟠", "*job7*", "finished its job", "still running", "```" + detail + "```"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("slack message missing %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "ℹ️") {
+		t.Errorf("slack message fell through to the generic default:\n%s", msg)
+	}
+
+	e := buildDiscordEmbed(nr)
+	if e.Color != discordColorRed {
+		t.Errorf("discord color = %#x, want red", e.Color)
+	}
+	if !strings.Contains(e.Title, "finished its job") {
+		t.Errorf("discord title = %q, want the completion_stop_failed message", e.Title)
+	}
+	var hasDetail bool
+	for _, f := range e.Fields {
+		if f.Name == "Details" && strings.Contains(f.Value, "hibernation is not enabled") {
+			hasDetail = true
+		}
+	}
+	if !hasDetail {
+		t.Errorf("discord embed missing Details field: %+v", e.Fields)
+	}
+
+	sms, opts := twilioMessage("job7", "completion_stop_failed", map[string]string{"detail": detail})
+	if !strings.Contains(sms, "finished but could not be stopped") || !strings.Contains(sms, "UnsupportedOperation") {
+		t.Errorf("sms missing status or error: %q", sms)
+	}
+	if len(opts) != 0 {
+		t.Errorf("sms options = %v, want none", opts)
+	}
+}
+
 func TestFailureEventsRenderDetail(t *testing.T) {
 	for _, ev := range sortedKeys(detailEvents) {
 		nr := NotifyRequest{EventType: ev, InstanceName: "x", Detail: "fs-0123: boom"}

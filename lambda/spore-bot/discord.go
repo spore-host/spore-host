@@ -70,6 +70,8 @@ func buildDiscordEmbed(nr NotifyRequest) discordEmbed {
 		icon, title, color = "🟠", fmt.Sprintf("%s shutdown task TIMED OUT — output may be incomplete", name), discordColorRed
 	case "idle_stop_failed":
 		icon, title, color = "🟠", fmt.Sprintf("%s could not be stopped at idle timeout — it is still running (and billing)", name), discordColorRed
+	case "completion_stop_failed":
+		icon, title, color = "🟠", fmt.Sprintf("%s finished its job but could not be stopped — it is still running (and billing)", name), discordColorRed
 	case "fsx_mount_failed":
 		icon, title, color = "🟠", fmt.Sprintf("%s could not mount its FSx for Lustre filesystem — the workload has no shared storage", name), discordColorRed
 	case "fsx_dra_failed":
