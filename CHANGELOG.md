@@ -83,6 +83,11 @@ own changelogs for CLI releases.
   `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
+- `scripts/branch-preflight.sh` no longer fails on a branch that has been
+  pushed: it counted the branch's own `origin/<branch>` as "another branch", so
+  it could never pass on an open PR. A branch carrying another branch's commits
+  still fails. `scripts/test-branch-preflight.sh` covers it and runs in CI
+  (#565).
 - spore-bot now says when an instance finished its job but its
   `--on-complete stop|hibernate` failed (spored's new `completion_stop_failed`,
   spawn#978): Slack, Teams and Discord show "finished its job but could not be

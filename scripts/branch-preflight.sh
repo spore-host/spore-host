@@ -87,11 +87,23 @@ else
   ok "$extra commit(s) ahead of origin/main"
   # Commits reachable from HEAD but not origin/main that ALSO appear on another
   # local or remote branch are the tell: shared, not yours alone.
+  #
+  # This branch's own remote-tracking ref is not "another branch": once pushed,
+  # origin/<branch> contains every commit here, so counting it made the check
+  # fail on every re-run for an open PR (#565). Drop the configured upstream
+  # (whatever it is named) and origin/<branch>. CI's branch-hygiene job does the
+  # stricter check against other open PRs' heads, so nothing is lost.
+  self_refs="$branch
+origin/$branch"
+  upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+  [ -n "$upstream" ] && self_refs="$self_refs
+$upstream"
   shared=""
   while read -r c; do
     [ -z "$c" ] && continue
+    # origin/HEAD is listed as "origin" by newer git's %(refname:short).
     others=$(git branch -a --contains "$c" --format='%(refname:short)' 2>/dev/null \
-      | grep -vxF "$branch" | grep -v '^origin/HEAD$' | tr '\n' ' ')
+      | grep -vxF "$self_refs" | grep -vxE 'origin/HEAD|origin' | tr '\n' ' ')
     [ -n "$others" ] && shared="${shared}          ${c:0:7} $(git log -1 --format=%s "$c") → also on: $others
 "
   done < <(git rev-list "origin/main..HEAD")

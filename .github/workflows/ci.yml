@@ -105,6 +105,17 @@ jobs:
       - name: Every workflow pins the same Go version
         run: scripts/check-go-version-pins.sh
 
+  # scripts/branch-preflight.sh is what CLAUDE.md tells people to run before a
+  # PR; #565 was it failing on every pushed branch. Exercise it against
+  # throwaway repos so a regression shows up here, not at someone's next PR.
+  branch-preflight-tests:
+    name: branch-preflight tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run scripts/test-branch-preflight.sh
+        run: scripts/test-branch-preflight.sh
+
   lambda-tests:
     name: Lambda module tests
     runs-on: ubuntu-latest
