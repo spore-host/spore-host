@@ -44,9 +44,11 @@ spawn launch <name> [flags]
 | `--completion-webhook-url` |  | string |  | On workload completion (--completion-file detected), spored POSTs a fire-once, best-effort notice to this URL (spawn#497) — lets a caller wait on its own webhook/queue instead of polling an artifact against a pre-guessed deadline; empty = disabled |
 | `--compliance-strict` |  | bool |  | Strict mode: fail on warnings (default: show warnings only) |
 | `--config` |  | string |  | Launch config YAML file (supports plugins: list) |
-| `--cost-limit` |  | float64 |  | Total spend ceiling in USD, covering compute AND storage (0 = disabled). spored stops the instance when compute reaches it; a launch whose storage alone exceeds it is refused up front, because storage outlives the instance and spored cannot reclaim it against the cap. |
+| `--cost-limit` |  | float64 |  | Total spend ceiling in USD, covering compute AND storage (0 = disabled). spored terminates the instance when compute + EBS reaches it; a launch whose storage alone exceeds it is refused up front, because storage outlives the instance and spored cannot reclaim it against the cap. |
 | `--count` |  | int | `1` | Number of instances to launch (job array) |
 | `--detach` |  | bool |  | Run sweep orchestration in Lambda (auto-enabled for parameter sweeps) |
+| `--dns-api-endpoint` |  | string |  | Lambda Function URL of a custom DNS updater (https://&lt;id&gt;.lambda-url.&lt;region&gt;.on.aws/). Also SPAWN_DNS_API_ENDPOINT, dns.api_endpoint in ~/.spawn/config.yaml, or SSM /spawn/dns/api_endpoint |
+| `--dns-domain` |  | string |  | Register DNS under this zone instead of spore.host (needs an updater serving it; see docs/custom-dns.md). Also SPAWN_DNS_DOMAIN, dns.domain in ~/.spawn/config.yaml, or SSM /spawn/dns/domain |
 | `--dns` |  | string |  | Override DNS name if different from --name (advanced) |
 | `--dry-run` |  | bool |  | Resolve and print the launch configuration without launching anything (no AWS mutation) |
 | `--efa` |  | bool |  | Enable Elastic Fabric Adapter for ultra-low latency MPI (requires supported instance types) |
@@ -67,7 +69,7 @@ spawn launch <name> [flags]
 | `--fsx-storage-capacity` |  | int32 | `1200` | FSx storage capacity in GB (1200, 2400, or increments of 2400) |
 | `--fsx-throughput` |  | int32 | `125` | FSx PERSISTENT_2 throughput in MB/s/TiB (125, 250, 500, or 1000; default: 125) |
 | `--fsx-ttl` |  | string |  | FSx time-to-live, required for --fsx-lifecycle=durable (e.g. 7d, 720h) — the filesystem is reaped this long after creation once no instance is using it |
-| `--hibernate` |  | bool |  | Enable hibernation |
+| `--hibernate` |  | bool |  | Configure the instance for hibernation (encrypted root sized for RAM). Implied by --on-idle hibernate and --on-complete hibernate |
 | `--iam-allow-full-access` |  | bool |  | Permit wildcard *:FullAccess --iam-policy templates (s3:*/dynamodb:*/sqs:* on all resources) on the instance role; off by default — prefer scoped ReadOnly/WriteOnly |
 | `--iam-managed-policies` |  | stringSlice |  | AWS managed policy ARNs |
 | `--iam-policy-file` |  | string |  | Custom IAM policy JSON file |
@@ -75,7 +77,7 @@ spawn launch <name> [flags]
 | `--iam-role-tags` |  | stringSlice |  | Tags for IAM role (key=value format) |
 | `--iam-role` |  | string |  | IAM role name (creates if doesn't exist) |
 | `--iam-trust-services` |  | stringSlice | `[ec2]` | Services that can assume role |
-| `--idle-timeout` |  | string |  | Auto-terminate if idle (defaults to 1h if neither --ttl nor --idle-timeout set) |
+| `--idle-timeout` |  | string |  | Auto-terminate if idle, e.g. 30m, 2h, 1d (defaults to 1h if neither --ttl nor --idle-timeout set) |
 | `--instance-names` |  | string |  | Instance name template (e.g., 'worker-{index}', default: '{job-array-name}-{index}') |
 | `--instance-profile` |  | string |  | Attach this EXISTING IAM instance profile by name, bypassing all --iam-role/--iam-policy/--iam-policy-file resolution and the spored-instance-profile default entirely. Use when you need a deterministic, auditable choice instead of spawn's create/reuse heuristic (#550) — e.g. a profile you've already scoped to a specific data bucket. |
 | `--instance-type` |  | string |  | Instance type |
@@ -88,7 +90,7 @@ spawn launch <name> [flags]
 | `--max-concurrent` |  | int |  | Max instances running simultaneously (0 = unlimited) |
 | `--min-viable` |  | int | `1` | Job array: minimum members that must launch for success (default 1; ignored for --mpi) |
 | `--mode` |  | string | `balanced` | Distribution mode: balanced (fair share) or opportunistic (prioritize available regions) |
-| `--mpi-command` |  | string |  | Command to run via mpirun (alternative to --command) |
+| `--mpi-command` |  | string |  | Command to run via mpirun across the MPI cohort (alternative to --command). Rank 0 runs mpirun as root. Its output goes to /var/log/spawn-command.log on rank 0 (read it with 'spawn array logs &lt;name&gt; --index 0'), and its exit code is recorded to /tmp/SPAWN_EXITCODE there. When it exits, pass or fail, every member is signalled, so --on-complete fires across the whole cohort. |
 | `--mpi-processes-per-node` |  | int |  | MPI processes per node (default: vCPU count) |
 | `--mpi` |  | bool |  | Enable MPI cluster setup (requires --count &gt; 1) |
 | `--name` |  | string |  | Name your spore (sets Name tag, DNS, and hostname). Either this or the positional form `spawn launch <name>`; both are accepted (#499). |
@@ -126,7 +128,7 @@ spawn launch <name> [flags]
 | `--slack-workspace` |  | string |  | Slack workspace ID for lifecycle notifications (e.g. T03NE3GTY) |
 | `--spot-max-price` |  | string |  | Max Spot price |
 | `--spot-webhook-url` |  | string |  | On spot interruption, spored POSTs a fire-once, best-effort notice to this URL within the ~2-min window (off-node consumers; empty = disabled) |
-| `--spot` |  | bool |  | Launch as Spot instance |
+| `--spot` |  | bool |  | Launch as Spot instance. With a stop-based lifecycle (--idle-timeout, --on-complete stop\|hibernate, --hibernate) the request is persistent so EC2 can stop it; otherwise one-time |
 | `--strata-formation` |  | string |  | Strata formation to activate (e.g. r-research@2024.03) |
 | `--strata-profile` |  | string |  | Path to a Strata profile YAML file |
 | `--strata-registry` |  | string | `s3://strata-registry` | Strata registry S3 URL |
@@ -136,7 +138,7 @@ spawn launch <name> [flags]
 | `--team` |  | string |  | Team ID: tag instance with spawn:team-id for team-shared access |
 | `--template-var` |  | stringToString |  | Template variables (key=value) |
 | `--terminate-on-error` |  | bool |  | If post-launch verification fails (e.g. spored didn't come up), terminate the instance instead of leaving it running |
-| `--ttl` |  | string |  | Auto-terminate after duration (e.g., 8h, defaults to 1h idle if not set) |
+| `--ttl` |  | string |  | Auto-terminate after duration (e.g., 8h, 90m, 1d, 2d12h; defaults to 1h idle if not set) |
 | `--user-data-file` |  | string |  | User data file |
 | `--user-data` |  | string |  | User data (@file or inline) |
 | `--volume-size` |  | int32 |  | Root EBS volume size in GiB (0 = use AMI default) |
