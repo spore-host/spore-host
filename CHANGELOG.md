@@ -31,6 +31,19 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **The instance plugins guide matches spawn's spec parser** (#585). It lists
+  all 12 registry plugins and adds sections on finding plugins
+  (`spawn plugin search`/`info`), what a ref resolves to (a bare name is the
+  latest signed release, and spawn refuses rather than fall back to `main`),
+  signature verification, `spawn plugin inspect` and `install --dry-run`, and
+  the refusal on Windows spores. The field reference gains `permissions:`, the
+  `sha256` step field, the template variables, shell-quoting of values in `run`
+  steps, and which step types work locally or remotely. Removed: the note that
+  `inspect` and `--dry-run` don't exist, the `config.<name>.description` field
+  (spawn doesn't read it), and the claim that `plugin status` shows outputs
+  (it doesn't, spawn#1117). The `launch.yaml` example no longer sets
+  `instance_type`/`ttl`, which `launch --config` ignores; the `--pre-stop`
+  example adds `--s3-write`; `--efs-mount` is `--efs-mount-point`.
 - **The IAM baseline is verified by a real launch** (#585). A `spawn launch`,
   `status`, `extend` and `terminate` were run under exactly the documented
   policy. The launch then failed: spawn's post-launch check that spored is
