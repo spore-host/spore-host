@@ -13,6 +13,22 @@ own changelogs for CLI releases.
 
 ## [Unreleased]
 
+### Changed
+- **The ParaView catalog container is now based on Ubuntu 26.04 LTS** (from
+  24.04). Built for linux/amd64 and checked: every apt package resolves, no
+  bundled library is unresolved, and `pvpython --version` and `paraview
+  --version` (under an X display, as DCV provides) report 5.13.2. ParaView
+  bundles its own Qt and Python, so the base only supplies X/GL runtime
+  libraries.
+- **The ChimeraX container stays on Ubuntu 24.04 LTS.** It installs UCSF's
+  distro-specific `.deb`, and ChimeraX 1.12 ships production packages only for
+  22.04 and 24.04; 26.04 exists only in daily builds. Dependabot is told not to
+  move it until a production 26.04 package exists.
+- **Dependabot proposes Ubuntu LTS releases only** for these containers. It had
+  opened PRs to the non-LTS 25.10 (#550, #551), which reaches end of life
+  after nine months. The docker entry also no longer lists `/infra/amis`,
+  which has no Dockerfile.
+
 ### Security
 - Bumped `go.opentelemetry.io/otel/sdk` v1.44.0 → v1.45.0 (indirect, with the
   rest of `otel` to v1.45.0) in the `accountlifecycle` and `spore-bot` lambda

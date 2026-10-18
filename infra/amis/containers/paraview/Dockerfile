@@ -15,7 +15,7 @@
 # runs on x86_64 GPU instances (g6/g5/g4dn). Without this
 # pin, building on an arm64 host (e.g. Apple Silicon) produces an arm64 image
 # wrapping an x86_64 binary that cannot exec.
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM --platform=linux/amd64 ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -53,7 +53,7 @@ RUN curl -fsSL \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Ubuntu 24.04 ships a default 'ubuntu' user at uid 1000; remove it so we can own
+# Ubuntu 24.04 and 26.04 ship a default 'ubuntu' user at uid 1000; remove it so we can own
 # 1000 (matches the DCV session's ec2-user uid). 22.04 had no such user.
 RUN userdel -r ubuntu 2>/dev/null || true; useradd -m -u 1000 paraview
 USER paraview
