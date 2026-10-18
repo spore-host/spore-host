@@ -64,12 +64,47 @@ updates:
 
   # Docker — point at the directories that actually contain Dockerfiles. The
   # previous single "/spawn" entry had no Dockerfile there and errored every run
-  # ("No Dockerfiles nor Kubernetes YAML found in /spawn").
+  # ("No Dockerfiles nor Kubernetes YAML found in /spawn"); "/infra/amis" was the
+  # same mistake and is gone too. Discover with:
+  #   git ls-files | grep -E '(^|/)Dockerfile$'
+  #
+  # Ubuntu bases track LTS releases only. Dependabot proposes the newest tag, so
+  # unpinned it offered the non-LTS 25.10 (#550, #551), which goes end-of-life
+  # after nine months. Interim releases are ignored; the next LTS still arrives
+  # as a normal PR. When a base moves to a new LTS, move the range with it.
   - package-ecosystem: "docker"
-    directories:
-      - "/infra/amis"
-      - "/infra/amis/containers/paraview"
-      - "/infra/amis/containers/chimerax"
+    directory: "/infra/amis/containers/paraview"
+    ignore:
+      # 26.10, 27.04, 27.10: everything between 26.04 LTS and 28.04 LTS.
+      - dependency-name: "ubuntu"
+        versions: ["> 26.04, < 28.04"]
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "type:security"
+    commit-message:
+      prefix: "deps(docker)"
+      include: "scope"
+    reviewers:
+      - "scttfrdmn"
+
+  # ChimeraX installs UCSF's distro-specific .deb (ucsf-chimerax_<v>ubuntu<base>),
+  # so its base can only be an Ubuntu that UCSF ships a production package for.
+  # ChimeraX 1.12 has 22.04 and 24.04 packages; 26.04 exists only in daily builds.
+  # Lift this when a production release lists an ubuntu26.04 .deb (see
+  # https://www.cgl.ucsf.edu/chimerax/data/release-info/production.json).
+  - package-ecosystem: "docker"
+    directory: "/infra/amis/containers/chimerax"
+    ignore:
+      - dependency-name: "ubuntu"
+        versions: ["> 24.04"]
     schedule:
       interval: "weekly"
       day: "monday"
