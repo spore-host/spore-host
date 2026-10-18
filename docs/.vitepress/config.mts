@@ -215,7 +215,6 @@ export default defineConfig({
 
   srcExclude: [
     'research/**',
-    'DNSSEC_CONFIGURATION.md',
     'gen/**',
   ],
 

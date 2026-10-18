@@ -31,6 +31,13 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **Removed `docs/DNSSEC_CONFIGURATION.md`.** It was a one-off operator runbook
+  from 2025-12, kept off the site but published in the repo. It still said
+  "pending registrar update", but DNSSEC for spore.host has been live since then
+  (`dig DS spore.host`). It also named the infra account, hosted zone and
+  signing-key ARN, which this public repo shouldn't carry. The DS and DNSKEY
+  records are public by design; the operational steps (key rotation, disabling)
+  are kept privately.
 - **The `spawn doctor` transcripts match spawn v0.135.0** (#585). The passing
   preflight is now a real run (IDs replaced), with all 16 checks, including the
   spored role, reaper coverage and Nitro fleet. The blocked preflight follows the
