@@ -20,8 +20,8 @@ for the CISO-oriented assessment.
 
 ## 1. The least-privilege policy to grant
 
-The complete baseline policy, with each action traced to the spawn code that
-calls it, is on the
+The complete baseline policy, verified by a real launch and traced to the spawn
+code that calls each action, is on the
 **[IAM Permissions](/reference/iam-permissions)** page — apply that policy to the
 IAM role/user the researcher authenticates as. It grants:
 
@@ -33,7 +33,13 @@ IAM role/user the researcher authenticates as. It grants:
 - **IAM** create-role / instance-profile / tag / `PassRole` **scoped to `spored*`
   and `spawn-instance-*` names only**, so it cannot create or touch any other role.
 - **SSM** `GetParameter`, only on AWS's public AMI parameters and the account's
-  `/spawn/dns/*` settings.
+  `/spawn/dns/*` settings; and `SendCommand`, **only on spawn-managed
+  instances**, to check after launch that spored is running.
+- **Pricing** `GetProducts`, to record the instance's price so a cost limit can
+  be enforced.
+
+The policy was verified by a real launch, status, extend and terminate under
+exactly these permissions.
 
 Optional feature permissions (the first Spot launch in an account, the
 `spawn dns` commands, FSx) are listed separately on that page and are only

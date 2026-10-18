@@ -9,9 +9,13 @@ spore.host tools act on EC2 with **your** AWS credentials (see [AWS Authenticati
 ## Recommended least-privilege baseline
 
 This is the recommended least-privilege policy for the core flow — **`spawn launch`
-→ connect → manage → terminate**. Each action is traced to the spawn code that
-calls it (rechecked against spawn v0.134.0); dropping a core action will fail at
-launch (see the callout below). Optional features (FSx, the `spawn dns` commands)
+→ connect → manage → terminate**. It was **verified on 2026-10-18 by a real
+`spawn launch`, `status`, `extend` and `terminate` under exactly this policy**
+(spawn v0.134.0, a throwaway role in a test account), and each action is traced
+to the spawn code that calls it. Dropping a core action fails the launch; see the
+callout below. One path wasn't exercised: that account already had the `spored`
+role, so its first-time creation ran only through the matching
+`spawn-instance-*` path. Optional features (FSx, the `spawn dns` commands)
 add their own permissions, listed further down.
 
 ```json
@@ -71,7 +75,8 @@ add their own permissions, listed further down.
         "iam:CreateInstanceProfile",
         "iam:AddRoleToInstanceProfile",
         "iam:TagRole",
-        "iam:TagInstanceProfile"
+        "iam:TagInstanceProfile",
+        "iam:ListInstanceProfiles"
       ],
       "Resource": [
         "arn:aws:iam::*:role/spored*",
@@ -88,7 +93,11 @@ add their own permissions, listed further down.
         "arn:aws:iam::*:role/spored*",
         "arn:aws:iam::*:role/spawn-instance-*"
       ],
-      "Condition": { "StringEquals": { "iam:PassedToService": "ec2.amazonaws.com" } }
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        }
+      }
     },
     {
       "Sid": "EC2Manage",
@@ -109,9 +118,46 @@ add their own permissions, listed further down.
       }
     },
     {
+      "Sid": "PriceLookup",
+      "Effect": "Allow",
+      "Action": "pricing:GetProducts",
+      "Resource": "*"
+    },
+    {
+      "Sid": "VerifySporedOverSSM",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeInstanceInformation",
+        "ssm:GetCommandInvocation"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RunSporedStatusOnSpawnInstances",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ec2:*:*:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ssm:resourceTag/spawn:managed": "true"
+        }
+      }
+    },
+    {
+      "Sid": "RunScriptDocuments",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ssm:*::document/AWS-RunShellScript",
+        "arn:aws:ssm:*::document/AWS-RunPowerShellScript"
+      ]
+    },
+    {
       "Sid": "Identity",
       "Effect": "Allow",
-      "Action": ["sts:GetCallerIdentity"],
+      "Action": [
+        "sts:GetCallerIdentity"
+      ],
       "Resource": "*"
     }
   ]
@@ -120,6 +166,16 @@ add their own permissions, listed further down.
 
 ::: warning Why the extra statements are required
 A launch does more than `RunInstances`. spawn **imports your SSH public key** (`ec2:ImportKeyPair`), may **create a security group** for the instance (`ec2:CreateSecurityGroup` / `AuthorizeSecurityGroupIngress`), and — so the in-instance `spored` daemon can manage the instance's lifecycle — **creates a `spored` IAM role + instance profile and passes it to EC2 at launch** (the `iam:*` on `spored*` + `iam:PassRole`). Roles and profiles are created with tags, which IAM authorises separately (`iam:TagRole`, `iam:TagInstanceProfile`). A launch that grants the instance extra access (`--iam-policy`, `--s3-read`, `--s3-write`, and every `spawn task run`) creates a role named `spawn-instance-<hash>` instead, which is why that pattern is included. Omit these and `spawn launch` fails partway. The `iam:*` grants are scoped to these two name patterns so they can't touch other roles.
+
+After launching, spawn **verifies spored is running** by asking the instance
+over SSM (`ssm:DescribeInstanceInformation`, then `ssm:SendCommand` of
+`spored status` and `ssm:GetCommandInvocation`). `SendCommand` is limited to
+spawn-managed instances. Without these, the launch waits out its timeout and
+reports that spored never came up, even though it did
+([spawn#1126](https://github.com/spore-host/spawn/issues/1126)).
+`pricing:GetProducts` sets the instance's price tag. Without it, a launch with
+`--cost-limit` is refused, because a limit that can't be priced can't be
+enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`.
 
 The **default AMI** is found through AWS's public SSM parameters, so `ssm:GetParameter` on `/aws/service/...` is needed unless you always pass `--ami`. The `/spawn/dns/*` parameters are where an administrator can set a [custom DNS](../guides/self-hosting.md#step-3-point-launches-at-your-updater) domain for a whole account. If spawn can't read them, it uses spore.host's DNS instead, without warning ([spawn#1121](https://github.com/spore-host/spawn/issues/1121)).
 :::
