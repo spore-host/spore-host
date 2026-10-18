@@ -61,37 +61,34 @@ lagotto watch "g5.xlarge" --action spawn \
 # Watch for Spot capacity under a price ceiling
 lagotto watch "p4d.24xlarge" --spot --max-price 10.00
 
-# Watch for SageMaker ml.* capacity and submit your training job when it appears
-lagotto watch "ml.g5.2xlarge" --service sagemaker \
+# Keep submitting a SageMaker training job until SageMaker has capacity for it
+lagotto watch "ml.g5.2xlarge" --service sagemaker --action spawn \
   --sagemaker-config train-job.json \
-  --notify email:you@example.com
-
-# …or only be notified, and submit the job yourself
-lagotto watch "ml.g5.2xlarge" --service sagemaker --action notify \
   --notify email:you@example.com
 ```
 
 #### Watching SageMaker capacity (`--service sagemaker`)
 
 SageMaker Training/Processing jobs can fail with `CapacityError` even when your
-quota is sufficient. AWS exposes **no** read-only SageMaker capacity API, so
-`--service sagemaker` watches the **correlated EC2 family as a proxy**
-(`ml.g5.2xlarge` → `g5.2xlarge`). EC2 `g5` availability is a *hint* that
-SageMaker `ml.g5` capacity is likely available — but SageMaker is a separate
-managed pool, so it is not a guarantee.
+quota is sufficient. AWS exposes **no** read-only SageMaker capacity API, and
+SageMaker draws on its own managed pool, so EC2 availability says nothing useful
+about it. The only real test is submitting the job.
 
-When the proxy fires, lagotto can **submit your SageMaker job for you**: pass the
-job definition with `--sagemaker-config <file.json>` (the `CreateTrainingJobInput`
-document, validated server-side at submit). lagotto submits it, then polls the
-job — a `Completed`/running job records a match, a `CapacityError` leaves the
-watch active to retry on the next cycle. This makes a capacity-blocked SageMaker
-job fire-and-forget.
+So with `--service sagemaker --action spawn`, lagotto **submits your job
+itself**, from the definition in `--sagemaker-config <file.json>` (the
+`CreateTrainingJobInput` document, validated by SageMaker at submit). It then
+polls the job: a running or `Completed` job records a match, and a
+`CapacityError` leaves the watch active to try again on the next cycle. A
+capacity-blocked job becomes fire-and-forget.
 
-If you'd rather submit the job yourself, use `--action notify` (no
-`--sagemaker-config`): the notification tells you it's worth retrying, and the
-watch keeps running so you're alerted again if the job still hits `CapacityError`.
-`--action hold` is rejected for SageMaker — there is no capacity-reservation
+::: warning Use `--action spawn` for SageMaker
+The default action is `notify`. With `--service sagemaker`, a notify watch
+neither submits the job nor sends anything: with no capacity signal, there's
+nothing to notify on ([lagotto#195](https://github.com/spore-host/lagotto/issues/195)).
+`--sagemaker-config` is also ignored unless the action is `spawn`.
+`--action hold` is rejected for SageMaker, since there's no capacity-reservation
 equivalent.
+:::
 
 ### `lagotto list`
 
@@ -226,7 +223,17 @@ lagotto deploy                 # stand up Lambda + EventBridge + DynamoDB + IAM
 lagotto deploy --teardown      # remove it
 ```
 
-`lagotto deploy` downloads the published poller Lambda artifact, uploads it to a bucket in your account, and deploys the embedded CloudFormation template. The poller schedule deploys disabled and the first `lagotto watch` arms it; the stack self-tears-down when no watches or pending scheduled launches remain. See the [deployment guide](https://github.com/spore-host/spore-host/blob/main/lagotto/DEPLOYMENT.md) for the manual CloudFormation path and details. Once deployed, the `lagotto` CLI manages watches and scheduled launches in that infrastructure.
+`lagotto deploy` downloads the published poller Lambda artifact, uploads it to a bucket in your account, and creates the poller with direct AWS API calls: the SNS alerts topic, the Lambda and its EventBridge schedule. CloudFormation is no longer used. The schedule deploys disabled; the first `lagotto watch` enables it, and the poller disables its own schedule when no watches or pending scheduled launches remain. The Lambda and topic stay until `lagotto deploy --teardown`.
+
+**Then run `lagotto setup`.** `deploy` gives the poller only a minimal role, so it can't grant itself anything. Until you run `setup`, which attaches the policy to spawn, hold and submit SageMaker jobs, the poller can only notify. If a watch's spawn config names an instance role (`iam_role`), also authorize it with `lagotto setup --instance-role <name>`; otherwise the watch matches, then fails at launch with AccessDenied.
+
+```sh
+lagotto deploy
+lagotto setup
+lagotto doctor        # read-only check of the deployment
+```
+
+See the [deployment guide](https://github.com/spore-host/lagotto/blob/main/DEPLOYMENT.md) for the details, and the optional CloudFormation template for infrastructure-as-code setups. Once deployed, the `lagotto` CLI manages watches and scheduled launches in that infrastructure.
 
 ## Full command reference
 
