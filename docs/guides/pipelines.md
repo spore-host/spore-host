@@ -10,8 +10,8 @@ A pipeline chains stages together: when one stage completes, it automatically la
 
 A pipeline is a DAG of stages, each of which is one ephemeral instance with its own
 instance type, TTL, and completion behavior. On its own, a single stage is just a
-`spawn launch` that terminates when it writes the completion file
-(`/tmp/SPAWN_COMPLETE`):
+`spawn launch` that terminates when its `--command` exits (the command's exit,
+pass or fail, writes the completion file `/tmp/SPAWN_COMPLETE` for you):
 
 ```sh
 # One stage in isolation — data prep on a cheap CPU instance
@@ -20,7 +20,8 @@ spawn launch \
   --instance-type c6i.4xlarge \
   --ttl 4h \
   --on-complete terminate \
-  --command "python prepare_data.py --output s3://my-bucket/prepared/ && touch /tmp/SPAWN_COMPLETE"
+  --s3-write my-bucket \
+  --command "python prepare_data.py --output s3://my-bucket/prepared/"
 ```
 
 ::: warning Running stages by hand does **not** create a pipeline
@@ -41,17 +42,21 @@ The definition is JSON. Stages declare their dependencies with `depends_on`, so 
 {
   "pipeline_id": "ml-pipeline",
   "pipeline_name": "Training pipeline",
+  "s3_bucket": "my-bucket",
+  "s3_prefix": "pipelines/ml-pipeline",
   "on_failure": "stop",
   "stages": [
     {
       "stage_id": "prep",
       "instance_type": "c6i.4xlarge",
+      "instance_count": 1,
       "command": "python prepare_data.py --output s3://my-bucket/prepared/",
       "timeout": "4h"
     },
     {
       "stage_id": "train",
       "instance_type": "p4d.24xlarge",
+      "instance_count": 1,
       "spot": true,
       "depends_on": ["prep"],
       "command": "python train.py --data s3://my-bucket/prepared/",
@@ -60,6 +65,7 @@ The definition is JSON. Stages declare their dependencies with `depends_on`, so 
     {
       "stage_id": "eval",
       "instance_type": "c6i.2xlarge",
+      "instance_count": 1,
       "depends_on": ["train"],
       "command": "python evaluate.py --model s3://my-bucket/model/",
       "timeout": "2h"
@@ -68,9 +74,16 @@ The definition is JSON. Stages declare their dependencies with `depends_on`, so 
 }
 ```
 
-Preview the DAG before running it, then launch:
+`pipeline_id`, `pipeline_name`, `s3_bucket` and at least one stage are required.
+Every stage needs `stage_id`, `instance_type`, `command`, and an `instance_count`
+of at least 1; there is no default, so a stage without it fails validation. The
+pipeline's stage markers, outputs and config live in `s3_bucket` under
+`<s3_prefix>/runs/<run-id>/`.
+
+Check the definition, preview the DAG, then launch:
 
 ```sh
+spawn pipeline validate pipeline.json  # required fields, dependencies, no cycles
 spawn pipeline graph pipeline.json     # ASCII render of the dependency graph
 spawn pipeline launch pipeline.json    # upload + start the orchestrator
 spawn pipeline launch pipeline.json --wait   # block until the pipeline finishes
@@ -96,12 +109,14 @@ Stages hand data off through S3. Give a stage a `data_output` block to publish i
 {
   "stage_id": "prep",
   "instance_type": "c6i.4xlarge",
+  "instance_count": 1,
   "command": "python prepare_data.py --output /mnt/out/",
   "data_output": { "mode": "s3", "paths": ["/mnt/out/"] }
 },
 {
   "stage_id": "train",
   "instance_type": "p4d.24xlarge",
+  "instance_count": 1,
   "depends_on": ["prep"],
   "data_input": { "mode": "s3", "source_stage": "prep", "dest_path": "/mnt/data" },
   "command": "python train.py --data /mnt/data"
@@ -124,7 +139,16 @@ it; most pipelines should prefer the S3 `data_input`/`data_output` handoff above
 
 ## Error handling
 
-If a stage exits non-zero the pipeline stops (unless `on_failure` is `continue`). Fix the cause and re-launch — re-running `spawn pipeline launch` starts a fresh run of the definition.
+If a stage exits non-zero the pipeline stops (unless `on_failure` is `continue`). Fix the cause and re-launch — re-running `spawn pipeline launch` starts a fresh run of the definition, with its own run id, so it never reads an earlier run's results.
+
+The `pipeline_id` comes from the file, so a relaunch reuses it. If that pipeline
+still has a run in flight, `launch` refuses rather than replacing it. Add
+`--replace` to cancel the run in flight (its instances are terminated) and start
+the new one:
+
+```sh
+spawn pipeline launch pipeline.json --replace
+```
 
 ## Monitoring
 
@@ -132,7 +156,17 @@ If a stage exits non-zero the pipeline stops (unless `on_failure` is `continue`)
 
 ```sh
 spawn pipeline list                    # all pipelines and their state
-spawn pipeline status ml-pipeline      # current stage, elapsed time, cost
-spawn pipeline collect ml-pipeline     # download results (--stage to pick one)
+spawn pipeline status ml-pipeline      # current stage, run id, elapsed time, cost
+spawn pipeline collect ml-pipeline     # download the latest run's results to ./results
 spawn pipeline cancel ml-pipeline      # stop the current stage and all remaining
+```
+
+`collect` downloads every stage's `data_output` files to
+`<output-dir>/<stage>/<file>` (with an `<index>/` level for a stage with
+`instance_count` above 1). It collects the latest run unless you name another
+with `--run` (the run id printed at launch and by `status`):
+
+```sh
+spawn pipeline collect ml-pipeline --run <run-id> --output-dir ./run-results
+spawn pipeline collect ml-pipeline --stage train
 ```

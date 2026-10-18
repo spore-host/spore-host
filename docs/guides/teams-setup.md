@@ -15,7 +15,7 @@ Connecting spore.host to Microsoft Teams gives you `/spore` commands in any chan
 /spore start rstudio           — start a stopped instance
 /spore stop rstudio            — stop a running instance
 /spore extend rstudio 4h       — extend the auto-terminate deadline
-/spore hibernate rstudio       — hibernate (save RAM state, stop billing)
+/spore hibernate rstudio       — hibernate (save RAM state; compute billing stops, EBS continues)
 /spore connect                 — generate a one-time code for a collaborator
 /spore notify rstudio          — subscribe to DM notifications for this instance
 /spore help                    — command reference
@@ -107,7 +107,7 @@ Replace `<YOUR_BOT_APP_ID>` with the Azure Bot's app ID (Client ID). Zip the man
 Register your Teams tenant and bot credentials with the spore-bot Lambda:
 
 ```sh
-spawn notify workspace-add \
+spawn notify workspace add \
   --platform teams \
   --workspace-id <TEAMS_TENANT_ID> \
   --bot-token <AZURE_BOT_CLIENT_SECRET> \
@@ -135,16 +135,13 @@ The `--nickname` is what you use in Teams commands (`/spore status rstudio`). To
 spawn notify list --platform teams --workspace-id <TEAMS_TENANT_ID>
 ```
 
-Or use the `--user` flag with your email — spore-bot resolves it to a Teams user ID via the Graph API:
-
-```sh
-spawn notify register \
-  --platform teams \
-  --workspace-id <TEAMS_TENANT_ID> \
-  --user you@university.edu \
-  --instance i-0a1b2c3d4e5f \
-  --nickname rstudio
-```
+::: warning `--user` (email) doesn't work for Teams
+`spawn notify register --user <email>` resolves the address with Slack's
+`users.lookupByEmail` API, using the workspace's stored bot token. There is no
+Microsoft Graph lookup, so for Teams pass the Teams user ID with `--user-id`, or
+have the user run `/spore connect` and redeem the code (see
+[Adding collaborators](#adding-collaborators)).
+:::
 
 Then enable the registration:
 
@@ -158,21 +155,26 @@ spawn notify enable \
 
 ## Step 5: Enable notifications at launch
 
-Set `--slack-workspace` to your Teams tenant ID when launching to enable DM notifications:
+Set `--slack-workspace` to your Teams tenant ID and `--notify-platform teams` when
+launching to enable DM notifications:
 
 ```sh
 spawn launch \
   --name rstudio \
   --instance-type r6i.2xlarge \
   --ttl 8h \
-  --slack-workspace <TEAMS_TENANT_ID>
+  --slack-workspace <TEAMS_TENANT_ID> \
+  --notify-platform teams
 ```
 
 ::: info
-The `--slack-workspace` flag is used for both Slack and Teams. The platform is determined by the registered workspace record.
+The `--slack-workspace` flag carries the workspace ID for every platform. The
+platform comes from `--notify-platform` (stored in the `spawn:notify-platform`
+tag), not from the workspace record, and it defaults to `slack`. Without
+`--notify-platform teams`, spored reports the instance's events as Slack events.
 :::
 
-Or save it as a default:
+Or save the workspace as a default (pass `--notify-platform teams` on each launch):
 
 ```sh
 spawn defaults set slack-workspace <TEAMS_TENANT_ID>
@@ -185,14 +187,14 @@ Give a collaborator access to an instance without giving them AWS credentials.
 ```sh
 spawn notify register \
   --platform teams \
-  --user collaborator@partner.edu \
+  --user-id <COLLABORATOR_TEAMS_USER_ID> \
   --workspace-id <TEAMS_TENANT_ID> \
   --instance i-0a1b2c3d4e5f \
   --nickname rstudio
 
 spawn notify enable \
   --platform teams \
-  --user collaborator@partner.edu \
+  --user-id <COLLABORATOR_TEAMS_USER_ID> \
   --workspace-id <TEAMS_TENANT_ID> \
   --nickname rstudio
 ```
@@ -232,10 +234,10 @@ spawn notify deregister \
 
 ## Troubleshooting
 
-**Commands return "workspace not found"** — verify that `--workspace-id` matches the tenant ID used in `workspace-add`. Tenant IDs are UUIDs like `72f988bf-86f1-41af-91ab-2d7cd011db47`.
+**Commands return "workspace not found"** — verify that `--workspace-id` matches the tenant ID used in `spawn notify workspace add`. Tenant IDs are UUIDs like `72f988bf-86f1-41af-91ab-2d7cd011db47`.
 
 **Not receiving DM notifications** — ensure:
-1. The instance was launched with `--slack-workspace <TENANT_ID>`
+1. The instance was launched with `--slack-workspace <TENANT_ID> --notify-platform teams`
 2. You've run `/spore notify <nickname>` in Teams to subscribe
 
 **Teams bot not responding** — check the Lambda logs. The messaging endpoint in your Azure Bot configuration must match your Lambda URL exactly, including the `/teams` path suffix.

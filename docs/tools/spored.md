@@ -85,7 +85,7 @@ Shows the current lifecycle state of the instance:
   Storage cost:     $0.18  (1h 30m × $0.1200/hr EBS)
   Cumulative cost:  $1.62
   Effective rate:   $0.2496/hr  (4% lower than continuous on-demand)
-  Cost limit:       $50.00  ($1.44 compute used, 3% — $48.56 remaining; compute-only)
+  Cost limit:       $50.00  ($1.62 used, compute + EBS, 3% — $48.38 remaining)
 
   CPU:              2.5%
   Network:          45 B/min
@@ -94,13 +94,8 @@ Shows the current lifecycle state of the instance:
 
 Cost figures are estimates; definitive billing comes from AWS.
 
-::: warning The `Cost limit` line counts compute only
-The cap itself is enforced on compute **plus EBS**, but this line's "used" and
-"remaining" figures still count compute alone, so it overstates the headroom —
-most visibly on a stopped instance, whose EBS keeps accruing toward the cap while
-the figure stands still. Add the `Storage cost` line to get closer to what the cap
-sees. Tracked in [spawn#959](https://github.com/spore-host/spawn/issues/959).
-:::
+The `Cost limit` line counts compute **plus EBS**, the same spend the cap is
+enforced against, so its "remaining" figure is the real headroom (since v0.129.0).
 
 ### `spored config get/set/list`
 
@@ -144,7 +139,7 @@ All spored configuration is stored as EC2 tags. Spawn writes them at launch; you
 | `spawn:ttl-deadline` | RFC3339 | `2026-05-19T14:00:00Z` | **Authoritative deadline** — set once at launch, never resets across stop/wake cycles. Takes precedence over `spawn:ttl`. |
 | `spawn:launch-time` | RFC3339 | `2026-05-18T10:00:00Z` | Original launch time, anchors the deadline. |
 | `spawn:idle-timeout` | duration | `1h` | Stop (or hibernate) after this duration of inactivity. |
-| `spawn:hibernate-on-idle` | bool | `true` | Hibernate on idle instead of stop. Default: `false`. |
+| `spawn:hibernate-on-idle` | bool | `true` | Hibernate on idle instead of stop (set by `--on-idle hibernate`). Default: `false`. |
 | `spawn:on-complete` | enum | `terminate` | Action on completion: `terminate`, `stop`, `hibernate`. |
 | `spawn:completion-file` | path | `/tmp/SPAWN_COMPLETE` | Sentinel file path to watch. Default: `/tmp/SPAWN_COMPLETE`. |
 | `spawn:completion-delay` | duration | `30s` | Grace period after completion file appears. Default: `30s`. |
@@ -155,8 +150,8 @@ All spored configuration is stored as EC2 tags. Spawn writes them at launch; you
 
 | Tag | Type | Default | Description |
 |-----|------|---------|-------------|
-| `spawn:idle-cpu` | float (%) | `5.0` | CPU usage below this threshold counts as idle. |
-| `spawn:active-ports` | comma-separated ints | | TCP ports to monitor — active connections prevent idle termination (e.g., `8787` for RStudio). |
+| `spawn:idle-cpu` | float (%) | `5.0` | CPU usage below this threshold counts as idle. There is no launch flag; set the tag to change it. |
+| `spawn:active-ports` | comma-separated ints | | TCP ports whose ESTABLISHED connections are counted and reported in the `spawn:logged-in-count` tag. They do **not** prevent idle: an abandoned browser tab holds a connection open forever. Use `spawn:active-processes` to keep a busy app alive. |
 | `spawn:active-processes` | comma-separated strings | | Process names to check via `pgrep` — if any are running, not idle (e.g., `rsession,jupyter`). |
 
 ### Cost tracking
@@ -172,9 +167,12 @@ All spored configuration is stored as EC2 tags. Spawn writes them at launch; you
 
 | Tag | Type | Description |
 |-----|------|-------------|
-| `spawn:notify-url` | URL | spore-bot Lambda endpoint for Slack/Teams lifecycle notifications. |
+| `spawn:notify-url` | URL | spore-bot Lambda endpoint spored posts lifecycle events to (Slack, Teams or Discord). |
 | `spawn:slack-workspace-id` | string | Workspace ID for routing notifications. |
-| `spawn:dns-name` | string | DNS subdomain — spored registers on start, deregisters on shutdown. |
+| `spawn:notify-platform` | string | `slack` (default when absent), `teams` or `discord`, from `--notify-platform`. |
+| `spawn:dns-name` | string | DNS label (not a full hostname). spored registers `<label>.<account-base36>.<domain>` on start and removes it on shutdown. |
+| `spawn:dns-domain` | string | Zone to register under, when not `spore.host` (`--dns-domain`). |
+| `spawn:dns-endpoint` | URL | Custom DNS updater endpoint (`--dns-api-endpoint`). |
 
 ---
 
@@ -184,14 +182,16 @@ Spored checks every minute. An instance is **active** (not idle) if _any_ of the
 
 | Signal | Threshold | Detail |
 |--------|-----------|--------|
-| SSH sessions | any | `w -h -s` — any user with keyboard activity in the last 5 minutes |
-| Active processes | any running | Processes listed in `spawn:active-processes` detected via `pgrep` |
-| Port connections | any | ESTABLISHED TCP connections on ports listed in `spawn:active-ports` |
+| Login sessions | any typing in the last 5 minutes | A terminal counts only while someone types in it (its last input is under 5 minutes old). An open SSH session, tmux/screen session or SSM shell that nobody is using does not count. |
+| Active processes | any running | Processes listed in `spawn:active-processes` |
 | CPU usage | ≥ 5% | Measured as a delta since the last check (configurable via `spawn:idle-cpu`) |
-| Network traffic | ≥ 100 KB/min | RX+TX on primary interface, measured from `/proc/net/dev` |
-| Disk I/O | ≥ 100 KB/min | Read+write on block devices, measured from `/proc/diskstats` |
-| GPU utilization | ≥ 5% | `nvidia-smi` — only checked if NVIDIA GPU is present |
-| Active PTYs | any | Open pseudo-terminal entries in `/dev/pts/` |
+| Network traffic | > 1 MiB/min | RX+TX, measured from `/proc/net/dev` |
+| Disk I/O | > 16 MiB/min | Read+write on block devices, measured from `/proc/diskstats` |
+| GPU / accelerator utilization | > 5% | `nvidia-smi` (and the Neuron/Gaudi equivalents), only when such a device is present |
+
+A signal that can't be measured counts as active, so "couldn't tell" never reads as
+idle. Connections on `spawn:active-ports` are counted and reported, but they do
+**not** keep the instance active.
 
 The idle timer starts from the moment _all_ signals are inactive simultaneously. Any single active signal resets it.
 
@@ -200,6 +200,10 @@ The idle timer starts from the moment _all_ signals are inactive simultaneously.
 ## Completion file
 
 When `--on-complete` is set at launch, spored watches for the completion file and acts when it appears.
+
+A `--command` writes this file itself when it exits, pass or fail (its exit code
+goes to `/tmp/SPAWN_EXITCODE`), so you only need to create it for work you start
+some other way.
 
 **Default path:** `/tmp/SPAWN_COMPLETE`
 
@@ -227,7 +231,7 @@ spored complete --file /var/run/myapp/done
 ```
 
 **Sequence after file appears:**
-1. Slack/Teams notification sent immediately
+1. `completion` notification sent immediately (Slack, Teams or Discord)
 2. Users warned via `wall`
 3. `spawn:completion-delay` grace period (default 30s)
 4. `spawn:pre-stop` command runs (if set)
@@ -237,18 +241,34 @@ spored complete --file /var/run/myapp/done
 
 ## Lifecycle events and notifications
 
-When `--slack-workspace` is set at launch, spored sends a DM for each event:
+When `--slack-workspace` is set at launch, spored posts each event to the
+spore-bot Lambda (`spawn:notify-url`), which sends it to the users registered for
+the instance on Slack, Teams or Discord (`--notify-platform`). The event names
+are:
 
 | Event | Trigger |
 |-------|---------|
-| TTL warning | 5 minutes before TTL deadline |
-| TTL expired | TTL deadline reached — terminating |
-| Idle warning | 5 minutes before idle timeout triggers |
-| Idle stopped | Idle timeout triggered — stopping |
-| Idle hibernated | Idle timeout triggered — hibernating |
-| Completion | Completion file detected |
-| Spot interruption | AWS 2-minute Spot reclaim notice |
-| Cost limit warning | Accumulated spend ≥ 90% of `spawn:cost-limit` |
+| `ttl_warning` | 5 minutes before the TTL deadline |
+| `ttl_expired` | TTL deadline reached — terminating |
+| `idle_warning` | 5 minutes before the idle timeout triggers |
+| `idle_stopped` | Idle timeout triggered and the stop was accepted |
+| `idle_hibernated` | Idle timeout triggered and the hibernate was accepted |
+| `idle_stop_failed` | The idle stop or hibernate failed; the instance is still running and spored retries with backoff |
+| `completion` | Completion file detected |
+| `completion_stop_failed` | The on-complete stop or hibernate failed; spored retries with backoff |
+| `pre_stop_start` | The pre-stop hook begins |
+| `pre_stop_timeout` | The pre-stop hook ran past `spawn:pre-stop-timeout` |
+| `pre_stop_failed` | The pre-stop hook exited with an error |
+| `spot_interrupt` | AWS 2-minute Spot reclaim notice |
+| `spot_replacement_retired` | A replacement EC2 launched from a leaked Spot request was found; spored cancels the request and terminates the replacement. Sent to the original instance's users. |
+| `fsx_mount_failed` | The FSx filesystem could not be mounted |
+| `fsx_dra_failed` | The FSx data repository association (S3 link) could not be set up |
+| `region_vacated` | No spawn-managed instances remain in the region |
+
+The cost-limit warning is not a chat notification. At 90% of `spawn:cost-limit`,
+spored broadcasts a warning to logged-in users with `wall` and writes it to
+`/tmp/SPAWN_WARNING`. The TTL and idle warnings are sent the same way too, in
+addition to the chat event.
 
 ---
 
@@ -279,4 +299,4 @@ aws ec2 describe-tags \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SPORED_TAG_PREFIX` | `spawn` | EC2 tag prefix — change this for multi-tenant deployments |
-| `SPORED_DNS_DOMAIN` | `spore.host` | DNS domain base — change for self-hosted deployments |
+| `SPORED_DNS_DOMAIN` | `spore.host` | DNS domain, used only when the instance has no `spawn:dns-domain` tag. The tag (`--dns-domain` at launch) is the normal way to set it. |

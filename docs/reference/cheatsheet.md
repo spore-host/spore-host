@@ -34,7 +34,7 @@ spawn                                                  # interactive wizard
 spawn launch --name my-job --instance-type g5.xlarge --ttl 8h
 spawn launch --spot --ttl 12h --on-complete terminate
 spawn launch --count 8 --mpi --job-array-name sim --mpi-command './sim' --ttl 6h  # MPI cluster
-spawn launch --active-processes rsession --ttl 8h       # RStudio
+spawn launch --active-processes rsession --idle-timeout 2h --ttl 8h  # RStudio
 spawn launch --slack-workspace T03NE3GTY --ttl 4h       # with notifications
 spawn launch --name big-disk --instance-type m7i.large --volume-size 200  # 200 GiB root
 spawn launch my-job --instance-type c6a.large -o json | jq -r '.[0].instance_id'  # scriptable
@@ -46,7 +46,7 @@ spawn launch my-job --instance-type c6a.large -o json | jq -r '.[0].instance_id'
 spawn list                          # running instances
 spawn list --state running          # filter by state
 spawn status my-instance            # detailed status
-spawn extend my-instance 4h         # extend TTL
+spawn extend my-instance 4h         # add 4h to the TTL deadline
 spawn stop my-instance              # stop (preserves instance)
 spawn hibernate my-instance         # hibernate (saves RAM to disk)
 spawn start my-instance             # start stopped instance
@@ -68,15 +68,18 @@ spawn defaults unset active-processes
 ## spawn — notify
 
 ```sh
-spawn notify workspace-add --platform slack --workspace-id T0... \
+spawn notify workspace add --platform slack --workspace-id T0... \
   --bot-token xoxb-... --signing-secret abc...
+spawn notify workspace list
 spawn notify register --platform slack --user you@lab.edu \
   --workspace-id T0... --instance i-0abc123 --nickname rstudio
-spawn notify enable  --platform slack --user you@lab.edu \
+spawn notify enable  --platform slack --user-id U04KZABCD \
   --workspace-id T0... --nickname rstudio
-spawn notify disable --platform slack --user you@lab.edu \
+spawn notify disable --platform slack --user-id U04KZABCD \
   --workspace-id T0... --nickname rstudio
 spawn notify list --platform slack --workspace-id T0...
+spawn launch --slack-workspace <tenant-id> --notify-platform teams --ttl 4h
+spawn launch --slack-workspace <guild-id> --notify-platform discord --ttl 4h
 ```
 
 ## Slack commands
@@ -163,7 +166,7 @@ spawn launch --name rstudio \
   --ttl 8h \
   --idle-timeout 2h \
   --active-processes rsession \
-  --hibernate-on-idle
+  --on-idle hibernate
 
 # GPU parameter sweep
 spawn launch hp-search \

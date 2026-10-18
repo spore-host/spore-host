@@ -95,7 +95,7 @@ AWS_PROFILE=<infra-account> aws lambda update-function-configuration \
 > spore-bot --query Environment.Variables`) and pass all of them back with your
 > change.
 
-Workspace administrators can set a shorter TTL per workspace using `spawn bot workspace-add --connect-ttl <hours>` but cannot exceed the platform default.
+Workspace administrators can set a shorter TTL per workspace using `spawn notify workspace add --connect-ttl <hours>` but cannot exceed the platform default.
 
 ### Updating the Lambda code
 
@@ -148,4 +148,6 @@ If you are running a custom domain (e.g., `compute.youruniversity.edu`), configu
 
 ## Teams support
 
-The same Lambda handles Teams outgoing webhooks at `/teams`. Workspace setup for Teams uses `spawn bot workspace-add --platform teams` with the Teams HMAC secret instead of a Slack signing secret. The slash command equivalent in Teams is an outgoing webhook configured to POST to the Function URL.
+The same Lambda handles Teams outgoing webhooks at `/teams`. Workspace setup for Teams uses `spawn notify workspace add --platform teams` with the Teams HMAC secret instead of a Slack signing secret. Instances notify Teams only when launched with `--notify-platform teams`; the default platform is `slack`. The slash command equivalent in Teams is an outgoing webhook configured to POST to the Function URL.
+
+Discord is handled at `/discord`: register a guild with `spawn notify workspace add --platform discord --public-key <key> --webhook-url <channel-webhook>`, and launch with `--notify-platform discord`. See [Discord Setup](/guides/discord-setup).

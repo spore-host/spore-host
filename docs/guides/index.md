@@ -22,13 +22,17 @@ not sure which fits, start with **[Which execution tool?](/guides/choosing-execu
 away."*
 
 ```sh
-truffle find "amd genoa 64gb" --region us-east-1     # 1. find a fit
-spawn launch analysis \                              # 2. launch with guards
+# 1. find a fit
+truffle find "amd genoa 64gb" --region us-east-1
+# 2. launch with guards
+spawn launch analysis \
   --instance-type m8a.4xlarge \
   --ttl 8h \
   --idle-timeout 30m
-spawn connect analysis                               # 3. work on it
-spawn terminate analysis                             # 4. done — tear it down
+# 3. work on it
+spawn connect analysis
+# 4. done — tear it down
+spawn terminate analysis
 ```
 
 - **`--ttl 8h`** is the hard deadline — the instance terminates then no matter
@@ -51,22 +55,26 @@ data](/guides/managing-instances)
 spawn launch simulation \
   --instance-type c8a.12xlarge \
   --ttl 12h \
-  --command "./run-model.sh && spored complete --status success" \
+  --command "./run-model.sh" \
   --on-complete terminate
 ```
 
 What happens in each case:
 
-- **Succeeds** → the `&&` reaches `spored complete`, the completion sentinel
-  appears, and `--on-complete terminate` tears the instance down.
-- **Fails** → `run-model.sh` exits non-zero, `spored complete` never runs, so the
-  instance stays up (for you to debug) until the **TTL** terminates it at 12h.
-- **Hangs** → idle detection won't fire (a running process is activity), but the
-  **TTL** still terminates at 12h. TTL is the backstop that always wins.
+- **Succeeds** → the command exits 0, spawn writes the completion sentinel, and
+  `--on-complete terminate` tears the instance down.
+- **Fails** → the command exits non-zero, and the same thing happens: the exit
+  code goes to `/tmp/SPAWN_EXITCODE`, the sentinel records the failure, and the
+  instance terminates. The end of the command log is copied to the serial
+  console first, so `spawn logs simulation` can still show you why. To keep a
+  failed instance for debugging, use `--on-complete stop` instead.
+- **Hangs** → nothing signals completion. This launch has no idle timeout (one
+  only applies by default when neither `--ttl` nor `--idle-timeout` is given), so
+  the **TTL** terminates it at 12h. TTL is the backstop that always wins.
 
-The distinction that trips people up: it's the **completion sentinel appearing**
-that triggers `on-complete`, not your command merely exiting — which is why the
-script calls `spored complete` explicitly. See
+A `--command` signals completion when it exits, pass or fail (since v0.113.0).
+Work you start some other way, such as over `spawn connect`, has to signal it
+with `spored complete`. See
 [Troubleshooting](/reference/troubleshooting#a-command-finishing-vs-the-completion-sentinel-appearing).
 
 → Deeper: [GPU training jobs](/guides/gpu-training) · [Parameter
@@ -105,7 +113,7 @@ capacity](/guides/waiting-for-capacity).
 | Run tightly-coupled multi-node jobs | [MPI clusters](/guides/mpi) |
 | Chain jobs so each stage launches the next | [Pipelines](/guides/pipelines) |
 | Wait for a hard-to-find GPU | [Waiting for scarce capacity](/guides/waiting-for-capacity) |
-| Control instances from Slack/Teams | [Slack Setup](/guides/slack-setup) |
+| Control instances from Slack/Teams/Discord | [Slack Setup](/guides/slack-setup) |
 | Drive compute from an AI assistant | [AI Assistant (MCP)](/guides/mcp-setup) |
 | Automate from Python | [Python SDK](/guides/python-sdk) |
 | Run Nextflow / WDL / CWL / Snakemake / Airflow | [Workflow engines](/guides/workflow-engines) |

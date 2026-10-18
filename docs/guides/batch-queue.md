@@ -39,6 +39,7 @@ Create a JSON file describing your jobs:
 
 ```json
 {
+  "queue_id": "my-pipeline-001",
   "queue_name": "my-pipeline",
   "jobs": [
     {
@@ -68,11 +69,12 @@ Create a JSON file describing your jobs:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `queue_name` | yes | Human-readable name |
+| `queue_id` | yes | Identifier for the queue. A queue file without it fails validation |
+| `queue_name` | no | Human-readable name |
 | `jobs` | yes | Array of job definitions |
 | `job_id` | yes | Unique identifier for this job |
 | `command` | yes | Shell command to run |
-| `timeout` | no | Per-job timeout (e.g. `30m`, `4h`) |
+| `timeout` | yes | Per-job timeout (e.g. `30m`, `4h`) |
 | `depends_on` | no | List of `job_id`s that must complete first (ordering only) |
 | `env` | no | Per-job environment variables (map) |
 | `retry` | no | Per-job retry policy (see below) |
@@ -86,7 +88,7 @@ Create a JSON file describing your jobs:
 ```json
 "retry": {
   "max_attempts": 3,
-  "backoff": "exponential-jitter",
+  "backoff": "exponential",
   "base_delay": "2s",
   "max_delay": "5m",
   "retry_on_codes": [1, 137],
@@ -94,9 +96,12 @@ Create a JSON file describing your jobs:
 }
 ```
 
-`backoff` is `fixed`, `exponential`, or `exponential-jitter`. Use `retry_on_codes`
-to retry only specific exit codes, or `dont_retry_on_codes` to never retry certain
-ones.
+`max_attempts` (at least 1) and `backoff` are required in a `retry` block.
+`backoff` must be `fixed` or `exponential`. `exponential-jitter` is defined but
+validation rejects it today; that's tracked in
+[spawn#1119](https://github.com/spore-host/spawn/issues/1119). Use
+`retry_on_codes` to retry only specific exit codes, or `dont_retry_on_codes` to
+never retry certain ones.
 
 ## Launch
 
@@ -116,13 +121,27 @@ to S3 alongside the queue's results:
 
 ```sh
 spawn status my-job                                    # instance state
-spawn connect my-job -- tail -f /var/log/spored.log    # overall daemon log
+spawn queue status <instance-id>                       # per-job queue state (over SSH)
+spawn logs my-job --which spored                       # the spored log, where the queue runner logs
+spawn connect my-job -- tail -f /var/log/spored.log    # follow the daemon log live
 
 # On the instance, per-job logs live at:
 #   /var/log/spored/jobs/<job_id>-stdout.log
 #   /var/log/spored/jobs/<job_id>-stderr.log
 # and (with result_s3_prefix set) upload to <prefix>/jobs/<job_id>/stdout.log
 ```
+
+Download a queue's outputs, logs and final state from S3 with `spawn queue
+results`. Pass the queue config with `--config` so it reads from that file's
+`result_s3_bucket` (otherwise it looks in `spawn-results-<region>`):
+
+```sh
+spawn queue results my-pipeline-001 --config pipeline.json --output-dir ./results
+```
+
+`spawn queue template list` shows pre-built queue configurations; `show`,
+`generate` and `init` turn one into a queue file, and `spawn launch
+--queue-template <name> --template-var KEY=VALUE` launches one directly.
 
 The queue tracks per-job completion state, so a queue that was interrupted resumes
 from where it left off — **already-completed jobs are skipped** rather than re-run.
@@ -142,6 +161,7 @@ either run on-demand or checkpoint each job's outputs to S3 via `result_paths`.
 
 ```json
 {
+  "queue_id": "classifier-pipeline-001",
   "queue_name": "classifier-pipeline",
   "jobs": [
     {

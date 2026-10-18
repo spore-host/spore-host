@@ -1,11 +1,11 @@
 ---
-description: "Spore-bot connects your Slack or Microsoft Teams workspace to your running instances."
+description: "Spore-bot connects your Slack, Microsoft Teams or Discord workspace to your running instances."
 ---
 
 # Spore-bot <span class="doc-badge automation">Automation</span> <span class="doc-badge stable">Stable</span>
 
-**What it is.** Spore-bot connects your Slack or Microsoft Teams workspace to your
-running instances.
+**What it is.** Spore-bot connects your Slack, Microsoft Teams or Discord workspace
+to your running instances.
 
 **When to use it.** When you (or a collaborator) want to check on or control an
 instance without opening a terminal or holding AWS credentials — from a phone, a
@@ -26,7 +26,7 @@ is in [Security, credentials & data flow](/architecture).
 | `/spore status [name]` | State, type, IP, DNS, TTL countdown |
 | `/spore start [name]` | Start a stopped instance |
 | `/spore stop [name]` | Stop a running instance |
-| `/spore hibernate [name]` | Hibernate (save RAM, stop billing) |
+| `/spore hibernate [name]` | Hibernate (save RAM; compute billing stops, EBS continues) |
 | `/spore extend [name] [duration]` | Extend the TTL |
 | `/spore url [name]` | Get the instance URL |
 | `/spore connect [duration]` | Generate a one-time code for a collaborator |
@@ -36,7 +36,7 @@ is in [Security, credentials & data flow](/architecture).
 
 **Direct message notifications** — lifecycle events arrive as DMs without polling:
 
-- ⏱️ *training terminates in 10 minutes* — time to extend if needed
+- ⏱️ *training terminates in 5 minutes* — time to extend if needed
 - ✅ *bert-finetune has completed* — job done, instance is terminating
 - 💤 *rstudio has hibernated* — idle timeout reached
 - ⚠️ *training received a Spot interruption notice*
@@ -59,9 +59,10 @@ See the full [Slack Setup guide](/guides/slack-setup) for step-by-step instructi
 
 1. Create a Slack app at api.slack.com/apps
 2. Add the OAuth redirect URL and configure the `/spore` slash command
-3. Connect your workspace: click "Add to Slack" or run `spawn notify workspace-add`
-4. Register instances: `spawn notify register --instance i-0abc123 --nickname rstudio`
-5. Enable access: `spawn notify enable --nickname rstudio --user you@lab.edu`
+3. Connect your workspace: click "Add to Slack" or run `spawn notify workspace add`
+4. Register instances: `spawn notify register --platform slack --workspace-id T0... --user you@lab.edu --instance i-0abc123 --nickname rstudio` (it prints the Slack user ID the email resolved to)
+5. Enable access: `spawn notify enable --platform slack --workspace-id T0... --user-id U04KZABCD --nickname rstudio` (`--user-id` is required)
+6. Launch with notifications: `spawn launch --slack-workspace T0... ...`
 
 ## Access model
 
@@ -70,6 +71,10 @@ See the full [Slack Setup guide](/guides/slack-setup) for step-by-step instructi
 - **Enabled flag** — access can be suspended without revoking the registration
 - **Cross-account IAM** — the Lambda never has broad EC2 access; it can only assume roles you create
 
-## Microsoft Teams
+## Microsoft Teams and Discord
 
-Teams works identically to Slack. See [Teams Setup](/guides/teams-setup).
+Teams works like Slack; launch with `--notify-platform teams` so the instance's
+events are sent as Teams events. See [Teams Setup](/guides/teams-setup).
+
+Discord delivers notifications to a channel webhook as embeds; launch with
+`--notify-platform discord`. See [Discord Setup](/guides/discord-setup).

@@ -15,7 +15,7 @@ Connecting spore.host to Slack gives you `/spore` commands in any channel and di
 /spore start rstudio           — start a stopped instance
 /spore stop rstudio            — stop a running instance
 /spore extend rstudio 4h       — extend the auto-terminate deadline
-/spore hibernate rstudio       — hibernate (save RAM state, stop billing)
+/spore hibernate rstudio       — hibernate (save RAM state; compute billing stops, EBS continues)
 /spore connect                 — generate a one-time code for a collaborator
 /spore notify rstudio          — subscribe to DM notifications for this instance
 /spore help                    — command reference
@@ -62,7 +62,7 @@ https://awdzf7fbbsvqcrnrzusqjsuybm0iiyvf.lambda-url.us-east-1.on.aws/spore/oauth
 ### Manual registration
 
 ```sh
-spawn notify workspace-add \
+spawn notify workspace add \
   --platform slack \
   --workspace-id T03NE3GTY \
   --workspace-name "My Workspace" \
@@ -87,10 +87,16 @@ spawn notify register \
 
 spawn notify enable \
   --platform slack \
-  --user you@university.edu \
+  --user-id U04KZABCD \
   --workspace-id T03NE3GTY \
   --nickname rstudio
 ```
+
+`register` accepts an email (`--user`) and resolves it with Slack's
+`users.lookupByEmail`, printing the Slack user ID it found
+(`Resolved you@university.edu → Slack user ID U04KZABCD`). `enable` (and `disable`)
+needs that ID: `--user-id` is required, alongside `--platform`, `--workspace-id`
+and `--nickname`.
 
 The `--nickname` is what you'll use in Slack commands (`/spore status rstudio`). The `--allow` flag controls which operations this user can perform.
 
@@ -126,9 +132,10 @@ spawn notify register \
   --nickname rstudio \
   --allow status,start,stop
 
+# Use the user ID that register printed
 spawn notify enable \
   --platform slack \
-  --user collaborator@partner.edu \
+  --user-id U05COLLAB1 \
   --workspace-id T03NE3GTY \
   --nickname rstudio
 ```
@@ -162,7 +169,11 @@ To unsubscribe: `/spore unnotify rstudio`
 **Commands return "workspace not found"** — check that the signing secret in your Slack app matches what was registered. Signing secrets are regenerated if you change your app's scopes. Re-register with the new secret:
 
 ```sh
-spawn notify workspace-add --platform slack --workspace-id T0... --signing-secret <new-secret>
+spawn notify workspace add --platform slack --workspace-id T0... \
+  --bot-token xoxb-... --signing-secret <new-secret>
 ```
+
+`workspace add` replaces the whole workspace record, so include the bot token (and
+`--webhook-url`, if you set one) again.
 
 **Not receiving DM notifications** — make sure the instance was launched with `--slack-workspace` and that you've run `/spore notify <nickname>` for your user.

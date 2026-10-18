@@ -65,7 +65,16 @@ Yes, at any time: `spawn extend my-instance 4h` — or from Slack: `/spore exten
 
 ### What's the maximum TTL?
 
-720 hours (30 days). Setting `--ttl 0` disables auto-termination, which is not recommended for anything other than long-lived development environments.
+spawn doesn't cap `--ttl`. The TTL reaper does: by default it reclaims any instance
+older than 7 days, whatever its deadline, because `spawn:ttl-deadline` can be
+rewritten from the instance and so can't be the only bound. spawn warns at launch
+when a `--ttl` is longer than that. To keep instances longer, raise
+`REAPER_MAX_AGE` on your reaper deployment.
+
+`--ttl 0` is rejected ("must be greater than zero"). To launch without a TTL, omit
+`--ttl` (with no `--idle-timeout` either, a 1h idle timeout applies) or pass
+`--no-timeout`, which is not recommended for anything other than long-lived
+development environments.
 
 ### What happens to a Spot instance when AWS interrupts it?
 
@@ -122,11 +131,11 @@ automatically (see above).
 
 ### Why didn't my instance terminate when I expected it to?
 
-Idle detection considers CPU, network I/O, disk I/O, GPU utilisation, active SSH sessions, and (if configured) specific process names. If any signal indicates activity, the idle timer resets. Check `spawn status my-instance` to see current activity levels.
+Idle detection considers CPU, network I/O, disk I/O, GPU utilisation, login sessions someone has typed in within the last 5 minutes, and (if configured) specific process names. If any signal indicates activity, the idle timer resets. Check `spawn status my-instance` to see current activity levels.
 
 ### I'm running RStudio — why does idle detection keep resetting?
 
-The RStudio browser tab maintains a TCP connection to the server even when you're not actively using it. Use `--active-processes rsession` to base idle detection on whether an R session process is actually running, rather than TCP connections.
+It isn't the browser's open connection: spored ignores open connections, even on `--active-ports`, because an abandoned tab holds one open forever. Something is producing activity above the idle thresholds (CPU at 5% or more, network over 1 MiB/min, disk over 16 MiB/min, or a terminal someone typed in within 5 minutes). `spawn status my-instance` shows which signal is keeping it awake. If you want the instance kept up for as long as an R session runs, use `--active-processes rsession`.
 
 ### Can I disable idle detection?
 
@@ -138,7 +147,7 @@ Yes: `spawn launch --idle-timeout 0`. The TTL still applies as the hard outer bo
 
 ### Do I need to set up Slack to use spore.host?
 
-No. Slack and Teams integration is optional. spore.host works fully without it — you just won't get DM notifications or slash command control.
+No. Slack, Teams and Discord integration is optional. spore.host works fully without it — you just won't get DM notifications or slash command control.
 
 ### Can multiple people control the same instance from Slack?
 
@@ -146,4 +155,4 @@ Yes. Register each user separately with `spawn notify register`, granting them t
 
 ### Something stopped working after I updated the Slack app scopes.
 
-Updating app scopes regenerates the signing secret. Re-register with the new secret: `spawn notify workspace-add --platform slack --workspace-id T0... --signing-secret <new-secret>`
+Updating app scopes regenerates the signing secret. Re-register with the new secret: `spawn notify workspace add --platform slack --workspace-id T0... --bot-token xoxb-... --signing-secret <new-secret>`. `workspace add` replaces the whole workspace record, so pass the bot token again too.

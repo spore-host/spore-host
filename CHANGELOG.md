@@ -100,6 +100,42 @@ own changelogs for CLI releases.
     (`stage`, `alerts`) dropped; every current command included in the
     references; and a new guide, **Keeping results** (retention by regeneration
     cost and tiering, spawn#1076).
+- **Documentation sweep, part 2** (#585): the spawn, spored, notification and
+  bot pages checked against spawn v0.135.0.
+  - **Completion:** since v0.113.0 a `--command` signals completion when it
+    exits, pass or fail, so `--on-complete` fires either way. Pages said a failed
+    command leaves the instance up until the TTL; the redundant
+    `&& touch /tmp/SPAWN_COMPLETE` is gone from examples.
+  - **Deprecated spellings:** `notify workspace add` (not `workspace-add`),
+    `--on-idle hibernate` (not `--hibernate-on-idle`), and `notify enable` /
+    `disable` with the required `--user-id`.
+  - **Notifications:** the platform is chosen with `--notify-platform` at
+    launch, not by the workspace record; `--user` email lookup is Slack-only;
+    `--notify-command` doesn't exist; the missing events (`pre_stop_failed`,
+    `pre_stop_timeout`, `fsx_mount_failed`, `fsx_dra_failed`, `region_vacated`,
+    `idle_stop_failed`, and others) are listed; the cost-limit warning is `wall`
+    plus a file, not a chat message; `workspace add` replaces the whole record;
+    Discord needs `--public-key`.
+  - **spored:** the idle signals (open connections never prevent idle; network
+    1 MiB/min, disk 16 MiB/min; a terminal counts only while someone types), the
+    cost-limit line counts compute + EBS, and `SPORED_DNS_DOMAIN` is only a
+    fallback.
+  - **EC2 tags:** wrong descriptions corrected (`spawn:created-by`,
+    `spawn:iam-user`, `spawn:root`, `spawn:dns-name`, `spawn:on-complete`,
+    `spawn:session-timeout`, ...), authoritative tags such as
+    `spawn:ttl-deadline` and `spawn:launch-time` added, and the S3 object tags
+    on task outputs documented.
+  - **Pipelines and instance queues:** the example definitions now pass
+    validation (`s3_bucket`, `instance_count`, `queue_id`, per-job `timeout`);
+    `exponential-jitter` is rejected today (spawn#1119); `pipeline validate`,
+    `launch --replace`, `collect --run`, and `spawn queue status/results/template`
+    are covered.
+  - **Also:** `spawn status -o json` has two real shapes, `spawn extend` adds to
+    the current deadline, there is no 720h TTL cap (the reaper's 7-day ceiling
+    applies) and `--ttl 0` is rejected, `--active-processes` needs an idle
+    timeout when `--ttl` is set, the Spot pre-stop default is 90s, shell
+    examples no longer put a `# comment` after a `\`, and `spawn task run` and
+    `spawn pool` appear in "Which execution tool?".
 - `infra/amis/containers/build-push.sh` no longer says the default registry
   belongs to account 812107987990, which does not exist. It now says
   spore.host publishes no images (#392), so the script builds into your own

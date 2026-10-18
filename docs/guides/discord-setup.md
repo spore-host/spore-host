@@ -32,9 +32,10 @@ The simplest delivery path — no bot user required for notifications.
 2. **New Webhook**, name it `spore-bot`, pick the channel, **Copy Webhook URL**
    (looks like `https://discord.com/api/webhooks/<id>/<token>`).
 
-## Step 2 (optional, for Phase 2): Create a Discord application
+## Step 2: Create a Discord application
 
-Only needed later for slash commands; skip if you just want notifications.
+`spawn notify workspace add --platform discord` requires the application's public
+key, so you need an application even if you only want notifications.
 
 1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
    → **New Application**, name it `spore-bot`.
@@ -44,24 +45,24 @@ Only needed later for slash commands; skip if you just want notifications.
 
 ## Step 3: Register the workspace with spawn
 
-Store the webhook (and, optionally, the application public key for Phase 2) so
-the spore-bot service can deliver to your channel. Your Discord **server (guild)
+Store the webhook and the application public key so the spore-bot service can
+deliver to your channel. Your Discord **server (guild)
 ID** is the workspace ID — enable Developer Mode in Discord, right-click the
 server, **Copy Server ID**.
 
 ```bash
-spawn notify workspace-add \
+spawn notify workspace add \
   --platform discord \
   --workspace-id <GUILD_ID> \
   --workspace-name "My Server" \
   --webhook-url "https://discord.com/api/webhooks/<id>/<token>" \
-  --public-key <APPLICATION_PUBLIC_KEY>     # optional; for Phase 2 slash commands
+  --public-key <APPLICATION_PUBLIC_KEY>
 ```
 
-`--public-key` is required only when you intend to use slash commands; for
-notifications alone, just the `--webhook-url` is needed. (Discord uses the
-public key for Ed25519 interaction verification, not a signing secret — so
-`--signing-secret` does not apply to `--platform discord`.)
+`--public-key` is required for `--platform discord`; the command refuses to run
+without it. The `--webhook-url` is what notifications are delivered to. (Discord
+uses the public key for Ed25519 interaction verification, not a signing secret —
+so `--signing-secret` does not apply to `--platform discord`.)
 
 ## Step 4: Launch with Discord notifications
 
@@ -118,7 +119,7 @@ So spore-bot can verify your guild's interactions and map commands to your
 instances:
 
 ```bash
-spawn notify workspace-add --platform discord \
+spawn notify workspace add --platform discord \
   --workspace-id <YOUR_GUILD_ID> \
   --public-key <APPLICATION_PUBLIC_KEY>
 spawn notify register --platform discord \
