@@ -14,13 +14,18 @@ with a 4-hour limit"* — and let the assistant do the search and manage running
 instances, instead of typing every command yourself. It runs locally with your
 AWS credentials, the same trust model as the CLIs.
 
-::: warning The MCP server cannot launch instances — by design
-The exposed tools are **read + manage-existing** only: search / spot prices /
-quotas (truffle) and list / status / stop / terminate / extend (spawn). There is
-**no `launch` tool**, deliberately: creating billable infrastructure from an AI
-assistant is a boundary we don't cross automatically. The assistant helps you find
-the right instance and *construct* the `spawn launch` command; you run it. See the
-full tool list below.
+::: warning Two tools can create billable resources
+Most tools only read or manage what already exists. Two can spend money:
+
+- **`spawn_task_run`** launches a real, billable EC2 instance from a TaskSpec.
+  The spec must include a TTL (`lifecycle.ttl`) or the call is rejected, and
+  `dry_run=true` sizes and previews the plan without launching anything.
+- **`lagotto_watch` with `action=hold`** places an On-Demand Capacity Reservation,
+  which bills for as long as it's held.
+
+`spawn_app_launch` only validates and plans; the real app launch is left to the
+`spawn app launch` CLI. Review what your assistant is about to run, and prefer
+`dry_run` first.
 :::
 
 ## Install
@@ -40,13 +45,15 @@ claude mcp add spore-host -e AWS_PROFILE=my-profile -- spore-host-mcp
 ```
 
 **Claude Desktop, Cursor, Windsurf, and other clients** — add to the client's
-MCP config (`~/.claude/claude_desktop_config.json` for Claude Desktop):
+MCP config (for Claude Desktop, `~/Library/Application Support/Claude/claude_desktop_config.json`
+on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows). Use the path
+`which spore-host-mcp` prints:
 
 ```json
 {
   "mcpServers": {
     "spore-host": {
-      "command": "/usr/local/bin/spore-host-mcp"
+      "command": "/opt/homebrew/bin/spore-host-mcp"
     }
   }
 }
@@ -61,7 +68,7 @@ config paths (Claude Code, Claude Desktop, Cursor, Windsurf, Kiro, Codex, Zed, �
 
 | Tool | Description |
 |------|-------------|
-| `truffle_find` | Natural language instance type search — `"nvidia h100 8gpu"`, `"cheap arm64 with 32gb"` |
+| `truffle_find` | Natural language instance type search — `"nvidia h100 8 gpus"`, `"cheap arm64 with 32gb"` |
 | `truffle_spot_prices` | Current Spot prices for a specific type across regions and AZs |
 | `truffle_quota_check` | Whether your account has sufficient quota to launch a type |
 
@@ -74,6 +81,16 @@ config paths (Claude Code, Claude Desktop, Cursor, Windsurf, Kiro, Codex, Zed, �
 | `spawn_stop` | Stop or hibernate a running instance |
 | `spawn_terminate` | Permanently terminate an instance — two-phase: previews first, requires `confirm=true`; refuses an ambiguous name |
 | `spawn_extend` | Update an instance's TTL |
+| `spawn_task_run` | **Launches a billable instance** from a TaskSpec; TTL required; `dry_run=true` previews without launching |
+| `spawn_app_launch` | Validates and plans an app launch (GUI, desktop or web app); doesn't launch |
+
+### Lagotto tools
+
+| Tool | Description |
+|------|-------------|
+| `lagotto_list` | List your capacity watches (only those created by your AWS identity) |
+| `lagotto_status` | Full details of one watch you own |
+| `lagotto_watch` | Create a watch. `action=notify` sends a notification only; `action=hold` places an On-Demand Capacity Reservation, which **reserves billable capacity** while it's held. `action=spawn` isn't available here; use the lagotto CLI |
 
 ## Example interactions
 

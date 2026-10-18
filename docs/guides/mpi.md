@@ -10,15 +10,26 @@ For workloads that need to communicate across multiple nodes — large-scale sim
 
 ```sh
 spawn launch \
-  --name climate-sim \
+  --job-array-name climate-sim \
   --instance-type hpc7g.16xlarge \
   --count 8 \
   --mpi \
   --ttl 12h \
-  --command "mpirun -n 128 ./simulate --config config.yaml"
+  --mpi-command './simulate --config config.yaml'
 ```
 
-`--count 8` launches 8 instances. `--mpi` sets up passwordless SSH between all nodes, installs OpenMPI if not present, and configures the hostfile. The `--command` runs on node 0 after all nodes are ready.
+`--count 8` launches 8 instances, named `climate-sim-0` to `climate-sim-7`;
+`--job-array-name` is required. `--mpi` sets up passwordless SSH between all
+nodes, installs OpenMPI if not present, and writes the hostfile.
+
+`--mpi-command` is your MPI program. Once every node is ready, rank 0 runs it
+through `mpirun` across the whole cohort: one process per vCPU on each node by
+default (`--mpi-processes-per-node` changes that), so 8 × 64 processes here.
+Don't wrap it in `mpirun` yourself. Its output goes to `/var/log/spawn-command.log`
+on rank 0 (read it with `spawn array logs climate-sim --index 0`).
+
+`--command` is different: it runs on **every** node, independently. Use it for
+per-node setup, not for the MPI job.
 
 MPI clusters launch **all-or-nothing**: spore.host waits for every node to come up and pass an MPI-readiness check (`mpirun` present, and the EFA fabric when `--efa` is set), then distributes the peer list to all nodes before the cluster is considered ready. If any node can't be placed, the whole launch fails and every already-launched node is cleaned up — so you never pay for a half-formed cluster.
 
@@ -32,13 +43,14 @@ For workloads that saturate standard networking, enable Elastic Fabric Adapter:
 
 ```sh
 spawn launch \
-  --name distributed-training \
+  --job-array-name distributed-training \
   --instance-type p4d.24xlarge \
   --count 4 \
   --mpi \
   --efa \
+  --mpi-processes-per-node 8 \
   --ttl 24h \
-  --command "mpirun -n 32 --mca btl ^tcp python train.py"
+  --mpi-command 'python train.py'
 ```
 
 `--efa` requires an EFA-supported instance type (p4d, hpc7g, c5n, and others). spore.host automatically selects an EFA-enabled security group and places all instances in a cluster placement group for lowest latency.
@@ -49,10 +61,11 @@ By default, MPI clusters are placed in a cluster placement group named `spawn-mp
 
 ```sh
 spawn launch \
-  --name sim \
+  --job-array-name sim \
   --count 16 \
   --mpi \
-  --placement-group my-hpc-group
+  --placement-group my-hpc-group \
+  --mpi-command './sim'
 ```
 
 ## Monitoring the cluster
@@ -65,22 +78,19 @@ spawn status climate-sim-1             # status of worker node 1
 
 ## Lifecycle
 
-The cluster's TTL applies to all nodes. If the job completes before the TTL (using `--on-complete terminate`), all nodes terminate together. If a worker node fails, the head node gets a notification.
+The cluster's TTL applies to all nodes. When the `--mpi-command` job exits, pass
+or fail, every member is signalled, so `--on-complete terminate` takes the whole
+cluster down together. There's no completion file to write yourself.
 
 ```sh
 spawn launch \
-  --name sim \
+  --job-array-name sim \
   --count 8 \
   --mpi \
   --ttl 12h \
   --on-complete terminate \
-  --completion-file /tmp/SPAWN_COMPLETE \
-  --command "mpirun -n 64 ./sim && touch /tmp/SPAWN_COMPLETE"
+  --mpi-command './sim'
 ```
-
-::: tip
-Write the completion file only from the head node (rank 0). MPI programs run on all nodes, so guard the `touch` with `if [ $OMPI_COMM_WORLD_RANK -eq 0 ]; then touch /tmp/SPAWN_COMPLETE; fi`.
-:::
 
 ## Shared storage with FSx Lustre
 
@@ -90,9 +100,11 @@ For large datasets that all cluster nodes need to read, attach an FSx Lustre fil
 # Create a new FSx filesystem backed by S3.
 # --fsx-create REQUIRES --fsx-lifecycle: 'ephemeral' (reaped when this cluster
 # terminates) or 'durable' (persists; add --fsx-ttl, e.g. 7d).
-spawn launch sim \
+spawn launch \
+  --job-array-name sim \
   --count 8 --mpi --efa \
   --instance-type hpc6a.48xlarge \
+  --mpi-command './sim' \
   --fsx-create \
   --fsx-lifecycle ephemeral \
   --fsx-s3-bucket my-data-bucket \
@@ -101,8 +113,10 @@ spawn launch sim \
   --fsx-mount-point /fsx
 
 # Or attach an existing filesystem
-spawn launch sim \
+spawn launch \
+  --job-array-name sim \
   --count 8 --mpi --efa \
+  --mpi-command './sim' \
   --fsx-id fs-0abc1234 \
   --fsx-mount-point /fsx
 ```

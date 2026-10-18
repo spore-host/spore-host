@@ -12,7 +12,18 @@ description: "The spore-host Python package lets you discover EC2 instances, che
 
 The `spore-host` Python package lets you discover EC2 instances, check Spot prices, and manage running instances from Python scripts, Jupyter notebooks, and reactive notebooks like marimo.
 
-The SDK talks to the spore.host HTTP API on your behalf, authenticating with your existing AWS credentials — no separate login is required. The HTTP API itself is currently in beta and the SDK is its supported entry point; you don't call the endpoints directly.
+The SDK talks to the spore.host HTTP API on your behalf. The HTTP API is in beta, and the SDK is its supported entry point; you don't call the endpoints directly.
+
+::: warning The API needs an API key, and launches in the API host's account
+Every request needs a spore.host **API key** (`sk_...`), sent in the
+`X-API-Key` header; without one the API returns 401. Your AWS credentials are
+not used to sign requests. There's no self-service way to get a key yet
+([spore-host#588](https://github.com/spore-host/spore-host/issues/588)).
+
+The hosted API runs in a single AWS account: instances it launches run **in the
+account hosting the API**, scoped to your key's project, not in your own
+account. To launch into your own account, use the spawn CLI.
+:::
 
 ```sh
 pip install spore-host
@@ -21,7 +32,7 @@ pip install spore-host
 ## Requirements
 
 - Python 3.9+
-- AWS credentials configured (`~/.aws/credentials`, environment variables, or EC2 instance metadata)
+- A spore.host API key (see above)
 - `boto3`, `requests` (installed automatically)
 
 Optional notebook extras:
@@ -58,25 +69,22 @@ inst.wait("terminated")    # block until it terminates
 
 ## Authentication
 
-The SDK uses your ambient AWS credentials — the same ones the CLI uses. No extra configuration needed:
+Pass the API key, or set `SPORE_API_KEY`:
 
 ```python
 import spore
 
-# Uses ~/.aws/credentials or environment variables automatically
-client = spore.Client()
+client = spore.Client(api_key="sk_...")   # or export SPORE_API_KEY=sk_...
 
-# Use a specific AWS profile
-client = spore.Client(profile="my-research-account", region="us-east-1")
-
-# Use a spore.host API key (for hosted deployments)
-client = spore.Client(api_key="sk_...")
+# The region the SDK uses by default comes from AWS_DEFAULT_REGION
+# (default us-east-1). It doesn't read SPORE_REGION or AWS_REGION.
+client = spore.Client(api_key="sk_...", region="us-east-1")
 
 # Point at a self-hosted deployment
 client = spore.Client(api_url="https://spore.internal.university.edu")
 ```
 
-Module-level `spore.truffle` and `spore.spawn` use a default `Client()` with ambient credentials.
+Module-level `spore.truffle` and `spore.spawn` use a default `Client()`, which reads `SPORE_API_KEY`.
 
 ---
 
@@ -240,6 +248,7 @@ inst  # displays formatted card with state, type, IP, TTL
 | `on_demand_price` | float | On-demand price per hour (USD) |
 | `gpus` | int | GPU count |
 | `gpu_model` | str | GPU model name (e.g. `A10G`) |
+| `gpu_memory_gib` | float | Memory per GPU, in GiB |
 | `available_azs` | list[str] | Availability zones where type is offered |
 
 ### `SpotPrice`

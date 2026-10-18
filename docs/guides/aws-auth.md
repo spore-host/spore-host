@@ -63,7 +63,11 @@ spore.host also has a **suite-wide config layer** (`sporeconfig`) so you can pin
 | Env   | `export SPORE_PROFILE=research SPORE_REGION=us-west-2` |
 | File  | `~/.config/spore/config.toml` → `[spore]\nprofile = "research"` |
 
-`SPORE_PROFILE`/`SPORE_REGION` override `AWS_PROFILE`/`AWS_REGION` for spore.host tools only, leaving the plain AWS CLI unaffected. `SPORE_ACCOUNT` (or `--account`) records the AWS account you expect, so a tool refuses to act if your credentials resolve to a different account — a guard against launching in the wrong place.
+`SPORE_PROFILE`/`SPORE_REGION` override `AWS_PROFILE`/`AWS_REGION` for spore.host tools only, leaving the plain AWS CLI unaffected. `SPORE_ACCOUNT` (or `--account`) records the AWS account you expect.
+
+::: warning The account guard is only partly enforced
+Today **truffle and lagotto** stop before acting when your credentials resolve to a different account than **`--account`** says. They don't read `SPORE_ACCOUNT`. **spawn** checks neither outside `spawn doctor`, which reports a mismatch: `spawn --account … launch` launches anyway ([spawn#1118](https://github.com/spore-host/spawn/issues/1118), [truffle#206](https://github.com/spore-host/truffle/issues/206)). Run `spawn doctor` to confirm which account you're in.
+:::
 
 ## Authentication vs permissions vs "what runs where"
 
@@ -88,5 +92,5 @@ So `spawn connect <name>` just works — it logs in as your user with the matchi
 |---------|-----|
 | `Unable to locate credentials` | Run `aws login` (or set a profile/keys); verify with `aws sts get-caller-identity`. |
 | `AccessDenied` / `UnauthorizedOperation` on launch | Your IAM identity is missing an action — attach the [minimal policy](/reference/iam-permissions). |
-| Acting in the wrong account | Set `SPORE_ACCOUNT` (or `--account`) to the intended account ID; check `AWS_PROFILE`/`SPORE_PROFILE`. |
+| Acting in the wrong account | Run `spawn doctor` (it reports the account and flags a mismatch with `SPORE_ACCOUNT`/`--account`); check `AWS_PROFILE`/`SPORE_PROFILE`. |
 | Credentials expired mid-session | `aws login` again (short-lived credentials refresh on re-login). |

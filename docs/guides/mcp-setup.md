@@ -17,7 +17,7 @@ The spore.host MCP server lets you manage compute through AI assistants that sup
 "Do I have enough quota to launch a p5.48xlarge in us-east-1?"
 ```
 
-The assistant has access to eight tools covering instance search, status, and lifecycle management.
+The assistant has 13 tools covering instance search, status, lifecycle management and capacity watches. Two of them can create billable resources; see [below](#available-tools).
 
 ## Install
 
@@ -51,13 +51,17 @@ across all projects, or `-s project` to share it with your team via
 
 ### Claude Desktop
 
-Add spore.host to `~/.claude/claude_desktop_config.json`:
+Add spore.host to Claude Desktop's config file:
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, or
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows. Use the path
+`which spore-host-mcp` prints (`/opt/homebrew/bin` on Apple Silicon Homebrew,
+`/usr/local/bin` on Intel):
 
 ```json
 {
   "mcpServers": {
     "spore-host": {
-      "command": "/usr/local/bin/spore-host-mcp"
+      "command": "/opt/homebrew/bin/spore-host-mcp"
     }
   }
 }
@@ -74,7 +78,7 @@ Add to your Cursor MCP settings (Settings → MCP → Add Server), or create
 {
   "mcpServers": {
     "spore-host": {
-      "command": "/usr/local/bin/spore-host-mcp"
+      "command": "/opt/homebrew/bin/spore-host-mcp"
     }
   }
 }
@@ -111,8 +115,14 @@ client's own MCP config path.
 | `spawn_stop` | Stop or hibernate a running instance |
 | `spawn_terminate` | Permanently terminate an instance (two-phase — preview, then `confirm=true`) |
 | `spawn_extend` | Update an instance's TTL |
+| `spawn_task_run` | **Launches a billable instance** from a TaskSpec; TTL required; `dry_run=true` previews |
+| `spawn_app_launch` | Validates and plans an app launch; doesn't launch |
+| `lagotto_list` | List your capacity watches |
+| `lagotto_status` | Details of one of your watches |
+| `lagotto_watch` | Create a watch: `notify`, or `hold` (**reserves billable capacity**) |
 
-There is **no launch tool, by design** — see the [MCP server reference](/tools/mcp-server) for the reasoning.
+`spawn_task_run` and `lagotto_watch action=hold` are the two tools that spend
+money. See the [MCP server reference](/tools/mcp-server) for their safeguards.
 
 ## Credentials
 

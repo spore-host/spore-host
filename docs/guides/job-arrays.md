@@ -15,10 +15,17 @@ spawn launch \
   --instance-type c6i.2xlarge \
   --ttl 4h \
   --job-array-name data-proc \
-  --command "python process.py --shard {index} --total 8"
+  --command 'python process.py --shard $JOB_ARRAY_INDEX --total $JOB_ARRAY_SIZE'
 ```
 
-Each instance receives its zero-based index as `{index}` and knows the total count as `{total}`. Instance 0 processes shard 0, instance 1 processes shard 1, and so on.
+Each instance gets its zero-based index in `$JOB_ARRAY_INDEX` and the array's size in `$JOB_ARRAY_SIZE`. Instance 0 processes shard 0, instance 1 processes shard 1, and so on.
+
+::: warning Use the environment variables, in single quotes
+`--command` is run exactly as written; spawn substitutes nothing in it. `{index}`
+or `{total}` would reach your program as literal text. Put the command in
+**single** quotes so your own shell doesn't expand `$JOB_ARRAY_INDEX` (to
+nothing) before spawn sees it.
+:::
 
 ## Instance naming
 
@@ -52,7 +59,7 @@ a job array succeeds if **at least one** member launches. Set a floor with
 ```sh
 spawn launch --name data-proc --count 8 --min-viable 6 \
   --job-array-name data-proc --spot \
-  --command "python process.py --shard {index} --total {total}"
+  --command 'python process.py --shard $JOB_ARRAY_INDEX --total $JOB_ARRAY_SIZE'
 ```
 
 If fewer than `--min-viable` members launch, the array is treated as failed and
@@ -62,33 +69,34 @@ complete. Because the members that *did* launch are cleaned up on failure, size
 defaults to `1` and is ignored for `--mpi` clusters (which need all ranks — see
 the [MPI guide](/guides/mpi)).
 
-::: warning `{total}` is the requested count, and indexes can be sparse
-`{total}` / `JOB_ARRAY_SIZE` is always the count you **requested** (`--count`), not
+::: warning `JOB_ARRAY_SIZE` is the requested count, and indexes can be sparse
+`JOB_ARRAY_SIZE` is always the count you **requested** (`--count`), not
 the number that actually launched. If you ask for 8 with `--min-viable 6` and only
-6 land, each surviving member still sees `{total}` = 8, and the launched indexes
+6 land, each surviving member still sees `JOB_ARRAY_SIZE` = 8, and the launched indexes
 are whatever subset succeeded (e.g. 0,1,2,4,5,7) — **there can be gaps**. So a
-shard scheme that assumes a dense `0…{total}-1` will skip the work of the missing
+shard scheme that assumes a dense `0…JOB_ARRAY_SIZE-1` will skip the work of the missing
 indexes. If your job must cover every shard, either don't rely on `--min-viable`,
 or have the surviving members detect and redistribute the missing indexes.
 
-There isn't yet a first-class way to list which requested indexes failed, retry
-only those, or pull per-index logs (you manage members today via the generic
-`spawn list/status --job-array-name` shown above). That reporting is tracked in
-[spawn#389](https://github.com/spore-host/spawn/issues/389).
 :::
 
-## Available template variables and environment variables
+## Checking, retrying and collecting an array
 
-Inside `--command`, you can use template substitutions:
+`spawn array` works on a whole array by name:
 
-| Variable | Value |
-|----------|-------|
-| `{index}` | This instance's index (0-based) |
-| `{total}` | Total instance count |
-| `{name}` | This instance's name (e.g. `data-proc-3`) |
-| `{job_array_id}` | Unique identifier for the array |
+```sh
+spawn array status data-proc            # members, requested vs launched, missing indexes
+spawn array logs data-proc --index 3    # one member's command or spored log
+spawn array retry data-proc --failed    # relaunch the missing or failed indexes
+spawn array collect data-proc           # where each member's results are
+spawn array cancel data-proc            # terminate the array's instances
+```
 
-On the instance, the same values are available as shell environment variables (set in `/etc/profile.d/job-array.sh`):
+## Environment variables
+
+`--command` and anything else running on the instance see these (set in
+`/etc/profile.d/job-array.sh`). There are no `{...}` substitutions in `--command`;
+the only templated value is the instance-name pattern above (`--instance-names`).
 
 | Variable | Description |
 |----------|-------------|
@@ -116,7 +124,8 @@ Each instance typically writes to a path that includes its index:
 spawn launch \
   --count 16 \
   --job-array-name genome-scan \
-  --command "python scan.py --region {index} --out s3://my-bucket/scans/{index}/result.json && touch /tmp/SPAWN_COMPLETE" \
+  --s3-write my-bucket \
+  --command 'python scan.py --region $JOB_ARRAY_INDEX --out s3://my-bucket/scans/$JOB_ARRAY_INDEX/result.json' \
   --on-complete terminate
 ```
 
@@ -131,7 +140,9 @@ results = [boto3.client('s3').get_object(
 
 ## Head node pattern
 
-For workloads where one instance coordinates the others:
+For workloads where one instance coordinates the others, use an MPI array with
+`--mpi-command`. Rank 0 runs it through `mpirun` across the whole cohort, and
+when it exits every member is signalled to complete:
 
 ```sh
 spawn launch \
@@ -139,7 +150,7 @@ spawn launch \
   --job-array-name distributed-train \
   --instance-type p4d.24xlarge \
   --mpi \
-  --command "if [ {index} -eq 0 ]; then mpirun -n 64 python train.py; fi"
+  --mpi-command 'python train.py'
 ```
 
 See [MPI Clusters](/guides/mpi) for the full multi-node setup.

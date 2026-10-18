@@ -38,5 +38,5 @@ spore-bot (/spore status, /spore extend)
     └─ calls EC2 via cross-account IAM role
 
 spore-host-mcp
-    └─ wraps truffle and spawn as MCP tools for AI assistants
+    └─ wraps truffle, spawn and lagotto as MCP tools for AI assistants
 ```

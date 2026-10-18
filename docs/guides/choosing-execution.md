@@ -39,8 +39,8 @@ into any individual guide; then follow the link.
 **Sweep vs. array.** A [sweep](/guides/parameter-sweeps) runs the same command over
 *different declared parameter values* (one instance per combination). An
 [array](/guides/job-arrays) runs the *same workload* with *index-based
-partitioning* — each member gets `{index}` and `{total}` and processes its own
-shard.
+partitioning*: each member gets `$JOB_ARRAY_INDEX` and `$JOB_ARRAY_SIZE` and
+processes its own shard.
 
 **Instance queue vs. pipeline.** An [instance queue](/guides/batch-queue) runs
 multiple dependent steps **sequentially on one machine** — ideal when the steps

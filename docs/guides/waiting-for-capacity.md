@@ -52,11 +52,19 @@ Lagotto runs as a serverless poller **in your own account**. Stand it up once:
 
 ```sh
 lagotto deploy
+lagotto setup
 ```
 
-This deploys a Lambda + EventBridge schedule + DynamoDB + IAM via CloudFormation.
-The schedule deploys **disabled** — your first watch arms it, and it tears itself
-down when no watches remain.
+`deploy` creates the poller Lambda, its EventBridge schedule and an SNS alerts
+topic with direct AWS API calls. The schedule deploys **disabled**: your first
+watch arms it, and the poller disables it again when no watches remain.
+
+`setup` is the step that's easy to miss. `deploy` gives the poller only a minimal
+role, and **until you run `setup` it can only notify**, so a watch with
+`--action spawn` (step 3) can't launch anything. If your spawn config names an
+instance role (`iam_role`), authorize it too, with
+`lagotto setup --instance-role <name>`. `lagotto doctor` checks the deployment
+read-only.
 
 ---
 
@@ -139,10 +147,11 @@ lagotto cancel <watch-id>
 ```
 
 When no watches remain, the poller disables its own schedule automatically. To
-remove the whole stack:
+remove the poller (the Lambda, schedule and topic):
 
 ```sh
 lagotto deploy --teardown
+lagotto teardown          # and, separately, the DynamoDB tables
 ```
 
 ---

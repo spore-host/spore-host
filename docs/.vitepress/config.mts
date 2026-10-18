@@ -65,6 +65,7 @@ const sidebar = {
         { text: 'GPU training jobs', link: '/guides/gpu-training' },
         { text: 'Spot instances', link: '/guides/spot-instances' },
         { text: 'Managing instances & data', link: '/guides/managing-instances' },
+        { text: 'Keeping results (retention & tiering)', link: '/guides/results-retention' },
         { text: 'Waiting for scarce capacity', link: '/guides/waiting-for-capacity' },
       ]
     },

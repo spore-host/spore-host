@@ -32,12 +32,25 @@ Spot interruption notices are polled separately every 5 seconds and acted on imm
 
 ## Versioning
 
-Spored is built and released **in lockstep with spawn** — the same version tag,
-the same GoReleaser run. Every spawn release publishes the matching spored
-binary (Linux `amd64`/`arm64`) to regional S3 buckets, and `spawn launch`
-provisions it onto the instance automatically. There is no separate spored
-version to track or install: `spored version` on an instance reports the spawn
-release it shipped with.
+spored is built and released with spawn: the same version tag and the same
+release run. Every spawn release publishes spored (Linux `amd64`/`arm64` and
+Windows `amd64`), signed, to regional S3 buckets.
+
+::: warning An instance runs the **latest** spored, not your CLI's
+At boot, an instance downloads whichever spored is newest in its region's
+bucket, **whatever version of spawn launched it**. So:
+
+- an old `spawn` CLI still gets the current spored on every new instance;
+- a running instance keeps the spored it booted with until you upgrade it
+  (`spawn upgrade-spored <instance>`, Linux only for now);
+- `spored version` on an instance reports the spored it's running, which may
+  differ from your `spawn version`.
+
+The control-plane Lambdas you deploy yourself, such as the TTL reaper
+(`spawn reaper deploy`) and lagotto's poller (`lagotto deploy`), don't upgrade
+with the CLI either. `spawn reaper status` and `lagotto doctor` report when the
+deployed version is behind.
+:::
 
 ## Subcommands
 

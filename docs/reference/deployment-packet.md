@@ -20,7 +20,8 @@ for the CISO-oriented assessment.
 
 ## 1. The least-privilege policy to grant
 
-The complete, verified baseline policy is on the
+The complete baseline policy, with each action traced to the spawn code that
+calls it, is on the
 **[IAM Permissions](/reference/iam-permissions)** page — apply that policy to the
 IAM role/user the researcher authenticates as. It grants:
 
@@ -28,24 +29,29 @@ IAM role/user the researcher authenticates as. It grants:
   **conditioned on `spawn:managed=true`**, so it can only act on instances spawn
   created — never anything else in the account).
 - **EC2** `ImportKeyPair`, `CreateSecurityGroup`, `AuthorizeSecurityGroupIngress`
-  (to install the user's SSH key and open SSH to the instance).
-- **IAM** create-role / instance-profile / `PassRole` **scoped to `spored*` names
-  only** — so it cannot create or touch any role that isn't named `spored*`.
+  (to install the user's SSH key, and for the launches that need a security group).
+- **IAM** create-role / instance-profile / tag / `PassRole` **scoped to `spored*`
+  and `spawn-instance-*` names only**, so it cannot create or touch any other role.
+- **SSM** `GetParameter`, only on AWS's public AMI parameters and the account's
+  `/spawn/dns/*` settings.
 
-Optional feature permissions (Spot, Route 53 DNS, FSx) are listed separately on
-that page and are only needed if the researcher uses those flags.
+Optional feature permissions (the first Spot launch in an account, the
+`spawn dns` commands, FSx) are listed separately on that page and are only
+needed if the researcher uses those features.
 
 ## 2. What spawn creates in your account
 
 | Resource | When | Notes |
 |----------|------|-------|
 | `spored-instance-role` + `spored-instance-profile` | Once per account, on first launch | Scoped so the instance can read its own tags and stop/terminate itself only |
-| EC2 instances | Per `spawn launch` | Tagged `spawn:managed=true`, `spawn:ttl`, `spawn:created-by=spawn`, etc. |
-| A security group | Per launch (if none supplied) | Opens SSH (22) to the launching user; you can supply your own instead |
+| `spawn-instance-<hash>` role + profile | Per distinct set of extra instance permissions (`--iam-policy`, `--s3-read`/`--s3-write`, `spawn task run`) | Reused across launches with the same permissions; **not** removed automatically |
+| EC2 instances | Per `spawn launch` | Tagged `spawn:managed=true`, `spawn:ttl`, `spawn:created-by=spawn`, etc.; terminate at their TTL |
+| A security group | Only for MPI, Windows, DCV desktop and web-app launches | Opens the ports that kind of launch needs, to `0.0.0.0/0` by default (for Windows, `--allow-cidr` narrows it). An ordinary Linux launch creates none and uses the default VPC's group |
 | An imported EC2 key pair | Per user | The researcher's **public** key only |
+| `spawn-results-<account>-<region>` S3 bucket | First `spawn task run` in a region | Task completion records and logs |
 
-The `spored` role/profile is the only standing resource; everything else is
-ephemeral and self-terminates.
+The roles, profiles, key pairs and results buckets persist. Instances terminate on
+their own. `spawn footprint` lists everything spawn has created in an account.
 
 ## 3. What it audits
 
@@ -59,12 +65,19 @@ for example CloudTrail queries.
 
 ## 4. What leaves the account
 
-**By default: nothing.** The CLI and the in-instance `spored` daemon run entirely
-within your account. Optional hosted integrations (Slack/Teams notifications, DNS
-subdomains) call out to spore.host's own AWS account over HTTPS and receive
-**selected metadata only** (instance id, state, tags) — never credentials or
-workload data — and only if the researcher enables them. Those can also be
-[self-hosted](/guides/self-hosting) so nothing leaves the account at all. See the
+Credentials and workload data never leave the account. The CLI and the
+in-instance `spored` daemon run within your account. Two things do call out to
+spore.host's own AWS account over HTTPS:
+
+- **DNS names, on by default for named instances.** A launch with `--name`
+  registers `<name>.<account-label>.spore.host`: spored sends the name, the
+  instance's public IP and (through the request signature) the account ID to
+  spore.host's DNS updater. Use `--no-dns` per launch, set `dns.enabled: false`,
+  or point launches at [your own updater](/guides/self-hosting).
+- **Chat notifications (Slack/Teams/Discord), only if the researcher enables
+  them.** They send selected metadata: instance ID, state and tags.
+
+Both can be [self-hosted](/guides/self-hosting) so nothing leaves the account at all. See the
 ["guarantee by deployment mode" table](https://github.com/spore-host/spore-host/blob/main/SECURITY.md#lifecycle-guarantee-by-deployment-mode).
 
 ## 5. Cost-safety posture (why this reduces risk)
@@ -82,28 +95,50 @@ Before (and after) you grant the policy, the researcher can run:
 spawn doctor
 ```
 
-It performs read-only checks and reports exactly which permissions are present or
-missing — so you can confirm the grant is correct without launching anything. If
-`spawn doctor` reports all-clear, they're ready.
+It performs read-only checks: credentials and account, EC2 describe and launch
+permissions, the IAM instance-profile permissions, the spored role, VPC and
+subnet, Session Manager, TTL-reaper coverage and Route 53. Each failure comes
+with a fix, so you can confirm the grant without launching anything. It checks
+categories of permission, not every action on the IAM page, so treat an
+all-clear as "ready to try a launch", not as proof of the full policy.
 
 ## 7. Removal / cleanup
 
 To fully remove spore.host's footprint:
 
 ```sh
-# terminate any managed instances
-spawn terminate --all            # or: aws ec2 terminate-instances --instance-ids …
-                                 #     (filter on tag:spawn:managed=true)
+# 1. See everything spawn has created in this account
+spawn footprint
 
-# then delete the standing IAM role + instance profile
-aws iam remove-role-from-instance-profile --instance-profile-name spored-instance-profile --role-name spored-instance-role
-aws iam delete-instance-profile --instance-profile-name spored-instance-profile
-aws iam delete-role --role-name spored-instance-role
+# 2. Terminate any managed instances (there's no "terminate everything" flag)
+aws ec2 describe-instances \
+  --filters Name=tag:spawn:managed,Values=true Name=instance-state-name,Values=pending,running,stopping,stopped \
+  --query 'Reservations[].Instances[].InstanceId' --output text
+aws ec2 terminate-instances --instance-ids <ids from above>
+
+# 3. Delete spawn's roles and instance profiles. A role can't be deleted while it
+#    has policies or is in a profile, so empty each one first.
+for role in $(aws iam list-roles --query "Roles[?starts_with(RoleName,'spored') || starts_with(RoleName,'spawn-instance-')].RoleName" --output text); do
+  for p in $(aws iam list-role-policies --role-name "$role" --query PolicyNames --output text); do
+    aws iam delete-role-policy --role-name "$role" --policy-name "$p"
+  done
+  for a in $(aws iam list-attached-role-policies --role-name "$role" --query 'AttachedPolicies[].PolicyArn' --output text); do
+    aws iam detach-role-policy --role-name "$role" --policy-arn "$a"
+  done
+  for ip in $(aws iam list-instance-profiles-for-role --role-name "$role" --query 'InstanceProfiles[].InstanceProfileName' --output text); do
+    aws iam remove-role-from-instance-profile --instance-profile-name "$ip" --role-name "$role"
+    aws iam delete-instance-profile --instance-profile-name "$ip"
+  done
+  aws iam delete-role --role-name "$role"
+done
 ```
 
+Results buckets (`spawn-results-<account>-<region>`) and imported key pairs are
+listed by `spawn footprint`; delete them if you no longer need them.
+
 Detach the least-privilege policy from the researcher's identity to revoke access.
-`spawn orphans` / `spawn cleanup` (run by the researcher) find and remove any
-stragglers.
+`spawn orphans` / `spawn cleanup` (run by the researcher) find and remove leftover
+volumes, security groups and other per-launch resources.
 
 ---
 
