@@ -24,6 +24,7 @@ truffle spot <instance-type-pattern>... [flags]
 |------|-------|------|---------|-------------|
 | `--active-only` |  | bool |  | Only show AZs with active Spot capacity |
 | `--all-regions` |  | bool |  | Search every enabled region (already the default here; useful to be explicit in scripts). Cannot be combined with --regions |
+| `--limit` |  | int |  | List only the first N rows, in result order (0 = all). The table keeps its border and footer, unlike \| head |
 | `--local-zones` |  | bool |  | Include local zones in results (excluded by default) |
 | `--lookback-hours` |  | int | `1` | Hours to look back for price history (1-720) |
 | `--max-price` |  | float64 |  | Maximum Spot price per hour (USD) |

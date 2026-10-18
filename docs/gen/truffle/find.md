@@ -37,15 +37,20 @@ Understands:
     (minimums: results are listed closest fit first, then cheapest — the
     request's exact size leads; add --exact to show only exact matches)
   - Memory: a bare size is host memory ("amd 16 cores 64gb"), except in a
-    GPU or accelerator query, where it is the memory of each GPU, in GB as
-    the GPU is sold: "gpu 24gb" is A10G, L4 and larger, not the 16 GB T4.
+    GPU or accelerator query, where it is the memory of each GPU.
+    Host memory is in GiB ("64gb" and "64gib" both mean 64 GiB), as the
+    Memory (GiB) column shows it. Per-GPU memory is the size the GPU is
+    sold as, in its own unit: GiB for most (H100 80 GiB, B200 179 GiB),
+    GB for some (A10G and L4 24 GB, L40S 48 GB), so "gpu 24gb" is A10G,
+    L4 and larger, not the 16 GiB T4.
     Say which you mean with "64gb ram" / "64gb memory" (host) or
     "24gb vram" / "24gb gpu memory" (per GPU); "a10g 24gb 64gb ram" gives
     both. find prints a note when it reads a bare size as per-GPU memory.
-    The VRAM column is in the same GB, so an A10G shows 24 (24/gpu); when
-    Inferentia or Trainium rows are listed the columns read Accel /
-    Accel mem (GB), e.g. inf2.xlarge's 1 Inferentia2 is 32 (32/chip) and
-    trn2.48xlarge's 16 Trainium2 chips 1536 (96/chip).
+    The VRAM column shows the same size with its unit, so an A10G shows
+    24 GB (24/gpu) and an H100 host 640 GiB (80/gpu); when Inferentia or
+    Trainium rows are listed the columns read Accel / Accel mem, e.g.
+    inf2.xlarge's 1 Inferentia2 is 32 GiB (32/chip) and trn2.48xlarge's
+    16 Trainium2 chips 1536 GiB (96/chip).
   - Sizes: tiny, small, medium, large, huge
   - Families and exact sizes: g5, m7i-flex, xlarge, 2xlarge, metal-24xl
     ("g5 xlarge" is g5.xlarge; "g5" alone is every g5 size)
@@ -71,7 +76,7 @@ Examples:
   truffle find "8 physical cores 32gb"        (physical core count)
   truffle find "cheap graviton 8 cores"       (sorted by price)
   truffle find nvidia                         (all NVIDIA GPU instances)
-  truffle find "gpu 24gb"                     (GPUs with at least 24 GB each)
+  truffle find "gpu 24gb"                     (GPUs with at least 24 GB/GiB each)
   truffle find "a10g 64gb ram"                (A10G hosts with ≥64 GiB RAM)
   truffle find "h100 efa"                     (GPU AND network, by default)
   truffle find "h100 or efa"                  (GPU OR network, explicit)
@@ -91,6 +96,7 @@ truffle find <query> [flags]
 | `--all-regions` |  | bool |  | Search every enabled region (default: only your configured region, e.g. AWS_REGION or the profile's region) |
 | `--app` |  | string |  | Application name from catalog (e.g. paraview, igv) |
 | `--exact` |  | bool |  | Match exact vCPU and memory values instead of minimum |
+| `--limit` |  | int |  | List only the first N instance types, in result order, with every region row of each (0 = all). The table keeps its border and footer, unlike \| head |
 | `--local-zones` |  | bool |  | Restrict results to Local Zones and Wavelength Zones (edge locations); mutually exclusive with --skip-azs |
 | `--pick-first` |  | bool |  | Output only the top result's instance type (useful for piping to spawn) |
 | `--price-unit` |  | string | `hour` | Price display unit for --show-price: hour, minute, or second |
