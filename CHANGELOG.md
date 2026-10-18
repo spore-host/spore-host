@@ -31,6 +31,15 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **The IAM baseline is verified by a real launch** (#585). A `spawn launch`,
+  `status`, `extend` and `terminate` were run under exactly the documented
+  policy. The launch then failed: spawn's post-launch check that spored is
+  running needs `ssm:DescribeInstanceInformation`, `ssm:SendCommand` (scoped to
+  spawn-managed instances) and `ssm:GetCommandInvocation`, and the price tag
+  that `--cost-limit` depends on needs `pricing:GetProducts`. Those, plus
+  `iam:ListInstanceProfiles` for `spawn doctor`, are now in the baseline, and
+  the same flow passes under it.
+
 - **Documentation sweep, part 1** (#585): urgent correctness fixes found by
   auditing every page against the current releases.
   - **Self-hosting:** it deployed the DNS updater with a public,
