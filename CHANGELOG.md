@@ -31,6 +31,15 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **The truffle pages use `truffle find` and current flags** (#585). The
+  finding-instances, GPU-training and Spot guides and the truffle tool page
+  replace the deprecated `truffle search` with `find` queries, drop the no-op
+  `--show-savings`, and replace query words truffle doesn't recognise (`epyc`,
+  `8gpu`) with ones it does (`amd`, `8 gpus`). `truffle quotas --family M`
+  (no such family) is fixed and the family table is complete. The pages now say
+  that `find` searches only the configured region, document the capacity-blocks
+  date and sort flags and `--limit N`, and point to `truffle available` for Spot
+  placement scores.
 - **The instance plugins guide matches spawn's spec parser** (#585). It lists
   all 12 registry plugins and adds sections on finding plugins
   (`spawn plugin search`/`info`), what a ref resolves to (a bare name is the
