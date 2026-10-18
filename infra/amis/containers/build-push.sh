@@ -20,7 +20,10 @@
 #
 # Prerequisites:
 #   - docker (with buildx) and AWS CLI v2
-#   - AWS creds for the registry's account (the dedicated infra account 812107987990)
+#   - AWS creds for the account that owns the registry. spore.host publishes no
+#     images (the catalog is "recipe, not cake", spore-host#392): this builds into
+#     YOUR registry. The default alias f8g1e7l5 is the beta account's
+#     (942542972736), kept only as an example; pass your own registry.
 #   - The per-app Dockerfile at containers/<app>/Dockerfile
 #
 # Public ECR is auth'd in us-east-1 regardless of where the registry "lives".
