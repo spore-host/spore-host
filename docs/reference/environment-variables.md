@@ -26,7 +26,7 @@ The suite-wide [`sporeconfig`](/guides/aws-auth) layer (all CLIs), resolved flag
 |----------|-------------|
 | `SPORE_PROFILE` | AWS profile for spore.host tools (overrides `AWS_PROFILE` for them) |
 | `SPORE_REGION` | Default region for spore.host tools |
-| `SPORE_ACCOUNT` | Expected AWS account ID (guards against launching in the wrong account) |
+| `SPORE_ACCOUNT` | Expected AWS account ID. Only `spawn doctor` checks it today; truffle and lagotto enforce the `--account` flag, not this variable, and spawn enforces neither ([spawn#1118](https://github.com/spore-host/spawn/issues/1118)) |
 
 ```sh
 # Use a named profile
@@ -42,24 +42,28 @@ AWS_REGION=eu-west-1 spawn launch --name eu-test
 |----------|-------------|
 | `SLACK_CLIENT_ID` | OAuth client ID for spore-bot Slack app |
 | `SLACK_CLIENT_SECRET` | OAuth client secret for spore-bot Slack app |
-| `SPORE_BOT_NOTIFY_URL` | Webhook URL for lifecycle notifications (overrides config) |
+| `SPORE_NOTIFY_URL` | Notification Lambda URL for lifecycle notifications (overrides config) |
 
 ## Configuration file location
 
-By default spore.host looks for config at `~/.spawn/config.yaml`. Override with:
+spawn reads its config from `~/.spawn/config.yaml`; the path can't be changed.
+(`SPAWN_CONFIG` is something else: it points spored's local provider, for
+non-EC2 hosts, at its config file, by default `/etc/spawn/local.yaml`.)
 
-```sh
-SPAWN_CONFIG=/path/to/config.yaml spawn launch ...
-```
+The shared spore.host settings (profile, region, account) live in
+`~/.config/spore/config.toml`, under `$XDG_CONFIG_HOME` if that's set.
 
 ## Debugging
 
 ```sh
-# Enable verbose AWS SDK logging
-AWS_SDK_LOAD_CONFIG=1
-
-# See what credentials are being used
+# See which identity and account your credentials resolve to
 aws sts get-caller-identity
+
+# Check the whole environment: credentials, account, permissions, VPC, reaper
+spawn doctor
+
+# Copy spawn's audit trail and diagnostic log lines to stderr
+spawn -v launch ...
 ```
 
 ## Per-command overrides

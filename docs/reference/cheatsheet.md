@@ -142,7 +142,7 @@ lagotto launch --at <block-start> --az <block-az> --spawn-config block.yaml
 ```sh
 AWS_PROFILE=my-profile spawn launch ...    # use specific AWS profile
 AWS_REGION=us-west-2 spawn launch ...      # override region
-SPORE_BOT_NOTIFY_URL=https://...           # custom notification Lambda URL
+SPORE_NOTIFY_URL=https://...               # custom notification Lambda URL
 SPORED_TAG_PREFIX=prism                    # use custom EC2 tag prefix
 ```
 
