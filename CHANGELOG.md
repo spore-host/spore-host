@@ -30,6 +30,34 @@ own changelogs for CLI releases.
   dev-account profile.
 
 ### Documentation
+
+- **Documentation sweep, part 1** (#585): urgent correctness fixes found by
+  auditing every page against the current releases.
+  - **Self-hosting:** it deployed the DNS updater with a public,
+    unauthenticated URL. It now uses spawn's script with `AWS_IAM` auth. A
+    "custom tag prefix" step that would have disabled TTL enforcement is
+    replaced with a warning.
+  - **IAM:** the baseline policy lacked `ssm:GetParameter`, so every default
+    launch failed under it. It also lacked `ec2:DescribeRegions` and the IAM tag
+    permissions. The Spot, DNS and FSx sections listed calls spawn doesn't make.
+  - **Arrays and sweeps:** the examples used `{index}` and `{param}`
+    placeholders, which spawn never substitutes. They now use
+    `$JOB_ARRAY_INDEX`, `$PARAM_<key>` and `$SWEEP_INDEX`.
+  - **MPI:** every cluster example lacked the required `--job-array-name`, and
+    ran the job with `--command` instead of `--mpi-command`.
+  - **MCP server:** the docs said it can't launch instances. `spawn_task_run`
+    launches billable instances, and a `hold` watch reserves capacity.
+  - **Python SDK:** it needs an API key and launches in the API host's account,
+    not with your AWS credentials in yours.
+  - **Account guard:** `--account` is only partly enforced.
+  - **lagotto:** SageMaker watches need `--action spawn`, and you need to run
+    `lagotto setup` after `deploy`.
+  - **spored:** instances install the *latest* spored at boot, whatever CLI
+    launched them.
+  - **Also:** working `.deb`/`.rpm` install commands; removed commands
+    (`stage`, `alerts`) dropped; every current command included in the
+    references; and a new guide, **Keeping results** (retention by regeneration
+    cost and tiering, spawn#1076).
 - `infra/amis/containers/build-push.sh` no longer says the default registry
   belongs to account 812107987990, which does not exist. It now says
   spore.host publishes no images (#392), so the script builds into your own
