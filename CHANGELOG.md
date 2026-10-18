@@ -31,6 +31,11 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **The `spawn doctor` transcripts match spawn v0.135.0** (#585). The passing
+  preflight is now a real run (IDs replaced), with all 16 checks, including the
+  spored role, reaper coverage and Nitro fleet. The blocked preflight follows the
+  current report format: the error is on the `→` line. Two lines of truffle
+  version output that leak into the report are explained (spawn#1140).
 - **Documentation sweep, part 3: six new guides** (#585). Each was written from
   spawn v0.135.0's `--help` and source, and states known gaps rather than hiding
   them.
