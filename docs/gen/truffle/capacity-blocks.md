@@ -14,6 +14,9 @@ then 7-day steps to 182). By default the search covers now → the soonest a blo
 of that duration could end; use --start-date / --start-after / --end-by to widen
 or shift the window (blocks can start up to 8 weeks out).
 
+Searches every enabled region by default, since offerings vary by region; use
+--regions to narrow.
+
 For Capacity Blocks you ALREADY own, use 'truffle capacity --blocks' instead.
 
 Examples:
@@ -30,6 +33,7 @@ truffle capacity-blocks [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
+| `--all-regions` |  | bool |  | Search every enabled region (already the default here; useful to be explicit in scripts). Cannot be combined with --regions |
 | `--count` |  | int | `1` | Number of instances in the block |
 | `--days` |  | int |  | Capacity Block duration in days (natural unit for CB-for-ML; e.g. --days 1). Overrides --duration-hours |
 | `--duration-hours` |  | int |  | Capacity Block duration in hours (e.g. 24); use --days for whole days |

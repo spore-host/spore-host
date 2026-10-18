@@ -2,7 +2,7 @@
 
 Watch for EC2 instance availability across regions and AZs.
 
-The pattern supports wildcards: "p5.*" matches all p5 sizes, "g5.xlarge" is exact.
+The pattern supports wildcards: "p5.*" matches all p5 sizes, "g5.xlarge" is exact; a comma-separated list matches any of several types (e.g. "g6.xlarge,g6.2xlarge").
 When capacity is found matching your criteria, the configured action is taken.
 
 ```

@@ -15,6 +15,13 @@ If the poller role doesn't exist yet, setup creates the tables and prints a
 next-step note instead of failing.
 
 ```
-lagotto setup
+lagotto setup [flags]
 ```
+
+**Flags:**
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--instance-role` |  | stringArray |  | Authorize the hosted poller to use this IAM instance role when a watch's spawn_config names it in iam_role (repeatable). Without this the watch waits for capacity, matches, then dies at launch with AccessDenied. NOTE: this lets the poller write an inline policy to and attach a managed policy to that role, not merely pass it — spawn adds its spored/SSM baseline to every role it launches with. |
+| `--revoke-instance-role` |  | stringArray |  | Remove a previously authorized instance role (repeatable). Takes precedence over --instance-role for the same name. |
 
