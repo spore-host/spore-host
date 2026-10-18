@@ -62,9 +62,11 @@ const sidebar = {
         // CLI install path.
         { text: 'Portal detail levels', link: '/guides/portal-detail-levels' },
         { text: 'Interactive workstation', link: '/guides/jupyter' },
+        { text: 'GUI apps & services', link: '/guides/apps-and-services' },
         { text: 'GPU training jobs', link: '/guides/gpu-training' },
         { text: 'Spot instances', link: '/guides/spot-instances' },
         { text: 'Managing instances & data', link: '/guides/managing-instances' },
+        { text: 'Logs and debugging', link: '/guides/logs' },
         { text: 'Keeping results (retention & tiering)', link: '/guides/results-retention' },
         { text: 'Waiting for scarce capacity', link: '/guides/waiting-for-capacity' },
       ]
@@ -84,6 +86,7 @@ const sidebar = {
       items: [
         { text: 'Parameter sweeps', link: '/guides/parameter-sweeps' },
         { text: 'Job arrays', link: '/guides/job-arrays' },
+        { text: 'Tasks and worker pools', link: '/guides/tasks-and-pools' },
       ]
     },
     {
@@ -145,6 +148,9 @@ const sidebar = {
       items: [
         { text: 'IAM Permissions', link: '/reference/iam-permissions' },
         { text: 'Deployment packet (for admins)', link: '/reference/deployment-packet' },
+        { text: 'Checking your account', link: '/guides/account-health' },
+        { text: 'The TTL reaper (backstop)', link: '/guides/reaper' },
+        { text: 'Custom DNS', link: '/guides/custom-dns' },
         { text: 'Self-Hosting', link: '/guides/self-hosting' },
         { text: 'Self-Hosting spore-bot', link: '/spore-bot-self-hosting' },
       ]

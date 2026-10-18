@@ -45,7 +45,7 @@ spawn upgrade-spored <instance-id> --version 0.75.0
 
 The swap is driven over SSM, and works on Linux instances only for now. A downgrade is refused unless you pass `--allow-downgrade`.
 
-## Seeing what's running — and what's orphaned
+## Seeing what's running — and what's orphaned {#seeing-whats-running}
 
 spawn tags every resource it creates with `spawn:managed=true`, so it can inventory
 them via the Resource Groups Tagging API:
@@ -72,7 +72,8 @@ spawn orphans --all-regions
 
 `spawn footprint` goes wider: everything spawn has created in the account,
 including what `orphans` and `cleanup` never touch — the IAM roles, results
-buckets, Lambdas and log groups. It only reports; it never deletes.
+buckets, Lambdas and log groups. It only reports; it never deletes. See
+[Checking your account](/guides/account-health) for what it reads and its limits.
 
 ```sh
 spawn footprint                  # this region, plus account-wide resources

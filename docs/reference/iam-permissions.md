@@ -218,6 +218,8 @@ or you can allow:
 Instance DNS names need **no** permissions in your policy. spored registers the
 record from the instance, through a DNS updater (spore.host's, or
 [your own](../guides/self-hosting.md)), and the CLI never calls Route 53.
+[Custom DNS](/guides/custom-dns) covers using your own domain and the
+permissions each side needs.
 
 The exception is the `spawn dns register` and `spawn dns delete` commands, which
 call the updater with your credentials. When the updater is in another account
@@ -229,6 +231,19 @@ call the updater with your credentials. When the updater is in another account
   "Action": "lambda:InvokeFunctionUrl",
   "Resource": "*",
   "Condition": { "StringEquals": { "lambda:FunctionUrlAuthType": "AWS_IAM" } }
+}
+```
+
+## Logs after termination
+
+`spawn logs` on a terminated instance reads the instance's console output (see
+[Logs and debugging](/guides/logs)). That needs one more action, which the baseline
+doesn't include:
+
+```json
+{
+  "Action": "ec2:GetConsoleOutput",
+  "Resource": "*"
 }
 ```
 

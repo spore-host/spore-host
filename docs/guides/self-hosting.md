@@ -107,15 +107,18 @@ The endpoint must be a Lambda Function URL (`https://<id>.lambda-url.<region>.on
 Requests are SigV4-signed for Lambda, so no other kind of endpoint can
 authenticate. spawn validates both values before launching. If spored later
 finds a bad value, it registers nothing and sets `spawn:dns-status=failed`; it
-never falls back to spore.host.
+never falls back to spore.host. The CLI's SSM lookup is different: if a
+launcher can't read the parameters, spawn silently uses spore.host's updater
+(spawn#1121). See [Custom DNS](/guides/custom-dns).
 
-The easiest way to set this once for everyone launching in an account is SSM:
+The easiest way to set this once for everyone launching in an account is SSM.
+The parameters are per region, so set them in every region you launch in:
 
 ```sh
 aws ssm put-parameter --type String --name /spawn/dns/domain \
-  --value compute.university.edu
+  --value compute.university.edu --region us-east-1
 aws ssm put-parameter --type String --name /spawn/dns/api_endpoint \
-  --value https://YOUR_FUNCTION_URL_ID.lambda-url.us-east-1.on.aws/
+  --value https://YOUR_FUNCTION_URL_ID.lambda-url.us-east-1.on.aws/ --region us-east-1
 ```
 
 Each value resolves independently, first match wins: the flag, then
@@ -215,8 +218,10 @@ spawn notify register ...
 If an institution manages roles itself, pass `--role-arn` and the ExternalId in
 that role's trust policy with `--external-id`. See `spawn notify register --help`.
 
-Instances calling **your DNS updater** need no role: the accounts you allowed in
-Step 2 can invoke it directly.
+Instances calling **your DNS updater** need no extra role, but when the updater is
+in a different account from the instances, the instance role must also be allowed
+to call it. spawn's own instance role allows only spore.host's updater; see
+[Custom DNS](/guides/custom-dns#permissions) for the grant to add.
 
 ## Step 7: Portal (optional)
 
@@ -305,6 +310,7 @@ Launches then register under your zone.
 - [ ] Route53 hosted zone created for `compute.university.edu`
 - [ ] dns-updater deployed with `scripts/deploy-custom-dns.sh` (`AWS_IAM` auth), every researcher account in `--allow-account`, and the Function URL noted
 - [ ] DNS domain and endpoint set in SSM (`/spawn/dns/*`) in each launch account, or in researchers' `~/.spawn/config.yaml`
+- [ ] TTL reaper deployed and armed in each launch account ([guide](/guides/reaper))
 - [ ] Spore-bot Lambda deployed (if using Slack/Teams)
 - [ ] Researchers' CLIs point `SPORE_BOT_LAMBDA_ROLE_ARN` at your bot's role before `spawn notify register` (if using the bot)
 - [ ] Portal deployed at `portal.university.edu` (optional)

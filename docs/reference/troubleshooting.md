@@ -79,7 +79,8 @@ spawn's wrapper records the exit code in `/tmp/SPAWN_EXITCODE` and writes the
 sentinel for you (since v0.113.0), so `--on-complete` fires either way. A failed
 command does **not** leave the instance up until the TTL. If you want a failed
 instance kept for inspection, use `--on-complete stop` (or omit `--on-complete`);
-otherwise read the failure afterwards with `spawn logs <name>`.
+otherwise read the failure afterwards with `spawn logs <name>`
+([Logs and debugging](/guides/logs)).
 
 Work you start some other way (over `spawn connect`, from a plugin, a service you
 run yourself) has to create the sentinel when it's done:

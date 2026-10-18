@@ -1,12 +1,16 @@
 ---
-description: "Interactive compute environments like Jupyter and RStudio have a specific challenge with idle detection: the browser tab maintains a TCP connection to the se…"
+description: "Interactive compute environments like Jupyter and RStudio have a specific challenge with idle detection: an open browser tab doesn't count as activity…"
 ---
 
 # Jupyter Notebooks and RStudio
 
-Interactive compute environments like Jupyter and RStudio have a specific challenge with idle detection: the browser tab maintains a TCP connection to the server even when you haven't touched it in hours. Without careful configuration, the instance would never consider itself idle.
+Interactive compute environments like Jupyter and RStudio have a specific challenge with idle detection. spored judges idleness from CPU, network, disk and terminal input, and an open browser tab doesn't count. So a notebook you're reading but not running looks idle, and the instance can be stopped under you.
 
 spore.host handles this with process-based idle detection — the instance stays alive as long as the notebook server process is running, and stops when you explicitly disconnect.
+
+::: tip Built-in web apps
+`spawn app launch jupyter` (and `code-server`, `openrefine`) starts a ready-made web app behind a TLS proxy instead. See [GUI apps & services](/guides/apps-and-services).
+:::
 
 ## RStudio
 

@@ -66,7 +66,8 @@ What happens in each case:
 - **Fails** → the command exits non-zero, and the same thing happens: the exit
   code goes to `/tmp/SPAWN_EXITCODE`, the sentinel records the failure, and the
   instance terminates. The end of the command log is copied to the serial
-  console first, so `spawn logs simulation` can still show you why. To keep a
+  console first, so `spawn logs simulation` can still show you why
+  ([Logs and debugging](/guides/logs)). To keep a
   failed instance for debugging, use `--on-complete stop` instead.
 - **Hangs** → nothing signals completion. This launch has no idle timeout (one
   only applies by default when neither `--ttl` nor `--idle-timeout` is given), so

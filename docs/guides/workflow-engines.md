@@ -118,6 +118,9 @@ completion record all live in `spawn task run`. A new adapter translates its
 engine's task object into a TaskSpec JSON file, dispatches
 `spawn task run --spec <file>` (with `--wait`, or detached and then polled with
 `spawn task status`), and reads the exit code from the completion record.
+[Tasks and worker pools](/guides/tasks-and-pools) documents every TaskSpec field
+and the completion record. Read the state as well as the exit code: an output that
+failed to upload is `failed` with exit code 0 today (spawn#1133).
 `spawn task run --spec <file> --dry-run` sizes and previews a spec without
 launching. See [`spawn task run`](/tools/reference/spawn#spawn-task-run) for the
 flags, and any of the six adapters above as a working example.
