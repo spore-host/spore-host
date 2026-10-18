@@ -70,9 +70,12 @@ credentials, no data from the instance) to the notification Lambda so it can DM
 you. With no integrations enabled, nothing leaves your account.
 
 **Does the HTTP API change this?**
-The [Python SDK](/guides/python-sdk) talks to a beta HTTP API that authenticates
-with your AWS credentials. It's the same trust model — your credentials, your
-account. Direct HTTP use isn't a supported public interface yet.
+Yes. The [Python SDK](/guides/python-sdk) talks to a beta HTTP API that
+authenticates with a spore.host API key, not your AWS credentials, and runs in a
+single AWS account: instances it launches run in the account hosting the API,
+scoped to your key's project. That's a different trust model from the CLIs,
+which act in your own account with your own credentials. Direct HTTP use isn't
+a supported public interface yet.
 
 ## How to audit everything it creates
 
