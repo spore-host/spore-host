@@ -10,6 +10,8 @@ Each section below is generated from the `truffle` CLI itself and synced from it
 
 <!-- @include: ../../gen/truffle/app.md -->
 
+<!-- @include: ../../gen/truffle/available.md -->
+
 <!-- @include: ../../gen/truffle/az.md -->
 
 <!-- @include: ../../gen/truffle/capacity.md -->

@@ -12,6 +12,8 @@ Each section below is generated from the `lagotto` CLI itself and synced from it
 
 <!-- @include: ../../gen/lagotto/deploy.md -->
 
+<!-- @include: ../../gen/lagotto/doctor.md -->
+
 <!-- @include: ../../gen/lagotto/extend.md -->
 
 <!-- @include: ../../gen/lagotto/history.md -->
