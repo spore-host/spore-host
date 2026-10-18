@@ -40,7 +40,7 @@ aws s3api put-bucket-versioning --bucket "$BUCKET" --versioning-configuration St
 aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration \
   '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
 # Old state versions are kept 90 days, then expire; the current version never does.
-aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-configuration \
+aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" >/dev/null --lifecycle-configuration \
   '{"Rules":[{"ID":"expire-old-state-versions","Status":"Enabled","Filter":{},"NoncurrentVersionExpiration":{"NoncurrentDays":90},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
 # TLS only.
 aws s3api put-bucket-policy --bucket "$BUCKET" --policy "$(cat <<EOF
