@@ -6,7 +6,7 @@
   <a href="https://github.com/spore-host/spore-host/actions/workflows/ci.yml"><img src="https://github.com/spore-host/spore-host/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/gh/spore-host/spore-host"><img src="https://codecov.io/gh/spore-host/spore-host/branch/main/graph/badge.svg" alt="codecov"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
-  <a href="https://spore.host"><img src="https://img.shields.io/badge/docs-spore.host-blue" alt="Documentation"></a>
+  <a href="https://docs.spore.host"><img src="https://img.shields.io/badge/docs-docs.spore.host-blue" alt="Documentation"></a>
   <a href="https://doi.org/10.5281/zenodo.21439339"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.21439339.svg" alt="DOI"></a>
 </p>
 
@@ -76,7 +76,7 @@ spawn connect winbox --rdp        # graphical desktop  (or --ssh, or a PowerShel
 
 See the [Windows beta guide](https://github.com/spore-host/spawn/blob/main/docs/windows-beta-guide.md) for the full walkthrough.
 
-Full usage at **[spore.host/docs](https://spore.host)**.
+Full usage at **[docs.spore.host](https://docs.spore.host)**.
 
 ---
 
@@ -91,7 +91,7 @@ spore-host/
 ├── scripts/         # Deployment & setup automation (Cognito, API Gateway, DynamoDB, S3, IAM)
 ├── config/          # OAuth credentials (gitignored secrets)
 ├── examples/        # Multi-region example configs
-└── docs/            # VitePress documentation site (spore.host) — covers all tools
+└── docs/            # VitePress documentation site (docs.spore.host) — covers all tools
 ```
 
 The hosted API (`lambda/rest-api`) imports the published tool modules
@@ -113,7 +113,7 @@ See [infra/DEPLOY.md](infra/DEPLOY.md) and [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUID
 
 ## Documentation
 
-Full documentation at **[spore.host](https://spore.host)** or in the `docs/` directory.
+Full documentation at **[docs.spore.host](https://docs.spore.host)** or in the `docs/` directory.
 
 - [Quick Start](docs/quickstart.md)
 - [Finding the Right Instance](docs/guides/finding-instances.md)

@@ -31,6 +31,17 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **The workflow, Nextflow, Go library and maturity pages match current
+  releases** (#585). The workflow-engines and maturity pages list all six
+  adapters (adding pegasus-spawn) at their current versions, describe the
+  `spawn task run` model the adapters now share, and use `truffle find` instead
+  of `search`. The Nextflow guide installs from the release zip, drops the
+  undefined `-profile aws` and the unlabelled Spot cost figures, and documents
+  pool mode and the `ext.*` options. The Go library page is corrected for
+  `BuildCriteria(includeAZs)`, `PollAll` returning `*PollSummary`, and
+  extending through `spawn:ttl-deadline`. Transcripts say they're
+  illustrative, heading anchors that dropped an em dash or badge text are
+  fixed, and the README points at docs.spore.host.
 - **The truffle pages use `truffle find` and current flags** (#585). The
   finding-instances, GPU-training and Spot guides and the truffle tool page
   replace the deprecated `truffle search` with `find` queries, drop the no-op

@@ -1,16 +1,18 @@
 ---
-description: "Complete, annotated terminal transcripts of a real spore.host session — a passing preflight, a blocked one, a protected launch, lifecycle verification, and cleanup."
+description: "Illustrative, annotated terminal sessions for spore.host — a passing preflight, a blocked one, a protected launch, lifecycle verification, and cleanup."
 ---
 
 # Worked transcripts
 
-These are complete terminal sessions showing what spore.host actually prints —
-including a failure — so you know what success and trouble look like before you
-run anything. They follow the same arc as [Your First Instance](/guides/first-instance);
-here the focus is the real output.
+These terminal sessions show the shape of a spore.host session — including a
+failure — so you know what success and trouble look like before you run
+anything. They follow the same arc as [Your First Instance](/guides/first-instance);
+here the focus is the output.
 
-Values (IDs, prices, IPs) are illustrative; the structure and wording match the
-tools.
+The transcripts are **illustrative**, not captured from a real run. Values (IDs,
+prices, IPs, versions) are made up, and the exact lines, check names, and their
+order differ from what your version of `spawn` prints. Read them for what each
+step tells you, then run the commands yourself to see the real output.
 
 ## 1. Preflight passes
 
@@ -128,7 +130,7 @@ $ spawn terminate analysis
 ✓ Terminated. EBS volume vol-0a1b2c3d4e5f deleted.
 
 $ spawn list
-No managed instances found.
+No spawn instances found
 ```
 
 If `spawn list` still shows the instance as `shutting-down`, give it a few seconds
