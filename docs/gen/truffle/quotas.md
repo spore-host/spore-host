@@ -4,8 +4,14 @@ Display current quotas, usage, and available capacity for EC2 and SageMaker inst
 
 Requires AWS credentials to be configured.
 
+Checks your configured region by default: the spore config region, then
+AWS_REGION / AWS_DEFAULT_REGION, then the AWS profile's region. Use --region /
+--regions to choose. Only when no region is configured anywhere does it fall
+back to us-east-1 (and says so). Service Quotas is a regional API, so nothing
+here needs us-east-1.
+
 Examples:
-  # Show EC2 quotas for default region
+  # Show EC2 quotas for your configured region
   truffle quotas
 
   # Show quotas for specific regions
