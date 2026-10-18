@@ -72,7 +72,7 @@ Lifecycle events from spored are routed through spore-bot to your Slack DMs:
 
 ### <span class="tool-badge mcp">MCP Server</span> — Control from AI assistants
 
-The spore.host MCP server exposes spore.host's **read and manage** operations as tools for AI assistants that support the Model Context Protocol — Claude Desktop, Cursor, and others. It can discover instance types with truffle and inspect or manage instances you already have running (status, stop, terminate, extend) — but it deliberately **cannot launch** instances, so an assistant can never spin up billable compute on your behalf. Instead of running CLI commands, you describe what you need in plain language and the assistant handles it.
+The spore.host MCP server exposes spore.host's **read and manage** operations as tools for AI assistants that support the Model Context Protocol — Claude Desktop, Cursor, and others. It can discover instance types with truffle, inspect or manage instances you already have running (status, stop, terminate, extend), and work with lagotto capacity watches. Two tools can create billable resources: `spawn_task_run` launches an instance (a TTL is required, and `dry_run` previews first), and a `hold` watch reserves capacity. Review what your assistant is about to run. Instead of running CLI commands, you describe what you need in plain language and the assistant handles it.
 
 > *"What instances do I have running and how long until they terminate?"*
 

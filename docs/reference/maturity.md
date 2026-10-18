@@ -32,7 +32,7 @@ breaking changes.
 | **spored** | <span class="doc-badge stable">Stable</span> | ships with spawn | In-instance lifecycle daemon; built and released with spawn. |
 | **lagotto** | <span class="doc-badge stable">Stable</span> | v0.50.0 | Capacity watcher. |
 | **spore-bot** | <span class="doc-badge stable">Stable</span> | continuous | Slack/Teams control. Deployed continuously (not tag-released). |
-| **MCP server** | <span class="doc-badge stable">Stable</span> | v0.36.x | Read/manage tools for AI assistants — [no launch, by design](/tools/mcp-server). |
+| **MCP server** | <span class="doc-badge stable">Stable</span> | v0.41.x | Tools for AI assistants: search, manage, task launch with a mandatory TTL — [see the safeguards](/tools/mcp-server). |
 | **Plugin registry** | <span class="doc-badge stable">Stable</span> | per-plugin | Each plugin is versioned independently in its `plugin.yaml`; official plugins are [signature-verified](/guides/plugins). |
 
 ### Beta and experimental surfaces
