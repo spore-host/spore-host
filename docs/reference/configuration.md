@@ -26,9 +26,9 @@ spawn defaults list
 |-----|----------|-------------|
 | `slack-workspace` | `--slack-workspace` | Slack workspace ID for lifecycle notifications |
 | `active-processes` | `--active-processes` | Process names that keep an instance alive (comma-separated) |
-| `active-ports` | `--active-ports` | TCP ports that indicate activity (comma-separated) |
+| `active-ports` | `--active-ports` | TCP ports whose connections are counted and reported (comma-separated). They don't prevent idle |
 | `idle-timeout` | `--idle-timeout` | Default idle timeout duration — stops the instance when idle |
-| `hibernate-on-idle` | `--hibernate-on-idle` | Hibernate instead of stopping on idle (`true`/`false`) |
+| `hibernate-on-idle` | `--on-idle hibernate` | Hibernate instead of stopping on idle (`true`/`false`) |
 
 ### File format
 
@@ -54,19 +54,19 @@ Spored reads its configuration from EC2 tags on the instance at startup. These a
 |-----|-------------|-------------|
 | `spawn:ttl` | `--ttl` | Time-to-live duration (e.g. `8h`, `2d`) |
 | `spawn:idle-timeout` | `--idle-timeout` | Idle timeout duration |
-| `spawn:hibernate-on-idle` | `--hibernate-on-idle` | `true` to hibernate instead of stop |
+| `spawn:hibernate-on-idle` | `--on-idle hibernate` | `true` to hibernate instead of stop |
 | `spawn:active-processes` | `--active-processes` | Comma-separated process names |
-| `spawn:active-ports` | `--active-ports` | Comma-separated TCP port numbers |
+| `spawn:active-ports` | `--active-ports` | Comma-separated TCP port numbers whose connections are counted (they don't prevent idle) |
 | `spawn:on-complete` | `--on-complete` | Action on completion: `terminate`, `stop`, `hibernate` |
 | `spawn:completion-file` | `--completion-file` | Path to watch for completion signal |
 | `spawn:completion-delay` | `--completion-delay` | Grace period before acting on completion |
 | `spawn:pre-stop` | `--pre-stop` | Shell command to run before shutdown |
-| `spawn:pre-stop-timeout` | `--pre-stop-timeout` | Max wait time for pre-stop (default: `5m`) |
-| `spawn:dns-name` | `--dns` | DNS name for this instance |
+| `spawn:pre-stop-timeout` | `--pre-stop-timeout` | Max wait time for pre-stop (default: `5m`, Spot: `90s`) |
+| `spawn:dns-name` | `--name` / `--dns` | DNS label for this instance (not written with `--no-dns`) |
 | `spawn:slack-workspace-id` | `--slack-workspace` | Slack workspace ID |
 | `spawn:notify-url` | (automatic) | Lambda URL for lifecycle notifications |
 | `spawn:notify-command` | (automatic) | Slash command for workspace routing |
-| `spawn:idle-cpu` | `--idle-cpu` | CPU percentage below which instance is considered idle |
+| `spawn:idle-cpu` | (no flag; set the tag) | CPU percentage below which instance is considered idle (default `5`) |
 | `spawn:ttl-deadline` | (automatic) | Absolute RFC3339 termination deadline, set at launch |
 | `spawn:managed` | (automatic) | Set to `true` on all spawn-managed instances |
 
@@ -84,7 +84,7 @@ These two settings work together but have very different semantics. Understandin
 
 - Is computed once at launch and stored in the `spawn:ttl-deadline` EC2 tag
 - Is **never reset** by stop/wake cycles — the clock keeps running even while the instance is stopped or hibernated
-- Is the **only thing that terminates** the instance permanently
+- Always terminates when it fires. It isn't the only thing that can terminate the instance: a `--cost-limit` and `--on-complete terminate` do too
 
 `spawn extend` adds time to the current deadline, not to the current clock:
 
@@ -95,16 +95,18 @@ spawn extend my-instance 4h   # new deadline in 13h, not 4h from now
 
 ### Idle timeout — the activity monitor
 
-`--idle-timeout 30m` watches for inactivity and **stops** the instance when it goes idle (or **hibernates** with `--hibernate-on-idle`). This timer:
+`--idle-timeout 30m` watches for inactivity and **stops** the instance when it goes idle (or **hibernates** with `--on-idle hibernate`). This timer:
 
 - **Does reset** every time the instance wakes up from a stop or hibernate
 - Does **not** terminate the instance — it only stops/hibernates it
 - Is useful for saving compute costs during quiet periods between tasks
 
 ```sh
+# --ttl: hard deadline, terminates at launch_time + 12h
+# --idle-timeout: stops if idle for 30m; resets on each wake
 spawn launch --name analysis --instance-type c8a.2xlarge \
-  --ttl 12h \          # hard deadline — terminates at launch_time + 12h
-  --idle-timeout 30m   # stops if idle for 30m; resets on each wake
+  --ttl 12h \
+  --idle-timeout 30m
 ```
 
 ### A complete lifecycle

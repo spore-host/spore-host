@@ -49,7 +49,8 @@ data. Use `stop`/`hibernate` to pause; `terminate` only when you're done.
 ## TTL vs idle timeout
 
 **Mistake:** thinking either one alone will save you. **TTL** is the absolute,
-non-resettable deadline (the hard guarantee). **Idle timeout** is a soft early
+non-resettable deadline (the hard guarantee; a `--cost-limit` and
+`--on-complete terminate` can also terminate earlier). **Idle timeout** is a soft early
 stop that any activity resets, and it never *terminates* — only stops/hibernates.
 You typically want both. See [Costs & safety guarantees](/safety).
 
@@ -69,12 +70,22 @@ you need more time.
 
 ## A command finishing vs the completion sentinel appearing
 
-**Mistake:** expecting `on-complete` to fire because your script exited. spored
-acts on the **completion sentinel** (`/tmp/SPAWN_COMPLETE` or `spored complete`) —
-*not* on your process exiting. Your job script must create it explicitly:
+**Mistake:** expecting `on-complete` to fire when work you started by hand exits.
+spored acts on the **completion sentinel** (`/tmp/SPAWN_COMPLETE`), not on a
+process exiting.
+
+A `--command` is the exception that isn't one: when it exits, **pass or fail**,
+spawn's wrapper records the exit code in `/tmp/SPAWN_EXITCODE` and writes the
+sentinel for you (since v0.113.0), so `--on-complete` fires either way. A failed
+command does **not** leave the instance up until the TTL. If you want a failed
+instance kept for inspection, use `--on-complete stop` (or omit `--on-complete`);
+otherwise read the failure afterwards with `spawn logs <name>`.
+
+Work you start some other way (over `spawn connect`, from a plugin, a service you
+run yourself) has to create the sentinel when it's done:
 
 ```sh
-./run-job.sh && spored complete --status success
+./run-job.sh; spored complete --status success
 ```
 
 ## Instance role vs your user credentials

@@ -122,24 +122,30 @@ standardized code, so scripts can wait for a workload to finish (v0.36.6+):
 while spawn status my-job --check-complete; [ $? -eq 2 ]; do sleep 30; done
 ```
 
-**JSON schema** (`-o json`) — key fields returned:
+**JSON output** (`-o json`) has two shapes, depending on the instance state:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `instance_id` | string | EC2 instance ID |
-| `name` | string | Instance name tag |
-| `state` | string | `running`, `stopped`, `terminated`, … |
-| `public_ip` | string | Public IPv4 address |
-| `instance_type` | string | EC2 instance type |
-| `region` | string | AWS region |
-| `ttl` | string | Remaining TTL (e.g. `3h25m`) |
-| `on_complete` | string | Action on completion |
-| `tags` | object | All `spawn:*` tags as key-value map |
+- **Running instance:** spawn asks spored on the instance (over SSH, or SSM when no
+  key resolves) and prints `spored status --output json` verbatim. Top-level
+  fields include `instance_id`, `name`, `region`, `spored_version`, `started_at`,
+  `elapsed_seconds`, `compute_seconds`, `billed_seconds`, `stopped_seconds`,
+  `cpu_percent`, `network_bytes_per_min`, `disk_bytes_per_min`, and these objects:
+  `ttl` (`configured`, `remaining_seconds`, `terminate_at`), `idle`
+  (`configured`, `timeout_seconds`, `is_idle`, `idle_seconds`, `action`,
+  `remaining_seconds`), `on_complete` (`action`, `completion_file`,
+  `sentinel_present`), and `cost` (omitted when no price is known).
+- **Any other state** (stopped, pending, terminated, …): spawn builds the report
+  from EC2 and the instance's tags without reaching the instance. It has
+  `"source": "ec2"` and fields such as `instance_id`, `name`, `region`,
+  `instance_type`, `spot`, `state`, `stopped_since`, `ttl_deadline`,
+  `ttl_remaining_seconds`, `ttl_past_due`, `compute_seconds`, `compute_cost`,
+  `storage_cost` and `cumulative_cost`.
+
+Check for `"source": "ec2"` to tell the two apart.
 
 ### `spawn stop` / `spawn hibernate` / `spawn start`
 
 ```sh
-spawn stop my-instance              # stop (billing pauses, data preserved)
+spawn stop my-instance              # stop (compute billing pauses; EBS keeps billing)
 spawn hibernate my-instance         # hibernate to disk (saves RAM state)
 spawn start my-instance             # start stopped or hibernated instance
 ```
@@ -159,10 +165,12 @@ spawn terminate --job-array-name workers # terminate a whole job array
 
 ### `spawn extend`
 
-Update the TTL on a running instance:
+Push an instance's TTL deadline later. The duration is added to the current
+deadline, not counted from now (if the deadline has already passed, the new one is
+now plus the duration):
 
 ```sh
-spawn extend my-instance 4h     # extend by 4 hours from now
+spawn extend my-instance 4h     # add 4 hours to the current deadline
 ```
 
 ### `spawn connect`
@@ -195,16 +203,16 @@ Defaults are stored in `~/.spawn/config.yaml` and apply to every launch unless o
 
 ### `spawn notify`
 
-Register instances and users for Slack/Teams control:
+Register instances and users for Slack, Teams, or Discord control:
 
 ```sh
-spawn notify workspace-add ...
+spawn notify workspace add ...
 spawn notify register ...
 spawn notify enable ...
 spawn notify list ...
 ```
 
-See [Slack Setup](/guides/slack-setup) or [Teams Setup](/guides/teams-setup) for the full walkthrough.
+See [Slack Setup](/guides/slack-setup), [Teams Setup](/guides/teams-setup) or [Discord Setup](/guides/discord-setup) for the full walkthrough.
 
 ### `spawn capacity-block purchase`
 
@@ -226,7 +234,7 @@ A Capacity Block is billed **up front** and is **non-refundable**, so the purcha
 
 **TTL** — every instance has an absolute termination deadline: `launch_time + TTL`. When it fires, the instance terminates. The deadline is stored in a tag at launch and is **never reset** by stop/wake cycles — it keeps counting even while the instance is stopped. `spawn extend` pushes the deadline forward, not from now.
 
-**Idle timeout** — spored monitors CPU, network, disk, GPU, sessions, and configured process names. When all signals indicate inactivity for the configured duration, the instance **stops** (or hibernates with `--hibernate-on-idle`). The idle timer **resets** every time the instance wakes. Idle timeout never terminates — only TTL does that.
+**Idle timeout** — spored monitors CPU, network, disk, GPU, sessions, and configured process names. When all signals indicate inactivity for the configured duration, the instance **stops** (or hibernates with `--on-idle hibernate`). The idle timer **resets** every time the instance wakes. Idle timeout never terminates; the TTL, a `--cost-limit`, and `--on-complete terminate` do.
 
 **Spored** — a small daemon that runs on the instance, enforces the TTL deadline, detects idleness, registers DNS, and sends lifecycle notifications. Installed automatically at launch.
 
@@ -243,7 +251,8 @@ A Capacity Block is billed **up front** and is **non-refundable**, so the purcha
 
 Example — shard a dataset across 8 instances:
 ```bash
-spawn launch data-proc --count 8 --instance-type c6a.xlarge --ttl 2h
+spawn launch data-proc --count 8 --job-array-name data-proc \
+  --instance-type c6a.xlarge --ttl 2h
 # On each instance:
 # CHUNK=$((total_chunks / JOB_ARRAY_SIZE))
 # START=$((JOB_ARRAY_INDEX * CHUNK))
@@ -287,7 +296,7 @@ while spawn status my-job --check-complete; [ $? -eq 2 ]; do sleep 30; done
 ## Common mistakes
 
 - **`terminate` to "pause" a job.** Terminate destroys the EBS volume and its data — use `stop`/`hibernate` to pause. See [stop vs hibernate vs terminate](/reference/troubleshooting#stop-vs-hibernate-vs-terminate).
-- **Expecting `--on-complete` to fire when your command exits.** spored acts on the *completion sentinel*, not on your process exiting — call `spored complete` (or `touch /tmp/SPAWN_COMPLETE`) explicitly.
+- **Expecting `--on-complete` to fire for work you start yourself.** A `--command` signals completion when it exits, pass or fail (its exit code goes to `/tmp/SPAWN_EXITCODE`). Work you start another way, such as over `spawn connect`, has to signal it: run `spored complete` or `touch /tmp/SPAWN_COMPLETE`.
 - **Restarting a stopped instance whose TTL already passed.** The TTL is absolute; `spawn extend` first if you need more time.
 - **`--region` vs `--regions`.** spawn takes one `--region`; truffle takes plural `--regions` (see above).
 

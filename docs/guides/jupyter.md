@@ -24,6 +24,16 @@ spawn launch \
 
 With `--active-processes rsession`, the instance is considered active whenever an R session is open. The idle timeout (`--idle-timeout 2h`) only fires if *both* conditions are true: no active R sessions AND low CPU/network activity for 2 hours.
 
+::: warning `--active-processes` needs an idle timeout
+`--active-processes` only holds off an idle timeout; on its own it does nothing.
+An idle timeout applies by default only when you pass neither `--ttl` nor
+`--idle-timeout`, so with `--ttl` set you must also pass `--idle-timeout` (or set
+it as a default) for the process check to matter.
+:::
+
+Process names are matched exactly against the running process name (`pgrep -x`),
+so check the real name on the instance with `pgrep -l <part-of-name>`.
+
 ### Save it as a default
 
 If you always launch RStudio environments, save this once:
@@ -42,14 +52,15 @@ spawn launch --name rstudio --instance-type r6i.2xlarge --ttl 8h
 
 ## Jupyter
 
-Jupyter's kernel process is named `jupyter`. For Jupyter Lab or Notebook:
+JupyterLab's server process is named `jupyter-lab` (check yours with
+`pgrep -l jupyter`; the name must match exactly):
 
 ```sh
 spawn launch \
   --name jupyter \
   --instance-type c6i.4xlarge \
   --ttl 8h \
-  --active-processes jupyter \
+  --active-processes jupyter-lab \
   --idle-timeout 1h
 ```
 
@@ -60,7 +71,8 @@ spawn launch \
   --name analysis \
   --instance-type r6i.4xlarge \
   --ttl 12h \
-  --active-processes "rsession,jupyter"
+  --idle-timeout 1h \
+  --active-processes "rsession,jupyter-lab"
 ```
 
 ## Notifications for interactive sessions
@@ -86,9 +98,9 @@ spawn launch \
   --name rstudio \
   --instance-type r6i.8xlarge \
   --ttl 5d \
-  --hibernate-on-idle \
+  --on-idle hibernate \
   --idle-timeout 3h \
   --active-processes rsession
 ```
 
-When idle for 3 hours with no active R sessions, the instance hibernates. Resume it with `/spore start rstudio` and pick up exactly where you left off.
+When idle for 3 hours with no active R sessions, the instance hibernates. Resume it with `/spore start rstudio` and pick up exactly where you left off. Hibernation stops compute billing, but the EBS volumes (including the RAM image on the root volume) keep billing, and the TTL keeps counting.

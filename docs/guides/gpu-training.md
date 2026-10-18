@@ -72,7 +72,7 @@ spawn launch \
   --slack-workspace T03NE3GTY
 ```
 
-The `--pre-stop` command runs before any lifecycle-triggered shutdown — whether that's Spot interruption, TTL expiry, or idle timeout. spored waits up to 5 minutes for it to complete (configurable with `--pre-stop-timeout`).
+The `--pre-stop` command runs before any lifecycle-triggered shutdown — whether that's Spot interruption, TTL expiry, or idle timeout. spored waits up to `--pre-stop-timeout` for it to complete: 90 seconds by default on Spot (so it fits inside the two-minute notice), 5 minutes otherwise. Keep a Spot checkpoint well under 90 seconds.
 
 ## Monitor from Slack
 
@@ -93,14 +93,14 @@ spawn launch \
   --name llm-training \
   --instance-type p4d.24xlarge \
   --ttl 48h \
-  --hibernate-on-idle \
+  --on-idle hibernate \
   --idle-timeout 30m
 ```
 
-When the instance has been idle for 30 minutes, it hibernates — saving RAM state to the root volume and stopping the clock on compute billing. Resume it with `/spore start llm-training` or `spawn start llm-training`.
+When the instance has been idle for 30 minutes, it hibernates — saving RAM state to the root volume and stopping the clock on compute billing. EBS keeps billing while it's hibernated, and the TTL keeps counting. Resume it with `/spore start llm-training` or `spawn start llm-training`.
 
 ::: warning Hibernation requirements
-Hibernation requires the instance to be launched with a hibernation-enabled AMI and root volume. Most spore.host AMIs support this, but check your specific AMI documentation. Not all instance types support hibernation.
+Hibernation needs an encrypted root volume large enough for RAM; `--on-idle hibernate` implies `--hibernate`, which configures that. The AMI and instance type must also support hibernation, and not all do, so check AWS's hibernation prerequisites for your type.
 :::
 
 ## Full example: multi-GPU training job
@@ -120,14 +120,17 @@ spawn launch \
   --pre-stop "python /home/ubuntu/bert/save_checkpoint.py --emergency" \
   --on-complete terminate \
   --completion-file /tmp/SPAWN_COMPLETE \
-  --active-processes python \
   --slack-workspace T03NE3GTY
 
 # 3. Watch for it in Slack, or check status any time
 spawn status bert-finetune
 ```
 
-The `--active-processes python` flag tells spored that the instance isn't idle as long as a `python` process is running — preventing premature idle detection even during a phase where CPU looks low (waiting on data I/O, for example).
+This launch sets `--ttl` and no `--idle-timeout`, so idle detection is off: nothing
+will stop the instance during a quiet phase (waiting on data I/O, for example).
+If you do add `--idle-timeout`, pair it with `--active-processes <name>` so the
+instance isn't stopped while the training process runs. Names are matched exactly
+(`pgrep -x`), so use the real process name, such as `python3`.
 
 ## Next steps
 

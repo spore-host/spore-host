@@ -23,7 +23,7 @@ throughout; avoid using "spore" as a noun for a machine.
 | **truffle** | The discovery CLI: find instance types, compare prices, check quotas. Read-only. |
 | **spawn** | The launcher CLI: launches instances and provisions spored onto them; manages their lifecycle from your laptop. |
 | **spored** | The lifecycle *daemon* that runs on each launched instance and enforces its rules from the inside. You never install it — spawn provisions it. |
-| **spore-bot** | The Slack/Teams integration for controlling instances from chat. |
+| **spore-bot** | The Slack/Teams/Discord integration for controlling instances from chat. |
 | **lagotto** | The capacity watcher: waits for scarce capacity and notifies or launches when it appears. |
 | **spore-host-mcp** | The MCP server exposing truffle and spawn to AI assistants. |
 
@@ -31,10 +31,10 @@ throughout; avoid using "spore" as a noun for a machine.
 
 | Term | Definition |
 |------|-----------|
-| **TTL** (time to live) | The absolute deadline, set once at launch, at which the instance terminates. It never resets across stop/wake cycles; only `spawn extend` moves it, and only forward. The hard backstop. See [Costs & safety guarantees](/safety). |
+| **TTL** (time to live) | The absolute deadline, set once at launch, at which the instance terminates. It never resets across stop/wake cycles; only `spawn extend` moves it, and only forward. The hard backstop, though not the only thing that terminates: a cost limit and `on-complete terminate` do too. See [Costs & safety guarantees](/safety). |
 | **idle timeout** | A *soft* rule: stop or hibernate after a period with no activity. Any activity resets it. Idle never terminates — it only stops/hibernates. Not the same as the TTL. |
-| **completion signal** | An explicit "my work is done" marker — a sentinel file (default `/tmp/SPAWN_COMPLETE`) or `spored complete`. Triggers the configured `on-complete` action. |
-| **completion sentinel** | The file spored watches for the completion signal. Its *appearance* — not your command merely finishing — is what triggers the action. |
+| **completion signal** | A "my work is done" marker — a sentinel file (default `/tmp/SPAWN_COMPLETE`) or `spored complete`. Triggers the configured `on-complete` action. A `--command` writes it automatically when it exits, pass or fail. |
+| **completion sentinel** | The file spored watches for the completion signal. Its *appearance* is what triggers the action. A `--command` creates it on exit (with its exit code in `/tmp/SPAWN_EXITCODE`); anything you start yourself has to create it. |
 | **pre-stop hook** | A shell command spored runs before any lifecycle-triggered stop or terminate, to save work (e.g. `aws s3 sync /results s3://…`). |
 | **cost limit** | An optional **compute + EBS** spend ceiling (instance rate × total compute time, carried across stop/resume, plus EBS × wall-clock time); spored terminates when it's crossed. Independent of the TTL — first ceiling to fire wins. |
 | **reaper** | The out-of-band backstop that terminates managed instances past their TTL even if spored is unhealthy. See [Costs & safety guarantees](/safety). |
