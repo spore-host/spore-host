@@ -28,7 +28,21 @@
 ###############################################################################
 
 terraform {
-  required_version = ">= 1.6"
+  # >= 1.10 for the S3 backend's native lock file (use_lockfile).
+  required_version = ">= 1.10"
+
+  # State lives in the infra account's state bucket, one key per root, locked
+  # with an S3 lock file (#580). Create the bucket once with
+  # infra/tofu/state-bucket.sh. The backend uses the ambient credentials (see
+  # README), never var.aws_profile: backend blocks cannot read variables.
+  backend "s3" {
+    bucket       = "spore-host-tofu-state-966362334030"
+    key          = "portal-oidc/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -39,7 +53,7 @@ terraform {
 
 provider "aws" {
   region  = var.region
-  profile = var.aws_profile
+  profile = var.aws_profile != "" ? var.aws_profile : null
 }
 
 variable "region" {

@@ -151,4 +151,7 @@ total failure, and the alarm above fires), but it also means the prober does not
 
 ## State
 
-Local state, gitignored. Never commit state or `placeholder.zip`.
+Remote, in the infra account's state bucket (`portal-account-prober/terraform.tfstate`),
+locked with an S3 lock file (#580). **No state has been written for
+this root yet**: import its resources before the first `plan`. Credentials and
+the import rule: [`../README.md`](../README.md). Never commit state.

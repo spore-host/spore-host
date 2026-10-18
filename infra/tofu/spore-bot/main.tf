@@ -15,7 +15,21 @@
 ###############################################################################
 
 terraform {
-  required_version = ">= 1.6"
+  # >= 1.10 for the S3 backend's native lock file (use_lockfile).
+  required_version = ">= 1.10"
+
+  # State lives in the infra account's state bucket, one key per root, locked
+  # with an S3 lock file (#580). Create the bucket once with
+  # infra/tofu/state-bucket.sh. The backend uses the ambient credentials (see
+  # README), never var.aws_profile: backend blocks cannot read variables.
+  backend "s3" {
+    bucket       = "spore-host-tofu-state-966362334030"
+    key          = "spore-bot/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -26,9 +40,9 @@ terraform {
 
 provider "aws" {
   region = var.region
-  # Use the spore-host-infra profile (account 966362334030) — same as the
-  # imperative scripts. Override with AWS_PROFILE / -var if needed.
-  profile = var.aws_profile
+  # Account 966362334030. Default: the ambient credentials exported from the
+  # spore-host-infra profile (see ../README.md); -var aws_profile=... overrides.
+  profile = var.aws_profile != "" ? var.aws_profile : null
 }
 
 variable "region" {
@@ -37,8 +51,11 @@ variable "region" {
 }
 
 variable "aws_profile" {
-  type    = string
-  default = "spore-host-infra"
+  type = string
+  # Empty: use the ambient credentials (AWS_* from `aws configure
+  # export-credentials`, see README). The provider cannot itself resolve a
+  # profile whose source_profile uses `aws login` (#580).
+  default = ""
 }
 
 locals {
