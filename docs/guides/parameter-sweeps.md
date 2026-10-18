@@ -16,7 +16,7 @@ defaults:
   instance_type: g5.xlarge
   ttl: 4h
   on_complete: terminate
-  command: "python train.py --lr {learning_rate} --batch {batch_size}"
+  command: "python train.py --lr $PARAM_learning_rate --batch $PARAM_batch_size"
 
 params:
   - learning_rate: 0.001
@@ -33,7 +33,12 @@ params:
 spawn launch hp-search --param-file sweep.yaml
 ```
 
-This launches one instance per `params` entry (4 here), each running `command` with its combination substituted (`{learning_rate}`, `{batch_size}`). Each instance has its own TTL and terminates independently when done.
+This launches one instance per `params` entry (4 here). Each runs `command` with its combination in environment variables: every key that isn't a spawn setting becomes `PARAM_<key>` (`$PARAM_learning_rate`, `$PARAM_batch_size`), and `$SWEEP_INDEX` is the entry's 0-based position. Each instance has its own TTL and terminates independently when done.
+
+::: warning `{...}` is not substituted
+spawn runs `command` exactly as written. `{learning_rate}` would reach your program
+as literal text; use `$PARAM_learning_rate`.
+:::
 
 ::: tip Preview before you launch
 Add `--estimate-only` to see the instance count and cost estimate without launching anything.
@@ -41,26 +46,35 @@ Add `--estimate-only` to see the instance count and cost estimate without launch
 
 ## Every combination of several lists
 
-You enumerate the combinations you want in `params` — spawn does not expand a grid
-for you. To sweep the full grid of several lists, generate the `params` list with a
-few lines of your own script (any language) and write it to the YAML/JSON file:
+Use `grid:` to sweep the full cartesian product of several lists. spawn expands
+it to one parameter set per combination:
 
-```python
-# gen-sweep.py — write every learning_rate × batch_size combination
-import itertools, yaml
-lrs, batches = [0.001, 0.01, 0.1], [32, 64, 128]
-params = [{"learning_rate": lr, "batch_size": b} for lr, b in itertools.product(lrs, batches)]
-yaml.safe_dump({"defaults": {"instance_type": "g5.xlarge", "ttl": "4h",
-    "command": "python train.py --lr {learning_rate} --batch {batch_size}"},
-    "params": params}, open("sweep.yaml", "w"))
+```yaml
+# grid.yaml: 3 learning rates x 3 batch sizes = 9 instances
+defaults:
+  instance_type: g5.xlarge
+  ttl: 4h
+  on_complete: terminate
+  command: "python train.py --lr $PARAM_learning_rate --batch $PARAM_batch_size"
+
+grid:
+  learning_rate: [0.001, 0.01, 0.1]
+  batch_size: [32, 64, 128]
 ```
 
 ```sh
-python gen-sweep.py && spawn launch grid-search --param-file sweep.yaml   # 9 instances
+spawn launch grid-search --param-file grid.yaml --estimate-only   # shows 9 instances
+spawn launch grid-search --param-file grid.yaml
 ```
 
-::: info Inline `--params` / auto-expanded ranges
-Passing parameters inline (`--params …`) and auto-generating ranges/cartesian products from the CLI are not yet available — the CLI returns *"inline --params not yet implemented, use --param-file for now."* Generate the `params` list into a file as shown above. Native `grid:`/matrix expansion is tracked in [spawn#390](https://github.com/spore-host/spawn/issues/390).
+Keys expand in sorted order, so the combinations, and the `$SWEEP_INDEX` each one
+gets, are the same every time. `grid:` and an explicit `params:` list can be
+combined; the explicit entries come first.
+
+::: info Inline `--params`
+Passing parameters on the command line (`--params …`) isn't implemented; the CLI
+says *"inline --params not yet implemented, use --param-file for now."* Put them
+in a param file.
 :::
 
 ## Heterogeneous sweeps — vary the instance type per entry
@@ -73,21 +87,21 @@ defaults:
   ttl: 2h
   on_complete: terminate
   spot: true
-  command: "gmx mdrun -s bench.tpr && aws s3 cp md.log s3://my-bucket/bench/{instance_type}/"
+  command: "gmx mdrun -s bench.tpr && aws s3 cp md.log s3://my-bucket/bench/$PARAM_family/"
 
 params:
-  - instance_type: c8i.24xlarge   # Intel
-  - instance_type: c8a.24xlarge   # AMD
-  - instance_type: c8g.24xlarge   # Graviton (arm64)
-  - instance_type: g6.2xlarge     # NVIDIA L4 GPU
-  - instance_type: g6e.2xlarge    # NVIDIA L40S GPU
+  - {instance_type: c8i.24xlarge, family: c8i}   # Intel
+  - {instance_type: c8a.24xlarge, family: c8a}   # AMD
+  - {instance_type: c8g.24xlarge, family: c8g}   # Graviton (arm64)
+  - {instance_type: g6.2xlarge,   family: g6}    # NVIDIA L4 GPU
+  - {instance_type: g6e.2xlarge,  family: g6e}   # NVIDIA L40S GPU
 ```
 
 ```sh
-spawn launch gromacs-bench --param-file gromacs-bench.yaml
+spawn launch gromacs-bench --param-file gromacs-bench.yaml --s3-write my-bucket
 ```
 
-spawn detects the right AMI **per entry** from its instance type — an arm64 AMI for `c8g`, a GPU AMI for `g6`/`g6e`, an x86 AMI for `c8i`/`c8a` — so you don't hand-pick an AMI per family (entries sharing an architecture reuse one AMI lookup). Set an explicit `ami:` on an entry to override. Each instance uploads its result keyed by `{instance_type}`, so the comparison falls out of the S3 layout.
+spawn detects the right AMI **per entry** from its instance type — an arm64 AMI for `c8g`, a GPU AMI for `g6`/`g6e`, an x86 AMI for `c8i`/`c8a` — so you don't hand-pick an AMI per family (entries sharing an architecture reuse one AMI lookup). Set an explicit `ami:` on an entry to override. `instance_type` is a spawn setting, not a workload parameter, so it isn't exported; the `family` key is, as `$PARAM_family`. Each instance uploads its result under its family, so the comparison falls out of the S3 layout. (`--s3-write` lets the instances write to your bucket; otherwise they can only reach spawn's own.)
 
 ::: warning One OS per sweep
 A sweep must be all-Linux or all-Windows — a single `command`/lifecycle model can't span both. Mixing an entry that resolves to Windows with Linux entries is rejected before launch.
@@ -113,9 +127,11 @@ A large sweep does not have to launch every instance at once. Two launch flags c
 how wide and how expensive it gets:
 
 ```sh
+# --max-concurrent: at most 8 instances running at a time (0 = unlimited)
+# --budget: stop launching once projected spend hits $200 (0 = no limit)
 spawn launch hp-search --param-file sweep.yaml \
-  --max-concurrent 8 \      # at most 8 instances running at a time (0 = unlimited)
-  --budget 200 \            # stop launching once projected spend hits $200 (0 = no limit)
+  --max-concurrent 8 \
+  --budget 200 \
   --ttl 4h
 ```
 
@@ -136,34 +152,13 @@ spawn sweep resume <sweep-id> --max-concurrent 5  # optionally re-cap concurrenc
 Gather the results of a finished sweep into one place with:
 
 ```sh
-spawn sweep collect <sweep-id> --output results.json
+spawn sweep collect <sweep-id> --output-file results.json
 ```
 
 ::: info Re-running only the failed entries
-There isn't yet a one-flag "retry only the failed entries" for sweeps; `resume`
-continues incomplete work from the checkpoint. First-class failed-subset rerun is
-part of the array/sweep reporting work in [spawn#389](https://github.com/spore-host/spawn/issues/389).
+Sweeps have no "retry only the failed entries" command; `resume` continues
+incomplete work from the checkpoint. (Job arrays do: `spawn array retry --failed`.)
 :::
-
-## Alerts on completion, failure, or cost
-
-For explicit, per-sweep notifications — beyond the default Slack DM — attach an
-**alert** to a sweep with `spawn alerts`. Alerts can fire on completion, on
-failure, or when the sweep's running cost crosses a threshold, and deliver via
-email, Slack, SNS, or a webhook:
-
-```sh
-spawn alerts create <sweep-id> --on-complete --email me@example.com
-spawn alerts create <sweep-id> --on-failure  --slack https://hooks.slack.com/services/...
-spawn alerts create <sweep-id> --cost-threshold 100 --email me@example.com
-
-spawn alerts list                 # all alerts
-spawn alerts history              # what has fired
-spawn alerts delete <alert-id>
-```
-
-The cost-threshold alert is the cheap insurance for a large sweep: get pinged the
-moment spend crosses your ceiling, then `spawn sweep cancel` if it's running away.
 
 ## Collecting results
 
@@ -173,13 +168,15 @@ Each instance writes its results to a path you control — typically S3. The con
 spawn launch hp-search \
   --instance-type g5.xlarge \
   --param-file sweep.yaml \
-  --command "python train.py --lr {learning_rate} && \
-             aws s3 cp results.json s3://my-bucket/sweeps/hp-search/{index}/results.json && \
-             touch /tmp/SPAWN_COMPLETE" \
+  --s3-write my-bucket \
+  --command 'python train.py --lr $PARAM_learning_rate && aws s3 cp results.json s3://my-bucket/sweeps/hp-search/$SWEEP_INDEX/results.json' \
   --on-complete terminate
 ```
 
-Each instance has `{index}` (0-based position in the sweep) and all parameter values available as environment variables and template substitutions.
+Each instance has `$SWEEP_INDEX` (its 0-based position in the sweep), plus
+`$SWEEP_ID`, `$SWEEP_NAME`, `$SWEEP_SIZE` and a `$PARAM_<key>` for every parameter.
+Single-quote the command so your own shell doesn't expand them first. The
+command's exit signals completion, so `--on-complete` fires when it finishes.
 
 ## Cost estimation
 

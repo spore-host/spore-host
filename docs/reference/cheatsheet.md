@@ -33,7 +33,7 @@ truffle capacity --available-only
 spawn                                                  # interactive wizard
 spawn launch --name my-job --instance-type g5.xlarge --ttl 8h
 spawn launch --spot --ttl 12h --on-complete terminate
-spawn launch --count 8 --mpi --ttl 6h                  # MPI cluster
+spawn launch --count 8 --mpi --job-array-name sim --mpi-command './sim' --ttl 6h  # MPI cluster
 spawn launch --active-processes rsession --ttl 8h       # RStudio
 spawn launch --slack-workspace T03NE3GTY --ttl 4h       # with notifications
 spawn launch --name big-disk --instance-type m7i.large --volume-size 200  # 200 GiB root
@@ -170,5 +170,5 @@ spawn launch hp-search \
   --instance-type g5.xlarge \
   --ttl 4h \
   --param-file params.yaml \
-  --command "python train.py --lr {lr} --batch {batch}"
+  --command 'python train.py --lr $PARAM_lr --batch $PARAM_batch'   # params arrive as $PARAM_<key>
 ```
