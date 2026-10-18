@@ -3,7 +3,7 @@
 `lagotto` watches for EC2 capacity and acts when it appears — notify, hold, or launch via spawn — and can maintain goal-driven fleets. This is the exhaustive command and flag reference. For an overview see [the lagotto guide](/tools/lagotto).
 
 ::: tip Generated reference
-This page is generated from the `lagotto` CLI itself and kept in sync by a release-gated drift check, so every command and flag below matches the shipped binary. For task-oriented walkthroughs see the [guides](/guides/).
+Each section below is generated from the `lagotto` CLI itself and synced from its releases, so the commands and flags match the shipped binary. Deprecated commands are left out. For task-oriented walkthroughs see the [guides](/guides/).
 :::
 
 <!-- @include: ../../gen/lagotto/_global-flags.md -->
@@ -31,4 +31,3 @@ This page is generated from the `lagotto` CLI itself and kept in sync by a relea
 <!-- @include: ../../gen/lagotto/version.md -->
 
 <!-- @include: ../../gen/lagotto/watch.md -->
-

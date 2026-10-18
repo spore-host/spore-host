@@ -1,31 +1,13 @@
 ---
-description: "Beyond launching and connecting, spawn has a set of operational commands for moving large data onto instances, keeping the spored agent current, and finding…"
+description: "Beyond launching and connecting, spawn has a set of operational commands for attaching large reference data, keeping the spored agent current, and finding…"
 ---
 
 # Managing instances & data
 
 Beyond launching and connecting, spawn has a set of operational commands for
-moving large data onto instances, keeping the `spored` agent current, and finding
+attaching large reference data, keeping the `spored` agent current, and finding
 what's running (or lingering) in your account. This guide covers those; every flag
 is in the [spawn command reference](/tools/reference/spawn).
-
-## Staging data across regions
-
-Downloading the same dataset into every instance of a multi-region sweep pays the
-cross-region transfer rate ($0.09/GB) over and over. `spawn stage` replicates the
-data **once** into a regional S3 bucket per region, so each instance downloads from
-its own region for free.
-
-```sh
-spawn stage estimate ./reference-db --regions us-east-1,us-west-2  # what you'd save
-spawn stage upload ./reference-db --regions us-east-1,us-west-2 \
-  --dest /mnt/data/reference-db
-spawn stage list                 # what's staged, where
-spawn stage delete <id>          # remove staged data when the sweep is done
-```
-
-Staged data lands at `--dest` on each instance (default `/mnt/data/<filename>`).
-Associate an upload with a sweep via `--sweep-id` to track it alongside the run.
 
 ## Large reference data as an attached volume
 
@@ -61,7 +43,7 @@ spawn upgrade-spored <instance-id>              # to the latest release
 spawn upgrade-spored <instance-id> --version 0.75.0
 ```
 
-The swap is driven over SSM. A downgrade is refused unless you pass `--force`.
+The swap is driven over SSM, and works on Linux instances only for now. A downgrade is refused unless you pass `--allow-downgrade`.
 
 ## Seeing what's running — and what's orphaned
 
@@ -86,6 +68,15 @@ billing:
 ```sh
 spawn orphans                    # your orphaned resources in this region
 spawn orphans --all-regions
+```
+
+`spawn footprint` goes wider: everything spawn has created in the account,
+including what `orphans` and `cleanup` never touch — the IAM roles, results
+buckets, Lambdas and log groups. It only reports; it never deletes.
+
+```sh
+spawn footprint                  # this region, plus account-wide resources
+spawn footprint --all-regions
 ```
 
 Run `spawn orphans` after a batch of work to catch anything the lifecycle reaper
