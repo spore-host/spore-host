@@ -15,17 +15,20 @@ This guide walks through the full workflow for running a GPU training job: findi
 Start by seeing what's available and what the current Spot prices look like:
 
 ```sh
-# Find NVIDIA A100 instances in us-east-1
-truffle find "nvidia a100" --region us-east-1 --spot
+# Find NVIDIA A100 instance types in us-east-1 (p4d, p4de)
+truffle find a100 --region us-east-1
 
-# Find the cheapest available GPU instance across all regions
-truffle find "gpu" --spot --sort-by-price
+# Only the 80 GB A100s (p4de)
+truffle find "A100-80GB" --region us-east-1
+
+# Compare Spot prices for those types across all regions, cheapest first
+truffle spot p4d.24xlarge p4de.24xlarge --sort-by-price --limit 10
 
 # Check quota before committing
 truffle quotas --regions us-east-1 --family P
 ```
 
-Truffle shows on-demand price, current Spot price, and the AZs where the type is available. For training jobs that can tolerate interruption, Spot typically saves 60–90%.
+`truffle find` shows each type's specs, on-demand price, and the AZs where it is offered; it searches only your configured region unless you pass `--regions` or `--all-regions`. `truffle spot` shows the current Spot price per AZ in every enabled region, next to the on-demand price and the saving. `--limit 10` keeps the first 10 rows. For training jobs that can tolerate interruption, Spot typically saves 60–90%.
 
 ## Launch with a completion signal
 
@@ -103,8 +106,9 @@ Hibernation requires the instance to be launched with a hibernation-enabled AMI 
 ## Full example: multi-GPU training job
 
 ```sh
-# 1. Find the cheapest available 8×A100 instance
-truffle find "nvidia a100 8gpu" --spot --sort-by-price
+# 1. Find 8×A100 instance types, then the cheapest Spot price for one
+truffle find "a100 8 gpus"
+truffle spot p4d.24xlarge --sort-by-price --limit 5
 
 # 2. Launch on Spot with checkpoint support
 spawn launch \

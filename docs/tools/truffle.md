@@ -15,19 +15,16 @@ prices, and confirm your quota so a launch doesn't fail after you've waited.
 
 ```sh
 truffle find "amd genoa 64gb"          # discover a family in plain language
-truffle search "m8a.*" --min-vcpu 16   # filter by exact specs
+truffle find "m8a 16 cores 64gb"       # sizes in one family that meet a spec
 truffle spot m8a.4xlarge               # compare Spot prices across regions
-truffle quotas --regions us-east-1 --family M   # confirm you can launch it
+truffle quotas --regions us-east-1 --family Standard   # confirm you can launch it
 truffle az p5.48xlarge                 # check per-AZ availability
 ```
 
-::: tip Which command? find vs search vs spot vs quotas
-- **`find`** — you know what you need *in human terms* ("amd genoa 64gb"). Put specs in the query string; filter flags like `--min-vcpu` don't apply here.
-- **`search`** — you know the *exact technical filters*: `search "m8a.*" --min-vcpu 16 --min-memory 64`.
-- **`spot`** — you've picked a type and want to compare purchase options / regions.
+::: tip Which command? find vs spot vs quotas
+- **`find`** — you know what you need, either in plain terms ("amd genoa 64gb") or as a type name or pattern (`"m8a.*"`). Put specs in the query string; there are no `--min-vcpu` / `--min-memory` flags.
+- **`spot`** — you've picked a type and want to compare Spot prices across regions and AZs.
 - **`quotas`** — run immediately before launch, so you don't wait for capacity you're not allowed to use.
-
-`find` and `search` are **not** synonyms — see [Common mistakes](#common-mistakes).
 :::
 
 ## Install
@@ -44,44 +41,46 @@ Like the rest of the suite, truffle honors the shared spore.host config: a globa
 
 Truffle has distinct sub-commands for different tasks. They are **not interchangeable** — flags available on one command may not exist on another.
 
-### `truffle find` — natural language search
+### `truffle find` — plain-language, pattern, and spec search
 
-Discover instance families using plain language. Understands processor names, GPU models, network capabilities, and size descriptions.
+`find` works out what kind of query you gave it. A type name or pattern (`m8a.*`, `c[6-8]i.large`, `g5.2xlarge`) is matched against instance type names. Anything else is read as plain language: processor names, GPU models, vendors, network capabilities, sizes, and specs.
 
 ```sh
-truffle find "epyc genoa"           # AMD EPYC Genoa (4th gen)
-truffle find "h100 8gpu efa"        # NVIDIA H100 with EFA networking
-truffle find "graviton large"       # ARM64 Graviton, large size class
+truffle find "amd genoa"                # AMD EPYC Genoa (4th gen)
+truffle find "h100 8 gpus efa"          # 8x NVIDIA H100 with EFA networking
+truffle find "graviton large"           # ARM64 Graviton, large size class
 truffle find "sapphire rapids 32 cores"
 truffle find "milan 64gb"
+truffle find "A100-80GB"                # only A100s with 80 GB per GPU
 ```
 
-Include specs **in the query string** — `truffle find` does not accept `--min-vcpu` or `--min-memory`:
+Words truffle doesn't recognise are reported as unknown and ignored, so check the spelling against `truffle find --help`. For example, write `amd` rather than `epyc`, and `8 gpus` rather than `8gpu`. A GPU memory size counts: `A100-80GB` and `a100 80gb` both match only the 80 GB A100s.
+
+Include specs **in the query string** — `truffle find` has no `--min-vcpu` or `--min-memory` flags. Specs are minimums; add `--exact` to match them exactly:
 ```sh
-truffle find "epyc genoa 16 cores"      # ✅ spec in query
-truffle find "epyc genoa" --min-vcpu 16 # ❌ --min-vcpu not available on find
+truffle find "amd genoa 16 cores"       # ✅ at least 16 vCPUs
+truffle find "m8a 16 cores 64gb"        # ✅ m8a sizes with at least 16 vCPUs and 64 GiB
+truffle find "amd genoa" --min-vcpu 16  # ❌ --min-vcpu is not a find flag
 ```
+
+Pattern queries match the full instance type name. Wildcards (`*`, `?`) and regular expressions work, a bare family name means every size in it, and several types side by side give one comparison table:
+
+```sh
+truffle find "m8a.*"                    # all m8a sizes
+truffle find "c[6-8]i.large"            # c6i, c7i and c8i large
+truffle find g5.2xlarge g5.4xlarge g5.12xlarge
+```
+
+`find` searches your configured region (spore config, `AWS_REGION` / `AWS_DEFAULT_REGION`, or the profile's region). Use `--regions` to choose regions, or `--all-regions` to search every enabled region.
 
 Flags:
+- `--regions` / `--all-regions` — choose regions, or search every enabled region
 - `--skip-azs` — faster, skip AZ lookup
-- `--regions` — limit to specific regions
+- `--limit N` — list only the first N instance types; unlike `| head`, the table keeps its border and footer
+- `--exact` — match the vCPU and memory in the query exactly
+- `--show-price` — add on-demand pricing to pattern queries (plain-language results include it already)
+- `--pick-first` — print only the top result's type name
 - `--app <name>` — find instances suitable for a catalog application
-
-### `truffle search` — pattern search with filters
-
-Search by instance type name pattern (wildcards and regex). Supports numeric filters.
-
-```sh
-truffle search "m8a.*"                              # all m8a sizes
-truffle search "m8a.*" --min-vcpu 16               # ✅ --min-vcpu works here
-truffle search "m8a.*" --min-vcpu 16 --min-memory 64
-truffle search "c7a.*" --architecture x86_64
-truffle search "g5.*" --skip-azs
-```
-
-The pattern is anchored — it must match the full instance type name. Wildcards (`*`, `?`) are supported.
-
-Flags: `--min-vcpu`, `--min-memory`, `--architecture`, `--family`, `--show-price`, `--pick-first`, `--skip-azs`
 
 ### `truffle spot` — current Spot prices
 
@@ -89,9 +88,11 @@ Get live Spot prices for a specific instance type across regions and AZs.
 
 ```sh
 truffle spot m8a.4xlarge
-truffle spot "m7a.*" --sort-by-price --active-only
-truffle spot g5.xlarge --regions us-east-1,us-west-2 --show-savings
+truffle spot "m7a.*" --sort-by-price --active-only --limit 10
+truffle spot g5.xlarge --regions us-east-1,us-west-2
 ```
+
+`spot` searches every enabled region by default. The On-Demand price and the Spot saving are always shown. `--limit N` lists only the first N rows and keeps the table's border and footer.
 
 ### `truffle quotas` — service quota check
 
@@ -99,7 +100,7 @@ Check vCPU quotas before launching to avoid capacity errors.
 
 ```sh
 truffle quotas --regions us-east-1
-truffle quotas --family Standard --regions us-east-1   # M, C, R, T instances
+truffle quotas --family Standard --regions us-east-1   # M, C, R, T and other standard instances
 truffle quotas --family P --regions us-east-1          # P-family GPU instances
 truffle quotas --service sagemaker --family g5         # SageMaker ml.g5.* quotas
 truffle quotas --family Standard --request             # generate increase commands
@@ -110,10 +111,15 @@ truffle quotas --family Standard --request             # generate increase comma
 | Code | Instances |
 |------|-----------|
 | `Standard` | A, C, D, H, I, M, R, T, Z (general purpose) |
-| `G` | g4dn, g5, g6 (graphics/GPU) |
-| `P` | p3, p4, p5 (GPU training) |
+| `G` | g4dn, g5, g6, and vt1 (graphics/GPU; G and VT share one quota) |
+| `P` | p3, p4d, p4de, p5, p6 (GPU training) |
 | `Inf` | inf1, inf2 (Inferentia) |
-| `Trn` | trn1 (Trainium) |
+| `Trn` | trn1, trn2 (Trainium) |
+| `DL` | dl1, dl2q (Habana Gaudi, Qualcomm) |
+| `F` | f1, f2 (FPGA) |
+| `X` | x1, x1e, x2idn, x2iedn, x8g, and other X types (memory optimized) |
+
+The family code is case-sensitive: `--family P` works, `--family p` matches nothing.
 
 ### `truffle capacity` — capacity reservations you own
 
@@ -131,21 +137,28 @@ truffle capacity --blocks                              # Capacity Blocks you alr
 Find purchasable [EC2 Capacity Block for ML](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/capacity-blocks.html) **offerings** — "what can I reserve?" (read-only; queries `DescribeCapacityBlockOfferings`). This is distinct from `truffle capacity --blocks`, which lists blocks you *already* own.
 
 ```sh
-truffle capacity-blocks --instance-type p5.48xlarge --count 1 --duration-hours 24
-truffle capacity-blocks --instance-type p5.48xlarge --count 2 --duration-hours 48 \
-  --region us-east-1 --start-after 2026-07-01T00:00:00Z
+truffle capacity-blocks --instance-type p5.48xlarge --days 1
+truffle capacity-blocks --instance-type p5.48xlarge --count 2 --days 2 \
+  --region us-east-1 --start-date 2026-11-20 --sort start
 ```
 
-Each offering shows its **id** (what `spawn capacity-block purchase` reserves), instance type/count, AZ, start/end, duration, and up-front price. `--instance-type` and `--duration-hours` are required. This is step 1 of the Capacity Block flow — see [Capacity Blocks for ML](#capacity-blocks-for-ml) below.
+Each offering shows its **id** (what `spawn capacity-block purchase` reserves), instance type/count, AZ, start/end, duration, and up-front price. `--instance-type` is required, plus a duration:
 
-## Typical workflow: find → search → spot → check quota → launch
+- `--days N` — block length in days. `--duration-hours` also works and is rounded up to a valid Capacity Block length (1-day steps to 14 days, then 7-day steps to 182).
+- `--start-date YYYY-MM-DD` — blocks starting on that calendar day (UTC). `--start-after` (RFC3339) sets the earliest start instead.
+- `--end-by` — latest block end time (RFC3339). By default the search covers now to the soonest a block of that length could end; blocks can start up to 8 weeks out.
+- `--sort price|start` — cheapest first (the default) or soonest first.
+
+Offerings are searched in every enabled region unless you pass `--regions`. This is step 1 of the Capacity Block flow — see [Capacity Blocks for ML](#capacity-blocks-for-ml) below.
+
+## Typical workflow: find → spot → check quota → launch
 
 ```sh
 # 1. Discover the instance family
-truffle find "epyc genoa"
+truffle find "amd genoa"
 
-# 2. Browse sizes within that family (with spec filters)
-truffle search "m8a.*" --min-vcpu 16 --min-memory 64
+# 2. Browse sizes within that family that meet your spec
+truffle find "m8a 16 cores 64gb"
 
 # 3. Check current Spot prices
 truffle spot m8a.4xlarge --sort-by-price --active-only
@@ -163,7 +176,7 @@ Use `--pick-first` to get a single instance type name for piping:
 
 ```sh
 spawn launch my-job \
-  --instance-type $(truffle search "m8a.*" --min-vcpu 16 --pick-first) \
+  --instance-type $(truffle find "m8a 16 cores 64gb" --pick-first) \
   --spot --ttl 4h
 ```
 
@@ -173,7 +186,7 @@ A Capacity Block reserves scarce GPU capacity (e.g. p5.48xlarge) for a future wi
 
 ```sh
 # 1. truffle — find a purchasable offering (read-only)
-truffle capacity-blocks --instance-type p5.48xlarge --count 1 --duration-hours 24
+truffle capacity-blocks --instance-type p5.48xlarge --count 1 --days 1
 
 # 2. spawn — purchase it (billed up front, NON-REFUNDABLE; three typed
 #    confirmations, interactive only; --dry-run to preview)
@@ -188,7 +201,9 @@ Truffle stays read-only throughout — the purchase (a real-money, non-refundabl
 
 ## Common mistakes
 
-- **Treating `find` and `search` as synonyms.** `find` is natural-language (specs go *in the query*); `search` is pattern + flags (`--min-vcpu`). Filter flags don't exist on `find`.
+- **Passing specs as flags to `find`.** Specs go *in the query* (`truffle find "m8a 16 cores 64gb"`); `find` has no `--min-vcpu` or `--min-memory`.
+- **Using words truffle doesn't know.** Unrecognised words such as `epyc` or `8gpu` are ignored, so the search is broader than you meant. Use `amd` and `8 gpus`, and see `truffle find --help` for the vocabulary.
+- **Expecting `find` to cover every region.** It searches your configured region; add `--all-regions` to search them all.
 - **Confusing region and AZ.** A type available in a region generally can still be unplaceable in a specific AZ — use `truffle az` and pin with `--az` when it matters.
 - **Assuming quota means capacity.** `truffle quotas` shows *permission* to launch, not *availability right now*. You can be within quota and still get `InsufficientInstanceCapacity` — that's what [Lagotto](/tools/lagotto) is for.
 

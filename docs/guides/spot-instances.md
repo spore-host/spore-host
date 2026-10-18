@@ -26,10 +26,10 @@ spore.host will request a Spot instance. If no capacity is available, it fails i
 ## Check Spot prices first
 
 ```sh
-truffle spot g5.xlarge --regions us-east-1,us-west-2,eu-west-1 --show-savings
+truffle spot g5.xlarge --regions us-east-1,us-west-2,eu-west-1
 ```
 
-`--show-savings` adds On-Demand and Savings columns so you can see the real discount per AZ (on-demand rates are pulled live from the AWS Price List API).
+The output always includes On-Demand and Savings columns, so you can see the real discount per AZ (on-demand rates are pulled live from the AWS Price List API). Without `--regions`, `truffle spot` checks every enabled region; add `--limit N` to show only the first N rows.
 
 ::: tip Finding the right instance type
 Not sure which instance to use? See [Finding the Right Instance](/guides/finding-instances) for a step-by-step walkthrough: `truffle find` → `truffle spot` → `truffle quotas`.
@@ -91,12 +91,20 @@ spawn launch \
 
 ## Finding consistently available types
 
-Some instance types have much more stable Spot availability than others. Use truffle to compare:
+Some instance types have much more stable Spot availability than others. `truffle available` reports how obtainable a type is right now in one region, including the Spot placement score: a 1–10 likelihood per AZ, relative rather than a guarantee.
 
 ```sh
-truffle spot "g5.xlarge" --sort-by-price --region us-east-1
+truffle available g5.xlarge --region us-east-1
 ```
 
-`truffle spot` reports live Spot prices and per-AZ availability; `--sort-by-price` orders cheapest-first (add `--show-savings` for the discount vs On-Demand). These Spot flags live on `truffle spot`, not `truffle find`.
+It also shows where the type is offered, your On-Demand quota headroom, and any purchasable Capacity Blocks. Each signal is reported separately; if one is unavailable (Spot placement scores are often denied by an SCP), it is shown as a warning, not as a good result. Run it once per region you're considering.
+
+To compare prices for the same type, use `truffle spot`:
+
+```sh
+truffle spot g5.xlarge --sort-by-price --active-only
+```
+
+`--sort-by-price` orders cheapest-first and `--active-only` hides AZs with no active Spot capacity. These Spot flags live on `truffle spot`, not `truffle find`.
 
 Types with high availability tend to be larger families (more AZs, more capacity pool) and slightly older generations.
