@@ -6,7 +6,7 @@ description: "Verify:"
 
 ## Prerequisites
 
-- An AWS account with credentials configured (`aws configure` or environment variables)
+- An AWS account you can sign in to (see [AWS Authentication](/guides/aws-auth); `aws login` is the recommended way)
 - macOS, Linux, or Windows
 
 ## Core tools
@@ -27,14 +27,21 @@ scoop install spawn
 ```
 
 ```sh [Debian / Ubuntu]
-curl -LO https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.deb
-curl -LO https://github.com/spore-host/spore-host/releases/latest/download/spawn_linux_amd64.deb
-sudo dpkg -i truffle_linux_amd64.deb spawn_linux_amd64.deb
+# Each tool is released from its own repo, and the file name carries the version.
+ARCH=$(dpkg --print-architecture)        # amd64 or arm64
+for t in truffle spawn; do
+  V=$(curl -s https://api.github.com/repos/spore-host/$t/releases/latest | grep -m1 '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')
+  curl -LO "https://github.com/spore-host/$t/releases/download/v$V/${t}_${V}_linux_${ARCH}.deb"
+done
+sudo dpkg -i truffle_*.deb spawn_*.deb
 ```
 
 ```sh [RHEL / Fedora]
-sudo rpm -i https://github.com/spore-host/spore-host/releases/latest/download/truffle_linux_amd64.rpm
-sudo rpm -i https://github.com/spore-host/spore-host/releases/latest/download/spawn_linux_amd64.rpm
+ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+for t in truffle spawn; do
+  V=$(curl -s https://api.github.com/repos/spore-host/$t/releases/latest | grep -m1 '"tag_name"' | cut -d'"' -f4 | sed 's/^v//')
+  sudo rpm -i "https://github.com/spore-host/$t/releases/download/v$V/${t}_${V}_linux_${ARCH}.rpm"
+done
 ```
 
 :::
@@ -63,17 +70,22 @@ scoop install lagotto                 # Windows
 brew install spore-host/tap/spore-host-mcp
 ```
 
-Then add to `~/.claude/claude_desktop_config.json`:
+Then add it to Claude Desktop's config file, `~/Library/Application Support/Claude/claude_desktop_config.json`
+on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows. Use the
+path `which spore-host-mcp` prints (Homebrew on Apple Silicon installs to
+`/opt/homebrew/bin`, on Intel to `/usr/local/bin`):
 
 ```json
 {
   "mcpServers": {
     "spore-host": {
-      "command": "/usr/local/bin/spore-host-mcp"
+      "command": "/opt/homebrew/bin/spore-host-mcp"
     }
   }
 }
 ```
+
+See [AI Assistant (MCP)](/guides/mcp-setup) for Claude Code and other clients.
 
 ## Verify a download (optional)
 
