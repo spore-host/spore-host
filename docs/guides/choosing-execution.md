@@ -18,8 +18,8 @@ into any individual guide; then follow the link.
 | **[Instance queue](/guides/batch-queue)** | How do I run several dependent steps *sequentially on one machine*? |
 | **[Spawn pipeline](/guides/pipelines)** | How do I run a DAG of coarse stages *across different machines*? |
 | **[MPI cluster](/guides/mpi)** | How do I run tightly-coupled code across many nodes at once? |
-| **[Task](/tools/reference/spawn#spawn-task-run)** (`spawn task run`) | How do I run one command from a spec that stages inputs from S3, runs, and stages outputs back? |
-| **[Worker pool](/tools/reference/spawn#spawn-pool)** (`spawn pool`) | How do I run many short tasks without booting an instance per task? |
+| **[Task](/guides/tasks-and-pools)** (`spawn task run`) | How do I run one command from a spec that stages inputs from S3, runs, and stages outputs back? |
+| **[Worker pool](/guides/tasks-and-pools#many-short-tasks-spawn-pool)** (`spawn pool`) | How do I run many short tasks without booting an instance per task? |
 | **[Workflow adapter](/guides/workflow-engines)** | How does my existing workflow engine use spawn as its executor? |
 
 ## By what you're trying to do
@@ -91,10 +91,13 @@ At high fan-out, one instance per task is dispatch-bound: every task pays a full
 boot, and short tasks finish faster than new instances launch. **`spawn pool`**
 inverts that. `spawn pool create` provisions N reusable workers and a run-scoped
 SQS queue; `spawn pool submit` stages a task spec and enqueues it; workers pull
-tasks until the queue is empty and then self-terminate on their idle timeout.
+tasks until the queue is empty. Idle workers are then stopped, not terminated,
+so their disks still bill until you terminate them or a [reaper](/guides/reaper)
+reclaims them (spawn#1134); `spawn pool drain` deletes only the queue.
 `spawn pool status` shows the queue depth, and `spawn pool drain` deletes the
 queue. Ask for N workers and get M, and the tasks still drain through whatever
-pool came up. See the [command reference](/tools/reference/spawn#spawn-pool).
+pool came up. See [Tasks and worker pools](/guides/tasks-and-pools) and the
+[command reference](/tools/reference/spawn#spawn-pool).
 
 See also [Costs & safety guarantees](/safety) for how the TTL bounds the cost of
 any of these.

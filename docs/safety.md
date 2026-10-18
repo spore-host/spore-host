@@ -40,14 +40,15 @@ failure mode and what catches it:
 | spored fails to install at launch | the instance may not self-manage | spawn reports provisioning failure; the **reaper** still enforces TTL from the tags |
 | the instance can't reach AWS APIs | spored can't update cost tags or send events | TTL still fires locally; reaper is the backstop |
 | the instance profile / IAM role is missing | spored can't call `ec2:TerminateInstances` on itself | the out-of-band **reaper** terminates it |
-| the tags are changed or removed | lifecycle rules are lost | reaper flags instances missing required `spawn:*` tags |
+| the tags are changed or removed | lifecycle rules are lost | a rewritten deadline is still caught by the reaper's 7-day max-age ceiling, measured from launch; an instance whose `spawn:managed` tag is removed is invisible to the reaper |
 | the spored daemon crashes | no in-instance enforcement | reaper enforces the deadline from the tags |
 
 The **reaper** is an out-of-band backstop that reads the same `spawn:ttl-deadline`
 tag and terminates any managed instance past its deadline, independent of whether
 spored is healthy. This is why lifecycle enforcement doesn't depend on a single
 point of failure: the instance enforces its own deadline *and* an external sweep
-enforces it too.
+enforces it too. See [The TTL reaper](/guides/reaper) for what it checks and how
+to deploy it.
 
 ## What the guarantee is by deployment mode
 
@@ -61,11 +62,12 @@ enforcement only, and the backstop is something you opt into.
 | **Self-hosted backstop** | Yes | Yes (in your account) | No | Dual enforcement — the reaper terminates past-deadline instances even if spored fails. |
 | **Hosted integrations** | Yes | Yes / optional | Selected metadata only (never credentials or workload data) | Dual enforcement when the reaper is enabled. |
 
-The reaper (see
+The [reaper](/guides/reaper) (source:
 [spawn/lambda/ttl-reaper](https://github.com/spore-host/spawn/tree/main/lambda/ttl-reaper))
 ships in **dry-run** — it logs "would reap" and notifies but does not terminate —
-until an operator flips it to enforce mode after verification. It assumes a narrow
-per-account [cross-account role you grant](/architecture),
+until an operator flips it to enforce mode after verification. `spawn reaper deploy`
+scans only its own account; the template deployment covers other accounts by
+assuming a narrow per-account [cross-account role you grant](/architecture),
 scoped to terminating past-deadline `spawn:managed` instances, and never holds your
 credentials. The full guarantee-by-mode breakdown lives in
 [SECURITY.md](https://github.com/spore-host/spore-host/blob/main/SECURITY.md#lifecycle-guarantee-by-deployment-mode).

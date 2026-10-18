@@ -71,6 +71,13 @@ spawn launch \
 
 The `--pre-stop` command has up to **90 seconds** to complete on Spot instances — AWS provides only a 2-minute interruption notice and spored needs the remainder for DNS cleanup and shutdown. On non-Spot instances the default is 5 minutes. Override with `--pre-stop-timeout`. For most checkpoint saves, 60–90 seconds is sufficient.
 
+A `--spot` launch that can be stopped (an idle timeout, `--on-idle`, or
+`--on-complete stop`) uses a *persistent* Spot request. Terminate such an instance
+with `spawn terminate`, not the EC2 console: terminating it outside spawn reopens
+the request and launches an untagged replacement. See
+[Spot requests](/guides/reaper#spot-requests) for how spored and the reaper clean
+those up.
+
 ## Resuming after interruption
 
 If you save a checkpoint on interruption, relaunch and resume from it:

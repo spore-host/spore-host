@@ -31,7 +31,7 @@ on AMIs spawn builds.
 | Tag | Example | Description |
 |-----|---------|-------------|
 | `spawn:ttl` | `12h` | Total time-to-live, measured from `spawn:launch-time`. |
-| `spawn:ttl-deadline` | `2026-04-30T21:00:00Z` | **Authoritative** termination deadline, written together with `spawn:ttl`. This is what spored and the TTL reaper enforce. It keeps counting while the instance is stopped; `spawn extend` moves it. |
+| `spawn:ttl-deadline` | `2026-04-30T21:00:00Z` | **Authoritative** termination deadline, written together with `spawn:ttl`. This is what spored and the [TTL reaper](/guides/reaper) enforce. It keeps counting while the instance is stopped; `spawn extend` moves it. |
 | `spawn:on-complete` | `terminate` | Action when the workload signals completion: `terminate`, `stop`, or `hibernate`. It has nothing to do with the TTL: TTL expiry always terminates. |
 | `spawn:completion-file` | `/tmp/SPAWN_COMPLETE` | File whose appearance signals completion. Written only when `spawn:on-complete` is set. |
 | `spawn:idle-timeout` | `30m` | Stop (or hibernate) if idle for this duration. Never terminates. |

@@ -31,7 +31,7 @@ throughout; avoid using "spore" as a noun for a machine.
 
 | Term | Definition |
 |------|-----------|
-| **TTL** (time to live) | The absolute deadline, set once at launch, at which the instance terminates. It never resets across stop/wake cycles; only `spawn extend` moves it, and only forward. The hard backstop, though not the only thing that terminates: a cost limit and `on-complete terminate` do too. See [Costs & safety guarantees](/safety). |
+| **TTL** (time to live) | The absolute deadline, set once at launch, at which the instance terminates. It never resets across stop/wake cycles; only `spawn extend` moves it, and only forward. The hard backstop, though not the only thing that terminates: a cost limit and `on-complete terminate` do too. See [The TTL reaper](/guides/reaper) and [Costs & safety guarantees](/safety). |
 | **idle timeout** | A *soft* rule: stop or hibernate after a period with no activity. Any activity resets it. Idle never terminates — it only stops/hibernates. Not the same as the TTL. |
 | **completion signal** | A "my work is done" marker — a sentinel file (default `/tmp/SPAWN_COMPLETE`) or `spored complete`. Triggers the configured `on-complete` action. A `--command` writes it automatically when it exits, pass or fail. |
 | **completion sentinel** | The file spored watches for the completion signal. Its *appearance* is what triggers the action. A `--command` creates it on exit (with its exit code in `/tmp/SPAWN_EXITCODE`); anything you start yourself has to create it. |

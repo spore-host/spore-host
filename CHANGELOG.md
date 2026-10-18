@@ -31,6 +31,29 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **Documentation sweep, part 3: six new guides** (#585). Each was written from
+  spawn v0.135.0's `--help` and source, and states known gaps rather than hiding
+  them.
+  - **The TTL reaper** (`guides/reaper.md`): what it checks and how each check
+    is armed, deploying, arming, upgrading and removing it with `spawn reaper`,
+    the persistent Spot request sweep and self-retiring replacements, covering
+    several accounts, and its permissions.
+  - **Tasks and worker pools** (`guides/tasks-and-pools.md`): every TaskSpec
+    field with its default and validation rule, how sizing picks a type, the
+    completion record and `retry_class` values, exit codes, and `spawn pool`.
+  - **GUI apps & services** (`guides/apps-and-services.md`): `spawn app` and
+    `spawn service`, the built-in catalog (four entries launch out of the box;
+    ParaView and the other recipes need an image you build), bring-your-own
+    images, and the service readiness contract.
+  - **Custom DNS** (`guides/custom-dns.md`), **Logs and debugging**
+    (`guides/logs.md`) and **Checking your account** (`guides/account-health.md`,
+    covering `doctor`, `footprint` and `onboard`, and which of them change
+    anything).
+  - **Corrections:** `safety.md` no longer says the reaper flags instances with
+    missing tags (it can't see an instance without `spawn:managed`); idle pool
+    workers are stopped, not terminated; the self-hosting guide's SSM example
+    sets `--region` and notes the silent fallback (spawn#1121); the IAM page lists
+    `ec2:GetConsoleOutput` for logs after termination.
 - **The workflow, Nextflow, Go library and maturity pages match current
   releases** (#585). The workflow-engines and maturity pages list all six
   adapters (adding pegasus-spawn) at their current versions, describe the

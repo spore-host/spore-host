@@ -97,6 +97,7 @@ spawn doctor
 It runs read-only checks — credentials, the resolved account and region, the EC2
 and IAM permissions spawn needs, a usable VPC/subnet, an SSH key, Session Manager —
 and reports **✓ / ⚠ / ✗** for each. It launches nothing.
+[Checking your account](/guides/account-health) lists every check.
 
 - **All ✓ (or only ⚠):** you're ready — continue below.
 - **Any ✗ on an IAM/permission check:** that's the permissions cliff. On a personal
