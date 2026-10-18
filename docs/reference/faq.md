@@ -38,7 +38,7 @@ Yes. Use `AWS_PROFILE=my-profile spawn launch ...` or `spawn launch --profile my
 
 ### What AWS permissions does spore.host need?
 
-The baseline policy is documented at [IAM Permissions](/reference/iam-permissions). In brief the **core** permissions are: EC2 describe, run, stop, terminate, tag, and create tags; and IAM pass-role for the spored instance profile. **Optional features** add their own permissions only when you use them — e.g. Route 53 is needed only with `--dns` (subdomain assignment), not for a normal launch.
+The baseline policy is documented at [IAM Permissions](/reference/iam-permissions). In brief the **core** permissions are: EC2 describe, run, stop, terminate and tag; SSM `GetParameter` to find the default AMI; and IAM create and pass-role for spawn's own instance roles. **Optional features** add their own permissions only when you use them. DNS names need none: spored registers them from the instance.
 
 ---
 
