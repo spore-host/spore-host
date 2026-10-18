@@ -13,7 +13,7 @@ deprecations** — so you can decide what to build on and what to pin.
 
 | Badge | Meaning |
 |-------|---------|
-| <span class="doc-badge stable">Stable</span> | Interface is settled and actively supported. Changes are additive or follow the deprecation process below. **Not the same as 1.0/GA** — see [Versioning](#versioning-what-you-can-rely-on). |
+| <span class="doc-badge stable">Stable</span> | Interface is settled and actively supported. Changes are additive or follow the deprecation process below. **Not the same as 1.0/GA** — see [Versioning](#versioning-—-what-you-can-rely-on). |
 | <span class="doc-badge beta">Beta</span> | Usable and supported, but the interface may still change with notice. |
 | <span class="doc-badge experimental">Experimental</span> | Early / prototype. May change or break without a deprecation window. Validate against your own workload before relying on it. |
 | <span class="doc-badge planned">Planned</span> | On the roadmap, not built yet. |
@@ -22,17 +22,17 @@ deprecations** — so you can decide what to build on and what to pin.
 
 The **six core tools are Stable**: their commands and flags are settled and we
 maintain them actively. They are all still **pre-1.0** (`v0.x`) — see
-[Versioning](#versioning-what-you-can-rely-on) for exactly what that means for
+[Versioning](#versioning-—-what-you-can-rely-on) for exactly what that means for
 breaking changes.
 
 | Component | Status | Latest | Notes |
 |-----------|--------|--------|-------|
-| **truffle** | <span class="doc-badge stable">Stable</span> | v0.46.0 | Instance discovery, quotas, spot/capacity search (read-only). |
-| **spawn** | <span class="doc-badge stable">Stable</span> | v0.91.x | Launch + full lifecycle management. |
+| **truffle** | <span class="doc-badge stable">Stable</span> | v0.61.0 | Instance discovery, quotas, spot/capacity search (read-only). |
+| **spawn** | <span class="doc-badge stable">Stable</span> | v0.135.0 | Launch + full lifecycle management. |
 | **spored** | <span class="doc-badge stable">Stable</span> | ships with spawn | In-instance lifecycle daemon; built and released with spawn. |
-| **lagotto** | <span class="doc-badge stable">Stable</span> | v0.50.0 | Capacity watcher. |
+| **lagotto** | <span class="doc-badge stable">Stable</span> | v0.64.0 | Capacity watcher. |
 | **spore-bot** | <span class="doc-badge stable">Stable</span> | continuous | Slack/Teams control. Deployed continuously (not tag-released). |
-| **MCP server** | <span class="doc-badge stable">Stable</span> | v0.41.x | Tools for AI assistants: search, manage, task launch with a mandatory TTL — [see the safeguards](/tools/mcp-server). |
+| **MCP server** | <span class="doc-badge stable">Stable</span> | v0.41.0 | Tools for AI assistants: search, manage, task launch with a mandatory TTL — [see the safeguards](/tools/mcp-server). |
 | **Plugin registry** | <span class="doc-badge stable">Stable</span> | per-plugin | Each plugin is versioned independently in its `plugin.yaml`; official plugins are [signature-verified](/guides/plugins). |
 
 ### Beta and experimental surfaces
@@ -44,8 +44,8 @@ out where they appear in the docs; the list below is the canonical index.
 |---------|--------|-------|
 | **Application streaming** (`spawn app` — DCV GUI apps + web-UI apps) | <span class="doc-badge beta">Beta</span> | Launch a research app (ParaView, ChimeraX, …) streamed over Amazon DCV, or a web-UI app (Jupyter, code-server) behind a TLS proxy. Shipped in spawn v0.107.0; the container catalog and its interface may still change. See [Jupyter on spawn](/guides/jupyter). |
 | **HTTP API + Python SDK** | <span class="doc-badge beta">Beta</span> | The SDK is the supported entry point; the underlying HTTP API may change. See [Python SDK](/guides/python-sdk). |
-| **Workflow adapters** (Nextflow, WDL, CWL, Snakemake, Airflow) | <span class="doc-badge experimental">Experimental</span> | All five are early — two pre-1.0 prototypes and three `v0.1.0` initial releases. Read the [status & compatibility matrix](/guides/workflow-engines) before relying on one. |
-| **Pipeline stage streaming** (tcp/grpc/zmq) | <span class="doc-badge experimental">Experimental</span> | Operationally involved; prefer the S3 handoff. See [Spawn pipelines](/guides/pipelines#streaming-between-stages). |
+| **Workflow adapters** (Nextflow, WDL, CWL, Snakemake, Airflow, Pegasus) | <span class="doc-badge experimental">Experimental</span> | All six are early, pre-1.0 releases; nf-spawn and pegasus-spawn describe themselves as prototypes. Read the [status & compatibility matrix](/guides/workflow-engines) before relying on one. |
+| **Pipeline stage streaming** (tcp/grpc/zmq) | <span class="doc-badge experimental">Experimental</span> | Operationally involved; prefer the S3 handoff. See [Spawn pipelines](/guides/pipelines#streaming-between-stages-experimental). |
 | **Per-event notification filtering** | <span class="doc-badge planned">Planned</span> | See [Lifecycle Notifications](/guides/notifications). |
 
 If a page and this table ever disagree, the more conservative (less mature) label
@@ -68,7 +68,7 @@ changes what a version bump means:
 
 **The practical rule while we're pre-1.0: a breaking change bumps the MINOR
 version.** So if you depend on exact CLI behavior in automation, **pin to a MINOR
-series** (e.g. `spawn 0.91.x`) and read the changelog's `Changed`/`Removed`/
+series** (e.g. `spawn 0.135.x`) and read the changelog's `Changed`/`Removed`/
 `Deprecated` sections before moving to a new minor.
 
 - **Plugins** version independently — each plugin's `version:` in its `plugin.yaml`

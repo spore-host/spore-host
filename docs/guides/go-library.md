@@ -52,7 +52,9 @@ import (
 
 // Parse a free-text query into structured criteria
 pq, err := find.ParseQuery("amd epyc genoa 16 cores")
-criteria, err := pq.BuildCriteria()
+// includeAZs: also look up each matched type's availability zones
+// (one extra API call per type; the CLI's --skip-azs turns it off)
+criteria, err := pq.BuildCriteria(false)
 
 client, err := truffleaws.NewClient(ctx)
 
@@ -180,10 +182,20 @@ err = client.StartInstance(ctx, "us-east-1", "i-0abc123def456")
 // Terminate permanently
 err = client.Terminate(ctx, "us-east-1", "i-0abc123def456")
 
-// Extend TTL — pushes the absolute deadline forward, never resets from now
+// Extend TTL by 4h. spored and the TTL reaper enforce spawn:ttl-deadline, so
+// move that tag: writing spawn:ttl alone does not change when the instance
+// terminates. ttl.Tags (github.com/spore-host/spawn/pkg/ttl) renders both tags,
+// with spawn:ttl as the total from the original launch.
+tags, err := client.GetInstanceTags(ctx, "us-east-1", "i-0abc123def456")
+deadline, err := time.Parse(time.RFC3339, tags["spawn:ttl-deadline"])
+launched, err := time.Parse(time.RFC3339, tags["spawn:launch-time"])
 err = client.UpdateInstanceTags(ctx, "us-east-1", "i-0abc123def456",
-    map[string]string{"spawn:ttl": "4h"})
+    ttl.Tags(launched, deadline.Add(4*time.Hour)))
 ```
+
+From the CLI, `spawn extend <instance> 4h` moves the same deadline and also
+raises the instance's cost limit when that limit would otherwise stop it first.
+Writing the tags directly leaves any cost limit unchanged.
 
 ### Launch
 
@@ -202,7 +214,7 @@ fmt.Printf("Launched %s at %s\n", result.InstanceID, result.PublicIP)
 ```
 
 ::: tip TTL vs idle timeout
-`TTL` is the hard deadline, anchored to the original launch time and never reset by stop/wake cycles. `IdleTimeout` stops the instance when idle — the timer resets on each wake. Only TTL causes termination. See [TTL vs idle timeout](/reference/configuration#ttl-vs-idle-timeout-how-they-interact).
+`TTL` is the hard deadline, anchored to the original launch time and never reset by stop/wake cycles. `IdleTimeout` stops the instance when idle — the timer resets on each wake. Only TTL causes termination. See [TTL vs idle timeout](/reference/configuration#ttl-vs-idle-timeout-—-how-they-interact).
 :::
 
 ## Combined workflow
@@ -210,9 +222,10 @@ fmt.Printf("Launched %s at %s\n", result.InstanceID, result.PublicIP)
 A typical pattern for automated research pipelines:
 
 ```go
-// 1. Find the cheapest GPU instance with enough memory
+// 1. Find A100 instances with at least 40 GB of memory per GPU
+//    (in a GPU query, a bare size is per-GPU memory, not host RAM)
 pq, _ := find.ParseQuery("nvidia a100 40gb")
-criteria, _ := pq.BuildCriteria()
+criteria, _ := pq.BuildCriteria(false)
 tc, _ := truffleaws.NewClient(ctx)
 results, _ := tc.SearchInstanceTypes(ctx, []string{"us-east-1"}, criteria.InstanceTypePattern, criteria.FilterOptions)
 
@@ -285,8 +298,9 @@ err = store.PutWatch(ctx, w)
 tc, _ := truffleaws.NewClient(ctx)
 poller := watcher.NewPoller(tc, store, false /* verbose */)
 
-matches, err := poller.PollAll(ctx)
-for _, m := range matches {
+// PollAll returns a *PollSummary; the matches are in its Matches field
+summary, err := poller.PollAll(ctx)
+for _, m := range summary.Matches {
     fmt.Printf("Capacity found: %s in %s (%s)\n",
         m.InstanceType, m.Region, m.AvailabilityZone)
 }

@@ -7,7 +7,7 @@ description: "This guide walks through the full workflow for running a GPU train
 This guide walks through the full workflow for running a GPU training job: finding the right instance, launching it with a TTL and idle timeout, running the job in tmux so it survives your disconnect, and letting the instance manage its own lifecycle.
 
 ::: tip TTL vs idle timeout
-`--ttl` is the hard deadline — it terminates the instance at `launch_time + duration`, never reset by stop/wake cycles. `--idle-timeout` stops (or hibernates) the instance when idle, saving compute cost between tasks. The timer resets each time the instance wakes. See [TTL vs idle timeout](/reference/configuration#ttl-vs-idle-timeout-how-they-interact) for the full picture.
+`--ttl` is the hard deadline — it terminates the instance at `launch_time + duration`, never reset by stop/wake cycles. `--idle-timeout` stops (or hibernates) the instance when idle, saving compute cost between tasks. The timer resets each time the instance wakes. See [TTL vs idle timeout](/reference/configuration#ttl-vs-idle-timeout-—-how-they-interact) for the full picture.
 :::
 
 ## Find an available GPU instance

@@ -257,7 +257,7 @@ spawn launch my-job --instance-type c6a.xlarge --region "$region"
 ```
 
 ::: tip
-See [TTL vs idle timeout](/reference/configuration#ttl-vs-idle-timeout-how-they-interact) for a complete explanation with a worked timeline.
+See [TTL vs idle timeout](/reference/configuration#ttl-vs-idle-timeout-—-how-they-interact) for a complete explanation with a worked timeline.
 :::
 
 ## Programmatic access
