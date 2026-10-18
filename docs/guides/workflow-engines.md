@@ -93,10 +93,8 @@ yourself (for example `truffle find "cheap 8 cores 32gb"`).
 ## Requirements (all engines)
 
 - [spawn](https://github.com/spore-host/spawn) on `PATH`. spawn sizes instances
-  with its built-in truffle, so nf-spawn, miniwdl-spawn, airflow-spawn, and
-  pegasus-spawn need no separate `truffle` CLI. The cwl-spawn and Snakemake
-  READMEs still list `truffle` on `PATH` as a requirement; follow the adapter's
-  README.
+  with its built-in truffle, so no adapter needs a separate `truffle`
+  CLI.
 - AWS credentials configured
 - An S3 location for the work/exit-code bridge (each engine's docs name the exact
   flag or env var)
