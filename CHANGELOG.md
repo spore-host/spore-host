@@ -13,6 +13,12 @@ own changelogs for CLI releases.
 
 ## [Unreleased]
 
+### Documentation
+- `infra/amis/containers/build-push.sh` no longer says the default registry
+  belongs to account 812107987990, which does not exist. It now says
+  spore.host publishes no images (#392), so the script builds into your own
+  registry, and that the default alias `f8g1e7l5` is the beta account's.
+
 ### Changed
 - **The ParaView catalog container is now based on Ubuntu 26.04 LTS** (from
   24.04). Built for linux/amd64 and checked: every apt package resolves, no
