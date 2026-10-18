@@ -9,7 +9,8 @@ failure — so you know what success and trouble look like before you run
 anything. They follow the same arc as [Your First Instance](/guides/first-instance);
 here the focus is the output.
 
-The transcripts are **illustrative**, not captured from a real run. Values (IDs,
+Except where a section says otherwise, the transcripts are **illustrative**, not
+captured from a real run. Values (IDs,
 prices, IPs, versions) are made up, and the exact lines, check names, and their
 order differ from what your version of `spawn` prints. Read them for what each
 step tells you, then run the commands yourself to see the real output.
@@ -19,55 +20,71 @@ step tells you, then run the commands yourself to see the real output.
 `spawn doctor` is read-only — it never launches anything. When it passes, the
 Quick Start should work as written.
 
+This one is a real run of spawn v0.135.0, with the account and VPC IDs replaced:
+
 ```console
 $ spawn doctor
-✓ spawn version: v0.91.1
-✓ truffle installed: v0.46.0
-✓ AWS CLI available: aws-cli/2.32.0
-✓ AWS credentials: arn:aws:iam::123456789012:user/researcher
+✓ spawn version: 0.135.0
+✓ truffle installed: truffle 0.59.0
+Git Commit: c43db2a1a974fdd866857f58a5e923c5b195b27c
+Build Date: 2026-10-15T22:04:44Z
+✓ AWS CLI available: aws-cli/2.38.1 Python/3.15.0 Darwin/27.0.0 source/arm64
+✓ SSH key: ~/.ssh/id_rsa
+✓ AWS credentials: identity resolved
 ✓ account: 123456789012
 ✓ region: us-east-1
 ✓ EC2 describe permission
 ✓ EC2 launch permission
 ✓ IAM instance-profile permission
-✓ VPC & subnet: vpc-0a1b2c3d (subnet-04e5f6a7)
-✓ SSH key: ~/.ssh/id_ed25519 (imported to EC2)
-✓ Session Manager
-⚠ TTL reaper backstop: not detected from this account (in-instance spored still enforces TTL)
-⚠ Route 53 (DNS): Route 53 access unavailable; --dns subdomains won't work (optional)
+✓ spored role: spored-instance-profile
+✓ VPC & subnet: vpc-0a1b2c3d4e5f67890 / 6 subnet(s)
+✓ Session Manager: reachable
+✓ TTL reaper backstop: cross-account role spawn-ttl-reaper-ec2
+✓ Route 53 (DNS): 0 hosted zone(s) visible
+✓ Nitro fleet: 154 Nitro families (v6:44 v5:12 v4:53 v3:19 v2:26)
 
-12 passed, 2 warning(s), 0 failed
+16 passed, 0 warning(s), 0 failed
 
 Ready to launch. If this passes, the Quick Start should work as written.
 ```
 
-The two warnings are expected and non-blocking: the out-of-band reaper isn't
-visible from your account (spored still enforces the TTL on the instance), and
-Route 53 is only needed for the optional `--dns` feature.
+The `Git Commit` and `Build Date` lines are truffle's version output leaking into
+the report (spawn#1140); they aren't checks. This account has a
+[TTL reaper](/guides/reaper) covering it. Without one, that line is a ⚠ warning,
+not a failure: spored still enforces the TTL on the instance. See
+[Checking your account](/guides/account-health) for what each check means.
 
 ## 2. Preflight blocked by a missing IAM permission
 
 On an institution-managed account you may authenticate fine but lack permission to
-launch. `spawn doctor` shows exactly what's missing and how to fix it:
+launch. `spawn doctor` shows what's missing and how to fix it. This transcript is
+illustrative: the format follows spawn v0.135.0's report, and the error text is
+abridged.
 
 ```console
 $ spawn doctor
-✓ spawn version: v0.91.1
-✓ truffle installed: v0.46.0
-✓ AWS CLI available: aws-cli/2.32.0
-✓ AWS credentials: arn:aws:iam::123456789012:role/ResearcherReadOnly
+✓ spawn version: 0.135.0
+✓ truffle installed: truffle 0.61.0
+✓ AWS CLI available: aws-cli/2.38.1
+✓ SSH key: ~/.ssh/id_ed25519
+✓ AWS credentials: identity resolved
 ✓ account: 123456789012
 ✓ region: us-east-1
 ✓ EC2 describe permission
-✗ EC2 launch permission: UnauthorizedOperation: not authorized to perform ec2:RunInstances
-    → grant ec2:RunInstances (see the IAM baseline)
-✗ IAM instance-profile permission: AccessDenied: not authorized to perform iam:PassRole
-    → grant iam:* on spored* + iam:PassRole (see the IAM baseline)
-✓ VPC & subnet: vpc-0a1b2c3d (subnet-04e5f6a7)
-✓ SSH key: ~/.ssh/id_ed25519 (imported to EC2)
-✓ Session Manager
+✗ EC2 launch permission
+    → grant ec2:RunInstances (see the IAM baseline): UnauthorizedOperation: You are not authorized to perform this operation.
+✗ IAM instance-profile permission
+    → grant iam:* on spored* + iam:PassRole (see the IAM baseline): AccessDenied: not authorized to perform iam:GetInstanceProfile
+⚠ spored role
+    → spored instance profile not found yet; spawn will create it on first launch if IAM permits: not found (spawn creates it on first launch)
+✓ VPC & subnet: vpc-0a1b2c3d4e5f67890 / 3 subnet(s)
+✓ Session Manager: reachable
+⚠ TTL reaper backstop
+    → no reaper runs in this account and no spawn-ttl-reaper-ec2 role grants one access — TTL is enforced only from inside the instance by spored, …
+✓ Route 53 (DNS): 0 hosted zone(s) visible
+✓ Nitro fleet: 154 Nitro families (v6:44 v5:12 v4:53 v3:19 v2:26)
 
-10 passed, 0 warning(s), 2 failed
+11 passed, 2 warning(s), 2 failed
 
 Not ready — resolve the ✗ items above before launching. If you're on an
 institution-managed account, send the IAM baseline to your cloud administrator.
@@ -76,7 +93,7 @@ institution-managed account, send the IAM baseline to your cloud administrator.
 Nothing was launched. The fix is to grant the two permissions (or send the
 [deployment packet](/reference/deployment-packet) and
 [IAM baseline](/reference/iam-permissions) to your administrator) and re-run
-`spawn doctor` until it's clean.
+`spawn doctor` until it's clean. The warnings don't block a launch.
 
 ## 3. A protected launch
 
