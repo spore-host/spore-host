@@ -15,7 +15,7 @@ If you just want to use spore.host for your research, you don't need this guide 
 A self-hosted spore.host deployment consists of:
 
 ```
-Your infrastructure account (e.g. 966362334030)
+Your infrastructure account (e.g. 111122223333)
   ├── Route53 — your domain (compute.university.edu)
   ├── Lambda — dns-updater (registers instance DNS)
   ├── Lambda — spore-bot (Slack/Teams bot + SMS)
@@ -52,113 +52,101 @@ aws route53 create-hosted-zone \
 
 Note the hosted zone ID — you'll need it throughout. If `compute.university.edu` is a subdomain of a domain you already manage, delegate it by adding NS records in the parent zone.
 
-## Step 2: Deploy the DNS updater Lambda
+## Step 2: Deploy the DNS updater
 
-The dns-updater Lambda registers and deregisters DNS names when instances start and stop. Build and deploy it from source:
+The DNS updater is a Lambda that creates and removes each instance's DNS record.
+spored on the instance calls it at boot, and renews a lease beside the record
+about hourly. Deploy it with the script in the
+[spawn repository](https://github.com/spore-host/spawn), which sets it up the
+way spored expects:
 
 ```sh
-git clone https://github.com/spore-host/spore-host.git
-cd spore-host/spawn/lambda/dns-updater
+git clone https://github.com/spore-host/spawn.git
+cd spawn
 
-# Build for Linux ARM64
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap .
-zip dns-updater.zip bootstrap
-
-# Create IAM role
-aws iam create-role \
-  --role-name spore-dns-updater-role \
-  --assume-role-policy-document '{
-    "Version":"2012-10-17",
-    "Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]
-  }' --profile infra
-
-aws iam put-role-policy \
-  --role-name spore-dns-updater-role \
-  --policy-name SporesDNSPolicy \
-  --policy-document '{
-    "Version":"2012-10-17",
-    "Statement":[
-      {"Effect":"Allow","Action":["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"],"Resource":"arn:aws:logs:*:*:*"},
-      {"Effect":"Allow","Action":["route53:ChangeResourceRecordSets","route53:GetChange"],"Resource":"*"}
-    ]
-  }' --profile infra
-
-# Deploy Lambda
-aws lambda create-function \
-  --function-name spore-dns-updater \
-  --runtime provided.al2023 \
-  --role arn:aws:iam::YOUR_INFRA_ACCOUNT:role/spore-dns-updater-role \
-  --handler bootstrap \
-  --architectures arm64 \
-  --zip-file fileb://dns-updater.zip \
-  --environment "Variables={HOSTED_ZONE_ID=YOUR_ZONE_ID,DNS_DOMAIN=compute.university.edu}" \
-  --timeout 30 \
-  --region us-east-1 \
-  --profile infra
-
-# Create a Function URL
-aws lambda create-function-url-config \
-  --function-name spore-dns-updater \
-  --auth-type NONE \
-  --region us-east-1 \
-  --profile infra
-
-aws lambda add-permission \
-  --function-name spore-dns-updater \
-  --statement-id AllowPublicAccess \
-  --action lambda:InvokeFunctionUrl \
-  --principal '*' \
-  --function-url-auth-type NONE \
-  --region us-east-1 \
-  --profile infra
+SPAWN_LAMBDA_ACCOUNT=YOUR_INFRA_ACCOUNT \
+./scripts/deploy-custom-dns.sh \
+  --hosted-zone-id YOUR_ZONE_ID \
+  --domain compute.university.edu \
+  --allow-account 444455556666 --allow-account 777788889999
 ```
 
-Note the Function URL — this is your `DNS_API_ENDPOINT`.
+- **`SPAWN_LAMBDA_ACCOUNT` is required for a self-hosted deployment.** Without it,
+  the script targets spore.host's own infrastructure account, where it would add
+  your zone to spore.host's updater.
+- The Function URL is created with **`AuthType: AWS_IAM`**. Only the accounts you
+  list with `--allow-account` (by default, just the deploying account) are
+  granted `lambda:InvokeFunctionUrl`. They're also added to the updater's account
+  allowlist. List every account your researchers launch instances in.
+- Never make the Function URL public (`--auth-type NONE`). The updater relies on
+  the SigV4 signature to know which account is calling. An unauthenticated URL
+  would let anyone create or delete records in your zone.
 
-## Step 3: Configure spored on instances
+Note the Function URL it prints: it's your DNS API endpoint. How the updater
+authorises callers is described in spawn's
+[dns-updater-authorization.md](https://github.com/spore-host/spawn/blob/main/docs/dns-updater-authorization.md),
+and the full setup in
+[custom-dns.md](https://github.com/spore-host/spawn/blob/main/docs/custom-dns.md).
 
-spored reads its configuration from EC2 tags and environment variables. Point it at your infrastructure:
+## Step 3: Point launches at your updater
+
+The launch tells spored where to register by writing two instance tags,
+`spawn:dns-domain` and `spawn:dns-endpoint`, so there is nothing to configure on
+the instance itself. Set them per launch:
 
 ```sh
-# In userdata or instance bootstrap script:
-export SPORED_DNS_DOMAIN=compute.university.edu
-export SPORED_TAG_PREFIX=spawn   # or your institution's prefix
-
-# Or configure via spawn:
 spawn launch \
   --dns-domain compute.university.edu \
-  --dns-api-endpoint https://YOUR_LAMBDA_URL \
+  --dns-api-endpoint https://YOUR_FUNCTION_URL_ID.lambda-url.us-east-1.on.aws/ \
   --name my-instance \
   --instance-type c8a.2xlarge \
   --ttl 8h
 ```
 
-Set the DNS domain in `~/.spawn/config.yaml` so researchers don't need to specify it every time:
+The endpoint must be a Lambda Function URL (`https://<id>.lambda-url.<region>.on.aws/`).
+Requests are SigV4-signed for Lambda, so no other kind of endpoint can
+authenticate. spawn validates both values before launching. If spored later
+finds a bad value, it registers nothing and sets `spawn:dns-status=failed`; it
+never falls back to spore.host.
+
+The easiest way to set this once for everyone launching in an account is SSM:
+
+```sh
+aws ssm put-parameter --type String --name /spawn/dns/domain \
+  --value compute.university.edu
+aws ssm put-parameter --type String --name /spawn/dns/api_endpoint \
+  --value https://YOUR_FUNCTION_URL_ID.lambda-url.us-east-1.on.aws/
+```
+
+Each value resolves independently, first match wins: the flag, then
+`SPAWN_DNS_DOMAIN` / `SPAWN_DNS_API_ENDPOINT`, then `~/.spawn/config.yaml`, then
+SSM in the launch's account and region, then spore.host.
+
+Or in each researcher's `~/.spawn/config.yaml`:
 
 ```yaml
 dns:
   enabled: true
   domain: compute.university.edu
-  api_endpoint: https://YOUR_LAMBDA_URL
+  api_endpoint: https://YOUR_FUNCTION_URL_ID.lambda-url.us-east-1.on.aws/
 ```
 
-## Step 4: Custom tag prefix (optional)
+## Step 4: Keep the `spawn:` tag prefix
 
-If your institution uses a different brand name (e.g. the University of X deploys this as "UX Compute"), set a custom tag prefix so your instances use `ux:ttl` instead of `spawn:ttl`:
-
-```sh
-# On the instance, via userdata:
-export SPORED_TAG_PREFIX=ux
-
-# Configure the launch CLI accordingly:
-# spawn launch will inject the correct tags automatically
-```
+::: danger Don't set `SPORED_TAG_PREFIX` for spawn launches
+spored can read its lifecycle tags under another prefix (`SPORED_TAG_PREFIX=ux`
+makes it read `ux:ttl`). That exists for sister projects that write their own
+tags. `spawn launch` always writes `spawn:` tags. With a different prefix, spored
+finds no `ux:ttl` and **enforces no TTL**, so instances run until someone stops
+them.
+:::
 
 ## Step 5: Deploy the Slack/Teams bot (optional)
 
 If you want `/spawn` slash commands in your Slack workspace, deploy the spore-bot Lambda:
 
 ```sh
+git clone https://github.com/spore-host/spore-host.git
 cd spore-host/lambda/spore-bot
 
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap .
@@ -189,7 +177,8 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region us-east-1 --profile infra
 
-# Deploy (see lambda/spore-bot/README for full IAM policy)
+# Deploy. The role needs read/write access to both tables and sts:AssumeRole on
+# your researchers' SpawnBotCrossAccount roles (Step 6).
 aws lambda create-function \
   --function-name spore-bot \
   --runtime provided.al2023 \
@@ -198,9 +187,8 @@ aws lambda create-function \
   --architectures arm64 \
   --zip-file fileb://spore-bot.zip \
   --environment "Variables={
-    REGISTRY_TABLE=spore-bot-registry,
-    WORKSPACES_TABLE=spore-bot-workspaces,
-    DNS_DOMAIN=compute.university.edu
+    BOT_REGISTRY_TABLE=spore-bot-registry,
+    BOT_WORKSPACES_TABLE=spore-bot-workspaces
   }" \
   --timeout 60 \
   --region us-east-1 --profile infra
@@ -208,39 +196,27 @@ aws lambda create-function \
 
 Then create a Slack app pointing at your Lambda's Function URL (same process as the hosted version — see [Slack Setup](/guides/slack-setup)).
 
-## Step 6: Cross-account access from compute accounts
+## Step 6: Cross-account access for the bot
 
-If researchers launch instances in a different AWS account from your infrastructure, their instances need permission to call your DNS Lambda. The simplest approach: IAM resource policy on the Lambda (allow any principal from your organization).
+The bot controls instances in your researchers' accounts by assuming a role in
+each one. Researchers don't create that role by hand: `spawn notify register`
+creates `SpawnBotCrossAccount` in their account and stores it in the
+registration. The role trusts the bot's execution role under a **per-account
+ExternalId**. There is no shared ExternalId; the old fixed value was removed.
 
-Alternatively, deploy a cross-account IAM role in each compute account:
+Point researchers' CLIs at your bot's role, so the role they get trusts it rather
+than spore.host's:
 
 ```sh
-# In each researcher compute account:
-aws iam create-role \
-  --role-name SpawnBotCrossAccount \
-  --assume-role-policy-document '{
-    "Version":"2012-10-17",
-    "Statement":[{
-      "Effect":"Allow",
-      "Principal":{"AWS":"arn:aws:iam::YOUR_INFRA_ACCOUNT:role/spore-bot-role"},
-      "Action":"sts:AssumeRole",
-      "Condition":{"StringEquals":{"sts:ExternalId":"spawn-bot"}}
-    }]
-  }'
-
-aws iam put-role-policy \
-  --role-name SpawnBotCrossAccount \
-  --policy-name SpawnBotEC2Control \
-  --policy-document '{
-    "Version":"2012-10-17",
-    "Statement":[{
-      "Effect":"Allow",
-      "Action":["ec2:DescribeInstances","ec2:DescribeTags","ec2:StartInstances",
-                "ec2:StopInstances","ec2:CreateTags"],
-      "Resource":"*"
-    }]
-  }'
+export SPORE_BOT_LAMBDA_ROLE_ARN=arn:aws:iam::YOUR_INFRA_ACCOUNT:role/spore-bot-role
+spawn notify register ...
 ```
+
+If an institution manages roles itself, pass `--role-arn` and the ExternalId in
+that role's trust policy with `--external-id`. See `spawn notify register --help`.
+
+Instances calling **your DNS updater** need no role: the accounts you allowed in
+Step 2 can invoke it directly.
 
 ## Step 7: Portal (optional)
 
@@ -279,19 +255,19 @@ All spore.host components read from environment variables and config file (`~/.s
 | `SPORE_BOT_WORKSPACES_TABLE` | DynamoDB table for bot workspaces | `spore-bot-workspaces` |
 | `SPAWN_INFRA_PROFILE` | AWS named profile for infra operations (Lambda, DynamoDB, S3) | `spore-host-infra` |
 | `SPAWN_COMPUTE_PROFILE` | AWS named profile for EC2 operations | `spore-host-dev` |
-| `SPAWN_INFRA_ACCOUNT_ID` | Infra AWS account ID (used in Lambda ARN construction) | `966362334030` |
+| `SPAWN_INFRA_ACCOUNT_ID` | Infra AWS account ID, used by the scheduler-handler Lambda to build ARNs | spore.host's infrastructure account |
 
 Set `SPAWN_INFRA_PROFILE=""` and `SPAWN_COMPUTE_PROFILE=""` (empty string) to use the
-ambient credential chain instead of named profiles — required for Isengard accounts
-and access-key deployments.
+ambient credential chain instead of named profiles, for example when credentials
+come from the environment or an SSO session rather than a named profile.
 
 ### `~/.spawn/config.yaml` keys
 
 ```yaml
 dns:
   enabled: true
-  domain: spore.research.wwps.aws.dev      # your DNS subdomain
-  api_endpoint: https://your-dns-lambda/   # dns-updater Function URL
+  domain: compute.university.edu          # your DNS subdomain
+  api_endpoint: https://YOUR_FUNCTION_URL_ID.lambda-url.us-east-1.on.aws/   # dns-updater Function URL
 
 infrastructure:
   mode: self-hosted   # or "shared" for hosted spore.host
@@ -304,8 +280,8 @@ infrastructure:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SPORED_DNS_DOMAIN` | DNS domain for instance registration | `spore.host` |
-| `SPORED_TAG_PREFIX` | Tag namespace prefix | `spawn` |
+| `SPORED_DNS_DOMAIN` | Fallback DNS domain, used only when the instance has no `spawn:dns-domain` tag. Set the domain at launch instead (Step 3). | `spore.host` |
+| `SPORED_TAG_PREFIX` | Tag namespace prefix, for sister projects only. Don't set it for spawn launches; see Step 4. | `spawn` |
 
 A researcher at your institution configures their CLI once:
 
@@ -313,24 +289,25 @@ A researcher at your institution configures their CLI once:
 spawn defaults set slack-workspace T03NE3GTY
 ```
 
-And sets the DNS domain in `~/.spawn/config.yaml`:
+If you didn't set the DNS domain and endpoint in SSM (Step 3), they set them in
+`~/.spawn/config.yaml`:
 
 ```yaml
 dns:
   domain: compute.university.edu
-  api_endpoint: https://YOUR_LAMBDA_URL
+  api_endpoint: https://YOUR_FUNCTION_URL_ID.lambda-url.us-east-1.on.aws/
 ```
 
-All subsequent launches automatically use your infrastructure.
+Launches then register under your zone.
 
 ## Institutional deployment checklist
 
 - [ ] Route53 hosted zone created for `compute.university.edu`
-- [ ] dns-updater Lambda deployed and Function URL noted
-- [ ] `spawn config.yaml` distributed to researchers with your DNS domain and endpoint
+- [ ] dns-updater deployed with `scripts/deploy-custom-dns.sh` (`AWS_IAM` auth), every researcher account in `--allow-account`, and the Function URL noted
+- [ ] DNS domain and endpoint set in SSM (`/spawn/dns/*`) in each launch account, or in researchers' `~/.spawn/config.yaml`
 - [ ] Spore-bot Lambda deployed (if using Slack/Teams)
-- [ ] Cross-account IAM roles created in researcher accounts
+- [ ] Researchers' CLIs point `SPORE_BOT_LAMBDA_ROLE_ARN` at your bot's role before `spawn notify register` (if using the bot)
 - [ ] Portal deployed at `portal.university.edu` (optional)
 - [ ] Test: `spawn launch --name test --instance-type t3.micro --ttl 10m`
-- [ ] Test: `nslookup test.compute.university.edu` resolves to instance IP
+- [ ] Test: the instance's record resolves. Records are `<name>.<base36-account>.compute.university.edu`, where the middle label is the instance's `spawn:account-base36` tag
 - [ ] Test: instance terminates after TTL and DNS record is removed
