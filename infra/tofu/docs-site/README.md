@@ -40,7 +40,7 @@ diff, and `tofu apply` publishes it — corruption cannot silently ship.
 ## Changing the URL-rewrite function
 
 1. Edit `url-rewrite.js`.
-2. `AWS_PROFILE=spore-host-infra tofu plan` — review the `code` diff.
+2. `tofu plan` (credentials exported as in [`../README.md`](../README.md)) — review the `code` diff.
 3. `tofu apply` — publishes to the LIVE stage automatically (`publish = true`).
 4. Invalidate if needed:
    `aws cloudfront create-invalidation --distribution-id E1F70PIGPUNRR0 --paths "/*"`.
@@ -48,12 +48,12 @@ diff, and `tofu apply` publishes it — corruption cannot silently ship.
 ## Usage
 
 ```bash
-AWS_PROFILE=spore-host-infra tofu init
-AWS_PROFILE=spore-host-infra tofu plan     # should be "No changes"
-AWS_PROFILE=spore-host-infra tofu apply
+eval "$(aws configure export-credentials --profile spore-host-infra --format env)"
+unset AWS_PROFILE; export AWS_REGION=us-east-1
+tofu init
+tofu plan     # "No changes" once the resources are imported (see State)
+tofu apply
 ```
-
-State is local and git-ignored (see `.gitignore`), same as the sibling modules.
 
 ## Import reference (already done)
 
@@ -66,3 +66,10 @@ tofu import aws_cloudfront_distribution.docs E1F70PIGPUNRR0
 tofu import aws_cloudfront_function.url_rewrite spore-host-docs-url-rewrite   # by NAME, not ARN
 tofu import aws_route53_record.docs Z0341053304H0DQXF6U4X_docs.spore.host_A
 ```
+
+## State
+
+Remote, in the infra account's state bucket (`docs-site/terraform.tfstate`),
+locked with an S3 lock file (#580). **No state has been written for
+this root yet**: import its resources before the first `plan`. Credentials and
+the import rule: [`../README.md`](../README.md). Never commit state.

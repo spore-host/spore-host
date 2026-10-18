@@ -13,6 +13,22 @@ own changelogs for CLI releases.
 
 ## [Unreleased]
 
+### Changed
+- **OpenTofu state is remote and locked** (#580). Every `infra/tofu` root now
+  keeps its state in `s3://spore-host-tofu-state-966362334030/<root>/terraform.tfstate`.
+  The bucket is versioned, encrypted, private and TLS-only, and is created by
+  `infra/tofu/state-bucket.sh`. State is locked with an S3 lock file, so there
+  is no DynamoDB table. Until now each root's state was a gitignored file on
+  whichever laptop last ran it. Only spore-bot's existed, on one machine, and
+  it has been migrated. The other roots have no state yet: import their
+  resources before the first plan (`infra/tofu/README.md`). Requires
+  OpenTofu 1.10 or later.
+- **`tofu` works with `aws login` credentials** (#580). `aws_profile` now
+  defaults to empty, so the provider uses credentials exported with
+  `aws configure export-credentials`. The provider can't itself resolve a
+  profile whose source signs in with `aws login`. `portal-oidc` keeps its
+  dev-account profile.
+
 ### Documentation
 - `infra/amis/containers/build-push.sh` no longer says the default registry
   belongs to account 812107987990, which does not exist. It now says

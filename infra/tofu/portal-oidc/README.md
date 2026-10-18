@@ -71,5 +71,7 @@ VITE_AWS_REGION=us-east-1
 
 ## State
 
-Local state, gitignored (`*.tfstate`). A shared remote backend (S3 + DynamoDB
-lock) across the umbrella's modules is a follow-up. Never commit state.
+Remote, in the infra account's state bucket (`portal-oidc/terraform.tfstate`),
+locked with an S3 lock file (#580). Its provider deploys into the dev account (`aws_profile = "spore-host-dev"`); the state is still in the infra bucket. **No state has been written for
+this root yet**: import its resources before the first `plan`. Credentials and
+the import rule: [`../README.md`](../README.md). Never commit state.

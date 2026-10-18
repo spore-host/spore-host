@@ -69,9 +69,10 @@ AccessDenied.
 
 ## State
 
-Local state, gitignored (`*.tfstate`). A remote backend (S3 + DynamoDB lock) is
-a follow-up once more components are migrated. Never commit state or
-`placeholder.zip`.
+Remote, in the infra account's state bucket (`spore-bot/terraform.tfstate`),
+locked with an S3 lock file. Migrated from the one local copy with
+`tofu init -migrate-state` (#580). Credentials and the bucket:
+[`../README.md`](../README.md). Never commit state or `placeholder.zip`.
 
 ## How it was imported (runbook)
 
@@ -79,7 +80,8 @@ The live resources were created imperatively, then imported so Tofu adopts them
 with **zero functional diff** (only additive `managedby=opentofu` tags):
 
 ```sh
-export AWS_PROFILE=spore-host-infra
+eval "$(aws configure export-credentials --profile spore-host-infra --format env)"
+unset AWS_PROFILE; export AWS_REGION=us-east-1   # see ../README.md
 tofu init
 tofu import aws_iam_role.spore_bot spore-bot-role
 tofu import 'aws_iam_role_policy_attachment.basic_execution' 'spore-bot-role/arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'

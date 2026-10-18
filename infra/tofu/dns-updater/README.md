@@ -30,14 +30,16 @@ AuthType flip reviewable IaC changes instead of console edits.
 
 ## State
 
-Local state, gitignored (`*.tfstate`). Remote backend (S3 + DynamoDB lock) is a
-follow-up shared across the umbrella's modules. Never commit state or
-`placeholder.zip`.
+Remote, in the infra account's state bucket (`dns-updater/terraform.tfstate`),
+locked with an S3 lock file (#580). **No state has been written for this root
+yet**: import its resources before the first `plan` (see the import runbook
+here and [`../README.md`](../README.md)). Never commit state.
 
 ## How it was imported (runbook)
 
 ```sh
-export AWS_PROFILE=spore-host-infra
+eval "$(aws configure export-credentials --profile spore-host-infra --format env)"
+unset AWS_PROFILE; export AWS_REGION=us-east-1   # see ../README.md
 tofu init
 tofu import aws_iam_role.dns_updater SpawnDNSLambdaExecutionRole
 tofu import 'aws_iam_role_policy_attachment.basic_execution' 'SpawnDNSLambdaExecutionRole/arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'

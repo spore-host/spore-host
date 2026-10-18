@@ -51,4 +51,7 @@ into the CFN template's phone-home custom resource + the `spawn onboard` wizard)
 
 ## State
 
-Local state, gitignored. Never commit state or `placeholder.zip`.
+Remote, in the infra account's state bucket (`portal-phone-home/terraform.tfstate`),
+locked with an S3 lock file (#580). **No state has been written for this root
+yet**: import its resources before the first `plan` (see the import runbook
+here and [`../README.md`](../README.md)). Never commit state.
