@@ -200,7 +200,7 @@ request, including the account the updater trusts. How spore.host's own updater
 decides who may register is described in spawn's
 [dns-updater-authorization.md](https://github.com/spore-host/spawn/blob/main/docs/dns-updater-authorization.md).
 
-::: warning The instance role and a self-hosted updater (spawn#1137)
+::: warning The instance role and a self-hosted updater (spawn#1158)
 The instance role spawn creates allows `lambda:InvokeFunctionUrl` only on
 **spore.host's** updater function. When your updater runs in a *different*
 account from the instances, which is the usual central-updater setup, AWS needs

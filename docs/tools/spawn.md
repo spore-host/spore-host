@@ -163,6 +163,12 @@ spawn terminate my-instance -y           # skip confirmation
 spawn terminate --job-array-name workers # terminate a whole job array
 ```
 
+On a running `spawn task run` instance, `terminate` first flushes the task's
+`command.log` and a `failed` completion record (`terminal_reason`
+`user_terminated`) to S3 over SSM, as a TTL kill does. The flush is bounded and
+best-effort: if it fails, the instance is terminated anyway. See
+[Tasks and worker pools](/guides/tasks-and-pools#what-happens-on-the-instance).
+
 ### `spawn extend`
 
 Push an instance's TTL deadline later. The duration is added to the current
@@ -172,6 +178,13 @@ now plus the duration):
 ```sh
 spawn extend my-instance 4h     # add 4 hours to the current deadline
 ```
+
+`extend` writes the new deadline to the tags, then has spored reload them, over
+SSH, or over SSM (`spored reload`) when the instance has no key or public IP or
+SSH fails. If no reload reaches spored, the tags are still updated but spored may go on
+enforcing the old limit, so `extend` **exits non-zero**
+(since v0.136.0; before, it warned and exited 0). For a job array, it exits
+non-zero when any member wasn't updated or reloaded.
 
 ### `spawn connect`
 
@@ -234,7 +247,7 @@ A Capacity Block is billed **up front** and is **non-refundable**, so the purcha
 
 **TTL** — every instance has an absolute termination deadline: `launch_time + TTL`. When it fires, the instance terminates. The deadline is stored in a tag at launch and is **never reset** by stop/wake cycles — it keeps counting even while the instance is stopped. `spawn extend` pushes the deadline forward, not from now.
 
-**Idle timeout** — spored monitors CPU, network, disk, GPU, sessions, and configured process names. When all signals indicate inactivity for the configured duration, the instance **stops** (or hibernates with `--on-idle hibernate`). The idle timer **resets** every time the instance wakes. Idle timeout never terminates; the TTL, a `--cost-limit`, and `--on-complete terminate` do.
+**Idle timeout** — spored monitors CPU, network, disk, GPU, sessions, and configured process names. When all signals indicate inactivity for the configured duration, the instance **stops** (or hibernates with `--on-idle hibernate`). The idle timer **resets** every time the instance wakes. On a `spawn launch` instance, idle timeout never terminates; the TTL, a `--cost-limit`, and `--on-complete terminate` do. `spawn service` instances, pool workers and `spawn burst` members are the exception: they terminate at their idle timeout.
 
 **Spored** — a small daemon that runs on the instance, enforces the TTL deadline, detects idleness, registers DNS, and sends lifecycle notifications. Installed automatically at launch.
 
@@ -296,7 +309,7 @@ while spawn status my-job --check-complete; [ $? -eq 2 ]; do sleep 30; done
 ## Common mistakes
 
 - **`terminate` to "pause" a job.** Terminate destroys the EBS volume and its data — use `stop`/`hibernate` to pause. See [stop vs hibernate vs terminate](/reference/troubleshooting#stop-vs-hibernate-vs-terminate).
-- **Expecting `--on-complete` to fire for work you start yourself.** A `--command` signals completion when it exits, pass or fail (its exit code goes to `/tmp/SPAWN_EXITCODE`). Work you start another way, such as over `spawn connect`, has to signal it: run `spored complete` or `touch /tmp/SPAWN_COMPLETE`.
+- **Expecting `--on-complete` to fire for work you start yourself.** A `--command` signals completion when it exits, pass or fail (its exit code goes to `/tmp/SPAWN_EXITCODE`), by writing the `--completion-file` path (`/tmp/SPAWN_COMPLETE` by default). Work you start another way, such as over `spawn connect`, has to signal it: run `spored complete` or `touch /tmp/SPAWN_COMPLETE`.
 - **Restarting a stopped instance whose TTL already passed.** The TTL is absolute; `spawn extend` first if you need more time.
 - **`--region` vs `--regions`.** spawn takes one `--region`; truffle takes plural `--regions` (see above).
 

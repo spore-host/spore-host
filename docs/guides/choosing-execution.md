@@ -91,12 +91,12 @@ At high fan-out, one instance per task is dispatch-bound: every task pays a full
 boot, and short tasks finish faster than new instances launch. **`spawn pool`**
 inverts that. `spawn pool create` provisions N reusable workers and a run-scoped
 SQS queue; `spawn pool submit` stages a task spec and enqueues it; workers pull
-tasks until the queue is empty. Idle workers are then stopped, not terminated,
-so their disks still bill until you terminate them or a [reaper](/guides/reaper)
-reclaims them (spawn#1134); `spawn pool drain` deletes only the queue.
-`spawn pool status` shows the queue depth, and `spawn pool drain` deletes the
-queue. Ask for N workers and get M, and the tasks still drain through whatever
-pool came up. See [Tasks and worker pools](/guides/tasks-and-pools) and the
+tasks until the queue is empty. A worker whose queue stays empty for
+`--idle-timeout` terminates, so nothing is left billing (since spawn v0.136.0;
+older workers were stopped instead). `spawn pool status` shows the queue depth,
+and `spawn pool drain` deletes the queue, after which each worker terminates at
+its next poll. Ask for N workers and get M, and the tasks still drain through
+whatever pool came up. See [Tasks and worker pools](/guides/tasks-and-pools) and the
 [command reference](/tools/reference/spawn#spawn-pool).
 
 See also [Costs & safety guarantees](/safety) for how the TTL bounds the cost of

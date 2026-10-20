@@ -138,7 +138,7 @@ What happens, in order:
 | `--instance-type` | first catalog family + `.xlarge` | |
 | `--region` | your AWS config, else `us-east-1` | |
 | `--name` | `<app>-<unix-timestamp>` | Also becomes the instance's DNS name |
-| `--ttl` | none | Hard deadline: the instance is **terminated**. See [Lifecycle](#lifecycle) |
+| `--ttl` | `8h` | Hard deadline: the instance is **terminated**. Always set; an empty `--ttl ""` is refused. See [Lifecycle](#lifecycle) |
 | `--idle-timeout` | the catalog's `idle_timeout_default` | The instance is **stopped** when idle this long |
 | `--spot` | off | Spot pricing |
 | `--app-version` | catalog `tag_default` | Image tag; must be `tag_default` or one of `tags_available` |
@@ -177,10 +177,14 @@ the proxy token is the access control. `--no-web-auth` removes the gate.
 
 **Later.** `spawn connect <instance-id>` reconnects to a DCV instance. If the
 instance was stopped for being idle, `spawn connect` starts it again, waits for a
-fresh token, and reopens the session page. For a web app, `spawn connect` opens
-an SSH shell, not the browser.
+fresh token, and reopens the session page. With neither a session file nor a
+session URL to go on, it opens DCV at the instance's own DNS name, built from its
+`spawn:dns-name`, `spawn:account-id` (or `spawn:account-base36`) and
+`spawn:dns-domain` tags, so a [custom DNS domain](/guides/custom-dns) works too.
+An instance with no DNS name is opened at its public IP. (Before spawn v0.136.0 that fallback pointed at a host in another
+account.) For a web app, `spawn connect` opens an SSH shell, not the browser.
 
-::: warning The "Reconnect" line after a DCV launch starts a new instance (spawn#1135)
+::: warning The "Reconnect" line after a DCV launch starts a new instance (spawn#1153)
 After a DCV app or desktop is ready, spawn prints
 `Reconnect: spawn app launch <app> --name <session>`. That command doesn't
 reconnect: it launches a **second instance**. To get back to an existing session,
@@ -220,15 +224,18 @@ launch. On a `desktop`, you can also open a terminal inside the session.
 | **Idle** means | No DCV client connected (once DCV is up) | The standard spored checks: CPU, network, processes, logged-in users |
 | **On idle** | The instance is **stopped**; `spawn connect` starts it again | The instance is **stopped** |
 | **At `--ttl`** | The instance is **terminated** | The instance is **terminated** |
-| **Default TTL** | None | None |
+| **Default TTL** | `8h` | `8h` |
 
 Points to know:
 
-- **Pass `--ttl`.** `spawn app launch` sets no TTL by default (spawn#1135). Without one, an
-  idle session is only *stopped*, and a stopped instance still pays for its
-  100 GiB root volume until something terminates it. Once an instance is stopped,
-  spored isn't running, so it can't enforce anything; only an out-of-band reaper
-  can.
+- **Every session has a TTL.** Without `--ttl`, `spawn app launch` sets `8h`
+  and prints it at launch and in the ready summary. An idle session is only
+  *stopped*, so it can be restarted, and a stopped instance still pays for its
+  100 GiB root volume. The TTL is what ends an abandoned one. Once an instance
+  is stopped, spored isn't running, so the TTL is enforced by an out-of-band
+  [reaper](/guides/reaper) if you have one. There's no `--no-timeout` for apps;
+  pass a longer `--ttl`, or use `spawn extend` on a running session. (Before
+  spawn v0.136.0 there was no default TTL.)
 - **An open DCV tab counts as use.** For DCV, "idle" is measured by connected
   clients, so a browser tab left connected keeps the instance running. Close the
   tab when you're done.
@@ -331,7 +338,7 @@ spawn app launch mydash --ttl 2h
 Both entries now show as `launchable`. If the overlay file can't be read or
 parsed, spawn prints a warning and carries on with the built-in catalog only.
 
-::: warning Rebinding doesn't change `kind`, `port`, `health_path` or `args` (spawn#1135)
+::: warning Rebinding doesn't change `kind`, `port`, `health_path` or `args` (spawn#1153)
 When an overlay entry *rebinds* a built-in app, those four fields are ignored
 and the built-in values stay. To run something with a different kind, port or
 arguments, give it a new name.
@@ -389,7 +396,7 @@ looks up the hourly rate so it can print a cost bound.
 DRY RUN — nothing will be launched.
 
 Instance:    m7i.large in -
-Lifetime:    ttl=1h idle=- on-complete=terminate
+Lifetime:    ttl=1h idle=- (then terminate) on-complete=terminate
 Command:     './my-server' --addr 127.0.0.1:0
 Readiness:   one JSON line on stdout, within 2m0s
 Tunnel:      127.0.0.1:<free port> → the address the service announces
@@ -434,7 +441,7 @@ before it trusts it, because a program can print a fake line. Any HTTP response
 counts, including 401 or 404. The full specification, with a Go example, is
 [the service readiness contract](https://github.com/spore-host/spawn/blob/main/docs/service-readiness-contract.md).
 
-::: warning Not every server works as-is (spawn#1135)
+::: warning Not every server works as-is (spawn#1153)
 A stock server that doesn't print the readiness line never becomes ready, and
 spawn gives up after `--boot-timeout`. The service help's
 `uvicorn app:app --port 0` example is one of these. spawn would also append
@@ -490,11 +497,12 @@ through this tunnel, and only while `spawn service` is running.
 - **The TTL is the guarantee.** If your laptop sleeps or the network drops, the
   instance keeps its TTL. With neither `--ttl` nor `--idle-timeout`, spawn
   applies a 1h idle timeout, so `spawn service` never runs unbounded.
-- **An idle timeout stops the instance; it doesn't terminate it.** The help
-  text says "terminate", but spored's idle action is a stop. While
-  `spawn service` is still running, it sees the stop and terminates the
-  instance. If spawn is gone by then, the instance stays stopped. Use `--ttl` for
-  a firm end.
+- **An idle timeout terminates the instance.** spawn tags a service instance
+  `spawn:terminate-on-idle=true`, and spored terminates it rather than stopping
+  it, so nothing is left billing for a service nobody will restart. The dry run's
+  `Lifetime:` line names the idle action. This needs spored v0.136.0 or later on
+  the instance; with an older spored, and in spawn before v0.136.0, idle
+  stopped the instance instead.
 - **If the service fails to start**, spawn shows its stderr and the stdout lines
   that didn't match, and says whether the service *exited* (a bug or a bad
   argument) or *hung* (try a longer `--boot-timeout`).

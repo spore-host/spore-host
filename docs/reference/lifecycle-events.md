@@ -28,6 +28,12 @@ Spored emits lifecycle events when significant things happen to a running instan
 | `region_vacated` | No spawn-managed instances remain in the region | ℹ️ *name*: region_vacated |
 
 Events the bot has no dedicated message for are delivered in the generic ℹ️ form.
+
+An instance tagged `spawn:terminate-on-idle` (a `spawn service` instance, a pool
+worker or a `spawn burst` member) is terminated at its idle timeout, not stopped,
+and that sends no event yet
+([spawn#1205](https://github.com/spore-host/spawn/issues/1205)). Users logged in
+to it still get spored's terminate warning.
 A cost-limit warning is not an event: at 90% of `spawn:cost-limit`, spored warns
 logged-in users with `wall` and writes `/tmp/SPAWN_WARNING`.
 
@@ -46,10 +52,12 @@ The 5-minute warning is fixed. If you need to respond (extend TTL, save work), y
 
 ## Completion events
 
-The completion event fires when spored detects the file at `spawn:completion-file` (default: `/tmp/SPAWN_COMPLETE`). After the delay specified by `spawn:completion-delay` (default: `30s`), it executes the action in `spawn:on-complete`.
+The completion event fires when spored detects the file at `spawn:completion-file` (default: `/tmp/SPAWN_COMPLETE`, or the path you gave `--completion-file`). After the delay specified by `spawn:completion-delay` (default: `30s`), it executes the action in `spawn:on-complete`.
 
-A `--command` writes the file itself when it exits, pass or fail, so you don't
-need to. For work you start some other way, signal it at the end of your script:
+A `--command` (or `--mpi-command`, on every member) writes the file itself when
+it exits, pass or fail, so you don't need to. It writes the path `--completion-file`
+names, creating its directory if needed (since spawn v0.135.2; before, it always
+wrote `/tmp/SPAWN_COMPLETE`, so a custom path never fired `--on-complete`). For work you start some other way, signal it at the end of your script:
 
 ```sh
 touch /tmp/SPAWN_COMPLETE

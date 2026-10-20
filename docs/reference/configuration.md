@@ -46,6 +46,16 @@ defaults:
   hibernate_on_idle: false
 ```
 
+## Shared spore.host settings (`~/.config/spore/config.toml`)
+
+The AWS profile, region and expected account for all the spore.host tools live in
+a separate file, `~/.config/spore/config.toml`, overridden by `SPORE_PROFILE`,
+`SPORE_REGION` and `SPORE_ACCOUNT` and by `--profile`, `--region` and `--account`.
+When an account is pinned in any of these, spawn refuses to act with credentials
+for a different account (since v0.135.2). See
+[Profiles and per-tool config](/guides/aws-auth#profiles-and-per-tool-config) and
+[the account guard](/guides/aws-auth#the-account-guard).
+
 ## EC2 tags
 
 Spored reads its configuration from EC2 tags on the instance at startup. These are set automatically when you use the corresponding CLI flags. You can also set them manually via the AWS console or CLI.
@@ -55,6 +65,7 @@ Spored reads its configuration from EC2 tags on the instance at startup. These a
 | `spawn:ttl` | `--ttl` | Time-to-live duration (e.g. `8h`, `2d`) |
 | `spawn:idle-timeout` | `--idle-timeout` | Idle timeout duration |
 | `spawn:hibernate-on-idle` | `--on-idle hibernate` | `true` to hibernate instead of stop |
+| `spawn:terminate-on-idle` | (automatic: `spawn service`, `spawn pool`, `spawn burst`) | `true` to terminate instead of stop. Wins over `spawn:hibernate-on-idle` |
 | `spawn:active-processes` | `--active-processes` | Comma-separated process names |
 | `spawn:active-ports` | `--active-ports` | Comma-separated TCP port numbers whose connections are counted (they don't prevent idle) |
 | `spawn:on-complete` | `--on-complete` | Action on completion: `terminate`, `stop`, `hibernate` |
@@ -98,7 +109,7 @@ spawn extend my-instance 4h   # new deadline in 13h, not 4h from now
 `--idle-timeout 30m` watches for inactivity and **stops** the instance when it goes idle (or **hibernates** with `--on-idle hibernate`). This timer:
 
 - **Does reset** every time the instance wakes up from a stop or hibernate
-- Does **not** terminate the instance — it only stops/hibernates it
+- Does **not** terminate the instance — it only stops/hibernates it. (`spawn service` instances, pool workers and `spawn burst` members are the exception: spawn tags them `spawn:terminate-on-idle`, and they terminate.)
 - Is useful for saving compute costs during quiet periods between tasks
 
 ```sh

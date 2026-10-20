@@ -69,7 +69,7 @@ Create a JSON file describing your jobs:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `queue_id` | yes | Identifier for the queue. A queue file without it fails validation |
+| `queue_id` | no | Identifier for the queue. If the file has none, spawn generates one from the launch time, such as `queue-20261019-141503` |
 | `queue_name` | no | Human-readable name |
 | `jobs` | yes | Array of job definitions |
 | `job_id` | yes | Unique identifier for this job |
@@ -97,11 +97,12 @@ Create a JSON file describing your jobs:
 ```
 
 `max_attempts` (at least 1) and `backoff` are required in a `retry` block.
-`backoff` must be `fixed` or `exponential`. `exponential-jitter` is defined but
-validation rejects it today; that's tracked in
-[spawn#1119](https://github.com/spore-host/spawn/issues/1119). Use
-`retry_on_codes` to retry only specific exit codes, or `dont_retry_on_codes` to
-never retry certain ones.
+`backoff` is `fixed`, `exponential` or `exponential-jitter`. With
+`exponential-jitter`, set `jitter` between 0 and 1 to vary each delay by up to
+that fraction either way; without `jitter` it behaves like `exponential`. A
+`jitter` outside 0–1 fails validation. (Before spawn v0.135.2, validation refused
+`exponential-jitter`.) Use `retry_on_codes` to retry only specific exit codes, or
+`dont_retry_on_codes` to never retry certain ones.
 
 ## Launch
 

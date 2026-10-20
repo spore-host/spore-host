@@ -17,7 +17,7 @@ Three independent rules can end an instance's life, in strict priority:
 |------|-----------|------------------|
 | **TTL** | An absolute deadline set once at launch. | **No.** It never moves across stop/wake cycles. Only `spawn extend` changes it, and only forward. |
 | **Cost limit** | Terminate when accumulated **compute + EBS** spend crosses a ceiling. | Set at launch; never resets — compute accumulates across stop/resume, and EBS accrues on wall-clock time, including while stopped. |
-| **Idle timeout** | Stop or hibernate after a period of no activity. | Yes — any activity resets the timer. Idle **never terminates**; it only stops/hibernates. |
+| **Idle timeout** | Stop or hibernate after a period of no activity. | Yes — any activity resets the timer. On an ordinary launch idle only stops or hibernates. Instances with nothing to come back to (`spawn service`, pool workers, `spawn burst` members) are **terminated** at their idle timeout instead (`spawn:terminate-on-idle`, since v0.136.0). |
 
 The key invariant: **TTL always wins.** Idle detection is a soft, early
 cost-saver; the TTL is the hard backstop that guarantees the instance dies even if
@@ -37,7 +37,7 @@ failure mode and what catches it:
 
 | If… | …then | Caught by |
 |-----|-------|-----------|
-| spored fails to install at launch | the instance may not self-manage | spawn reports provisioning failure; the **reaper** still enforces TTL from the tags |
+| spored fails to install at launch | the instance may not self-manage | `spawn launch` waits for spored's heartbeat tag and exits 1 with "spored never came up" if it doesn't arrive; the **reaper** still enforces TTL from the tags |
 | the instance can't reach AWS APIs | spored can't update cost tags or send events | TTL still fires locally; reaper is the backstop |
 | the instance profile / IAM role is missing | spored can't call `ec2:TerminateInstances` on itself | the out-of-band **reaper** terminates it |
 | the tags are changed or removed | lifecycle rules are lost | a rewritten deadline is still caught by the reaper's 7-day max-age ceiling, measured from launch; an instance whose `spawn:managed` tag is removed is invisible to the reaper |

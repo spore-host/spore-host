@@ -51,8 +51,9 @@ data. Use `stop`/`hibernate` to pause; `terminate` only when you're done.
 **Mistake:** thinking either one alone will save you. **TTL** is the absolute,
 non-resettable deadline (the hard guarantee; a `--cost-limit` and
 `--on-complete terminate` can also terminate earlier). **Idle timeout** is a soft early
-stop that any activity resets, and it never *terminates* — only stops/hibernates.
-You typically want both. See [Costs & safety guarantees](/safety).
+stop that any activity resets. On an ordinary launch it never *terminates*, only
+stops or hibernates; the exceptions are `spawn service` instances, pool workers and
+`spawn burst` members, which terminate at their idle timeout. You typically want both. See [Costs & safety guarantees](/safety).
 
 ## Spot interruption vs idle shutdown
 
@@ -71,12 +72,15 @@ you need more time.
 ## A command finishing vs the completion sentinel appearing
 
 **Mistake:** expecting `on-complete` to fire when work you started by hand exits.
-spored acts on the **completion sentinel** (`/tmp/SPAWN_COMPLETE`), not on a
-process exiting.
+spored acts on the **completion sentinel** (`/tmp/SPAWN_COMPLETE`, or the path
+given with `--completion-file`), not on a process exiting.
 
 A `--command` is the exception that isn't one: when it exits, **pass or fail**,
 spawn's wrapper records the exit code in `/tmp/SPAWN_EXITCODE` and writes the
-sentinel for you (since v0.113.0), so `--on-complete` fires either way. A failed
+sentinel for you (since v0.113.0), so `--on-complete` fires either way. It writes
+the `--completion-file` path when you set one, and so does `--mpi-command` on every
+member (since v0.135.2; older versions always wrote `/tmp/SPAWN_COMPLETE`, so a
+custom path never fired). A failed
 command does **not** leave the instance up until the TTL. If you want a failed
 instance kept for inspection, use `--on-complete stop` (or omit `--on-complete`);
 otherwise read the failure afterwards with `spawn logs <name>`
@@ -88,6 +92,29 @@ run yourself) has to create the sentinel when it's done:
 ```sh
 ./run-job.sh; spored complete --status success
 ```
+
+## "spored never came up" vs "spored could not be verified" {#spored-never-came-up}
+
+After a launch, spawn waits for spored's `spawn:last-heartbeat` tag, which it
+reads with `ec2:DescribeInstances`, and asks SSM as a second signal. The two
+failures mean different things:
+
+- **`spored never came up`**: no heartbeat and no SSM answer within 5 minutes
+  (10 on Windows). The instance is running but nothing on it enforces the TTL,
+  idle timeout or cost limit. The message says what was missing, for example
+  that the SSM agent never registered either, and points at the boot log
+  (`spawn logs <instance-id> --console`). Terminate the instance, or relaunch
+  with `--terminate-on-error` to have spawn do it.
+- **`spored could not be verified`**: your credentials were refused
+  `ec2:DescribeInstances`, so spawn couldn't look. It says nothing about the
+  instance, which may be fine. Check it with `spawn status <id>`, and add the
+  action from [IAM Permissions](/reference/iam-permissions).
+
+A refused SSM call is named in the message, as
+`your credentials lack ssm:DescribeInstanceInformation`, and doesn't fail the
+launch on its own. Before spawn v0.136.0, verification used only SSM: an AMI
+without the SSM agent (official Rocky and RHEL images), or a caller without the
+SSM permissions, waited out the timeout and was told spored never came up.
 
 ## Instance role vs your user credentials
 

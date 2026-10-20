@@ -49,7 +49,9 @@ Ready to launch. If this passes, the Quick Start should work as written.
 ```
 
 The `Git Commit` and `Build Date` lines are truffle's version output leaking into
-the report (spawn#1140); they aren't checks. This account has a
+the report; they aren't checks. Since spawn v0.135.2, doctor keeps only the first
+line of truffle's and the AWS CLI's version, so every line before the summary
+starts with a status symbol or `→`. This account has a
 [TTL reaper](/guides/reaper) covering it. Without one, that line is a ⚠ warning,
 not a failure: spored still enforces the TTL on the instance. See
 [Checking your account](/guides/account-health) for what each check means.

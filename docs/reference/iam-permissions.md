@@ -167,12 +167,23 @@ add their own permissions, listed further down.
 ::: warning Why the extra statements are required
 A launch does more than `RunInstances`. spawn **imports your SSH public key** (`ec2:ImportKeyPair`), may **create a security group** for the instance (`ec2:CreateSecurityGroup` / `AuthorizeSecurityGroupIngress`), and — so the in-instance `spored` daemon can manage the instance's lifecycle — **creates a `spored` IAM role + instance profile and passes it to EC2 at launch** (the `iam:*` on `spored*` + `iam:PassRole`). Roles and profiles are created with tags, which IAM authorises separately (`iam:TagRole`, `iam:TagInstanceProfile`). A launch that grants the instance extra access (`--iam-policy`, `--s3-read`, `--s3-write`, and every `spawn task run`) creates a role named `spawn-instance-<hash>` instead, which is why that pattern is included. Omit these and `spawn launch` fails partway. The `iam:*` grants are scoped to these two name patterns so they can't touch other roles.
 
-After launching, spawn **verifies spored is running** by asking the instance
-over SSM (`ssm:DescribeInstanceInformation`, then `ssm:SendCommand` of
-`spored status` and `ssm:GetCommandInvocation`). `SendCommand` is limited to
-spawn-managed instances. Without these, the launch waits out its timeout and
-reports that spored never came up, even though it did
-([spawn#1126](https://github.com/spore-host/spawn/issues/1126)).
+After launching, spawn **verifies spored is running** by waiting for the
+`spawn:last-heartbeat` tag spored writes about once a minute, read with
+`ec2:DescribeInstances` (since spawn v0.136.0). That action is load-bearing: if
+it's refused, the launch stops at once with "spored could not be verified" and
+names the action. It doesn't claim the instance is broken.
+
+The SSM statements (`ssm:DescribeInstanceInformation`, then `ssm:SendCommand`
+of `spored status` and `ssm:GetCommandInvocation`) are a second signal, which
+can answer before the first heartbeat on an AMI with the SSM agent. They're
+**optional for launch**: without them the launch still verifies by the
+heartbeat, and a refused SSM call is reported by its action name instead of
+being retried. Keep them anyway if you can, because other commands use them:
+`spawn connect`'s SSM fallback, `spawn extend` reloading spored on an instance
+with no SSH key, and `spawn terminate` flushing a task's logs first.
+`SendCommand` is limited to spawn-managed instances. (Before v0.136.0, launch
+verification used only SSM, and a caller without these actions was told spored
+never came up.)
 `pricing:GetProducts` sets the instance's price tag. Without it, a launch with
 `--cost-limit` is refused, because a limit that can't be priced can't be
 enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`.
@@ -234,6 +245,57 @@ call the updater with your credentials. When the updater is in another account
 }
 ```
 
+## Worker pools
+
+`spawn pool` creates an SQS queue and a per-pool worker role,
+`spawn-pool-worker-<hash>`, which the baseline's IAM statements don't cover
+(they're scoped to `spored*` and `spawn-instance-*`). This list comes from the
+code, not from a tested minimal policy:
+
+- **`create`**: the baseline's launch actions for the workers;
+  `sqs:CreateQueue`, `sqs:GetQueueUrl` and `sqs:DeleteQueue` (to clean up a
+  pool that didn't come up); `s3:ListBucket` on the results bucket
+  `spawn-results-<account>-<region>`, plus `s3:CreateBucket` the first time;
+  and the baseline's `InstanceProfileForSpored` and `PassSporedRoleToEC2`
+  actions on `spawn-pool-worker-*` roles and instance profiles.
+- **`submit`**: `s3:PutObject` on the results bucket, `sqs:GetQueueUrl` and
+  `sqs:SendMessage`.
+- **`status`**: `sqs:GetQueueUrl` and `sqs:GetQueueAttributes`.
+- **`drain`**: `sqs:GetQueueUrl` and `sqs:DeleteQueue`; `ec2:DescribeInstances`
+  to check that no worker still uses the role; and, to delete the pool's role
+  and instance profile, these on `spawn-pool-worker-*`:
+
+```json
+{
+  "Action": [
+    "iam:GetInstanceProfile",
+    "iam:RemoveRoleFromInstanceProfile",
+    "iam:DeleteInstanceProfile",
+    "iam:ListRolePolicies",
+    "iam:DeleteRolePolicy",
+    "iam:ListAttachedRolePolicies",
+    "iam:DetachRolePolicy",
+    "iam:ListInstanceProfilesForRole",
+    "iam:DeleteRole"
+  ],
+  "Resource": [
+    "arn:aws:iam::*:role/spawn-pool-worker-*",
+    "arn:aws:iam::*:instance-profile/spawn-pool-worker-*"
+  ]
+}
+```
+
+If drain can't delete the role, it says so and the queue is still gone.
+
+## The TTL reaper
+
+Deploying, arming and removing an in-account reaper with `spawn reaper` needs
+Lambda, EventBridge, S3, CloudWatch Logs and IAM permissions on the reaper's
+own resources. Since spawn v0.136.0 that includes `logs:CreateLogGroup`,
+`logs:TagResource` and `logs:PutRetentionPolicy` for `deploy`, and
+`logs:DeleteLogGroup` for `teardown`. The full list per subcommand is in
+[the reaper guide](/guides/reaper#permissions).
+
 ## Logs after termination
 
 `spawn logs` on a terminated instance reads the instance's console output (see
@@ -293,7 +355,7 @@ aws iam put-role-policy \
   --policy-document file://spore-host-policy.json
 ```
 
-Add the [Spot](#spot-instances), [DNS](#dns-integration), [FSx](#fsx-for-lustre), or [service-quota](#service-quotas) statements only if you use those features.
+Add the [Spot](#spot-instances), [DNS](#dns-integration), [worker pool](#worker-pools), [FSx](#fsx-for-lustre), or [service-quota](#service-quotas) statements only if you use those features.
 
 The instance itself runs under spawn's `spored` role, which spawn creates with
 the permissions spored needs. This page covers only your own policy.
