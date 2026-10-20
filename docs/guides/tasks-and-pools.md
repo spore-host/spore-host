@@ -59,8 +59,11 @@ and prints where the completion record will appear and how to poll it.
 
 If a lifecycle limit ends the instance while the command is still running (its
 TTL, its cost limit, an idle stop or a Spot interruption), spawn still uploads
-the command log and writes a completion record before the instance stops. See
-[Completion records](#completion-records).
+the command log and writes a completion record before the instance stops. So
+does `spawn terminate`: on a running task instance it first runs the same flush
+over SSM, so `command.log` and a `failed` record with `terminal_reason`
+`user_terminated` reach S3. That flush is bounded and best-effort; if it fails,
+the instance is terminated anyway. See [Completion records](#completion-records).
 
 ### `spawn task run` flags
 
@@ -68,7 +71,7 @@ the command log and writes a completion record before the instance stops. See
 |---|---|---|
 | `--spec` | (required) | Path to the TaskSpec JSON file |
 | `--dry-run` | off | Size and preview without launching |
-| `--wait` | off | Wait for the completion record, then exit with the task's exit code |
+| `--wait` | off | Wait for the completion record, then exit with the task's exit code, or `1` if its `state` isn't `completed`. See [Exit codes](#exit-codes) |
 | `--poll-interval` | `15s` | How often `--wait` checks for the record |
 | `--region` | the configured region | Region to size and launch in |
 | `--ami` | auto-selected | Use this AMI. Overrides `placement.ami` |
@@ -97,7 +100,7 @@ the command log and writes a completion record before the instance stops. See
 | `outputs` | no | | List of `{ "source", "destination" }`. `destination` must start with `s3://` |
 | `placement` | no | | See [`placement`](#placement) |
 | `lifecycle` | yes | | `lifecycle.ttl` is required. See [`lifecycle`](#lifecycle) |
-| `env` | no | | Map of variable name to value. Names must match `[A-Za-z_][A-Za-z0-9_]*`. Values can be anything. **Host commands only**; see [Containers](#containers) |
+| `env` | no | | Map of variable name to value. Names must match `[A-Za-z_][A-Za-z0-9_]*`. Values can be anything. Reaches host and container commands; see [Containers](#containers) |
 | `results_prefix` | no | `s3://spawn-results-<account>-<region>/tasks` | Where the completion record, `.exitcode` and `command.log` go. See [Completion records](#completion-records) |
 | `regenerable` | no | `false` | Opts the outputs in to future deletion. See [Keeping results](/guides/results-retention#opting-in-to-future-deletion) |
 
@@ -106,7 +109,7 @@ the command log and writes a completion record before the instance stops. See
 | Field | Default | Rules and meaning |
 |---|---|---|
 | `cpu` | `0` (no minimum) | Minimum vCPUs. Must not be negative |
-| `memory_gib` | `0` (no minimum) | Minimum memory in GiB. Must not be negative |
+| `memory_gib` | `0` (no minimum) | Minimum memory in GiB. Must not be negative. A container task is sized to at least 2 GiB whatever this says; see [Containers](#containers) |
 | `memory_headroom_percent` | `0` | 0–100. Sizes against `memory_gib` plus this percentage: 32 GiB with 20 is sized as 38.4 GiB |
 | `gpus` | `0` | Minimum GPUs. Must not be negative |
 | `architecture` | any | `x86_64` or `arm64` |
@@ -114,7 +117,7 @@ the command log and writes a completion record before the instance stops. See
 | `instance_type` | | Use exactly this type. `cpu`, `memory_gib`, `architecture` and `families` are then ignored |
 | `disk_gib` | the AMI's default | Size of the root EBS volume in GiB |
 | `purchase` | `on_demand` | `on_demand` or `spot` |
-| `fallback` | | `on_demand`: if a Spot launch fails for lack of capacity, retry once on-demand in the same region |
+| `fallback` | | `on_demand`: if a Spot launch fails for lack of capacity, retry once on-demand in the same region. The retry has the same `placement` mounts as the Spot attempt (before spawn v0.135.2 it came up without them) |
 | `s3_read_write` | | `s3://` URIs of buckets the command itself reads and writes (for tools that do their own S3 I/O). Grants list, get, put and delete on the **whole bucket**; any prefix is ignored |
 
 ### `inputs` and `outputs`
@@ -236,14 +239,24 @@ bind-mounted into the container at the same paths. The container runs as the
 instance user's uid and gid, not the image's `USER`, so it can write to those
 directories whatever the image declares.
 
-::: warning `env` doesn't reach a container (spawn#1133)
-In spawn v0.135.0, `env` is exported in the host shell but not passed to
-`docker run`, so a containerized command doesn't see it. Pass values as
-arguments in `command` instead. For a host command, `env` works:
+A container task is sized to at least **2 GiB** of memory, even when
+`resources.memory_gib` is lower or unset, because installing Docker on a smaller
+instance gets OOM-killed. The dry run says when this floor raised the request. A
+pinned `resources.instance_type` is used as given, with a warning when it has
+less than 2 GiB. If Docker can't be installed or its daemon doesn't start, the
+command isn't run and the record says `retry_class` `instance_health`, which is
+worth retrying (see [Completion records](#completion-records)).
+
+`env` reaches the container: each key is passed to `docker run` as
+`-e KEY=VALUE`. The values are on the `docker run` command line, so anyone who
+can list processes on the instance can see them while the task runs. Don't put
+secrets in `env`. Before spawn v0.135.2, `env` was set only in the host shell and
+a container never saw it.
 
 ```json
 {
   "task_id": "count-lines-007",
+  "container": "docker.io/library/python:3.12-slim",
   "command": ["bash", "-c", "wc -l /work/in/shard.csv > /work/out/count-$SHARD.txt"],
   "env": { "SHARD": "007" },
   "resources": { "cpu": 2, "memory_gib": 4 },
@@ -256,7 +269,6 @@ arguments in `command` instead. For a host command, `env` works:
   "lifecycle": { "ttl": "1h" }
 }
 ```
-:::
 
 ## Completion records
 
@@ -285,7 +297,7 @@ creating a stray bucket.
 | `cost_estimate` | What the run cost in USD. Present only when the instance's hourly rate was known |
 | `logs` | `s3://` URI of `command.log`, when it uploaded |
 | `retry_class` | Why it failed, if it did. See below |
-| `terminal_reason` | Set only when a lifecycle limit ended the instance mid-command: `ttl_expired`, `cost_limit_exceeded`, `idle_timeout` or `spot_interruption` |
+| `terminal_reason` | Set only when the instance was ended mid-command: `ttl_expired`, `cost_limit_exceeded`, `idle_timeout` or `spot_interruption` by a lifecycle limit, or `user_terminated` by `spawn terminate` |
 
 `retry_class` tells an adapter whether running the task again is likely to help:
 
@@ -295,6 +307,7 @@ creating a stray bucket.
 | `staging_error` | An input failed to copy or a staging directory couldn't be created. The command didn't run | no |
 | `app_error` | The command exited non-zero | no |
 | `output_delivery_error` | The command succeeded, but an output failed to upload | yes |
+| `instance_health` | A container task's Docker install failed or its daemon didn't start. The command didn't run | yes |
 | `ttl_expired` | The TTL ended the instance mid-command | no |
 | `spot_interruption` | Spot reclaimed the instance mid-command | yes |
 
@@ -329,8 +342,17 @@ spawn task status hello-001 -o json
 spawn task status hello-001 --check-complete
 ```
 
-Until the record exists, `spawn task status` prints
-`Task hello-001: running (no completion record yet)`. If the spec set
+Until the record exists, `spawn task status` asks EC2 about the task's
+instance instead of assuming it's running:
+
+| What EC2 says | `task status` prints | `--check-complete` exits |
+|---|---|---|
+| An instance for the task is pending, running, stopping or stopped | `Task hello-001: running (no completion record yet; instance i-… is running)` | `2` |
+| Its instances are all terminated or shutting down | `Task hello-001: terminated (no completion record)`, with EC2's reason. The instance ended without a terminal flush, so `command.log` may not have been saved | `1` |
+| No instance for it in the region, or the lookup failed | `Task hello-001: unknown (…)` | `3` |
+
+Before spawn v0.136.0, a task killed without a flush read `running` forever.
+Without `--check-complete`, `unknown` is an error (exit 1). If the spec set
 `results_prefix`, pass the same value with `--results-prefix`, because
 `task status` sees only the task ID. Use `--region` for a task in another region.
 
@@ -338,18 +360,15 @@ Until the record exists, `spawn task status` prints
 
 | Command | Exit code |
 |---|---|
-| `spawn task run --wait` | The record's `exit_code`. `0` on success; a value of `-1` shows up as `255` |
+| `spawn task run --wait` | The record's `exit_code` when it's non-zero (a value of `-1` shows up as `255`). Otherwise `0` if `state` is `completed` and `1` if it isn't |
 | `spawn task run` without `--wait` | `0` once the instance is launched |
-| `spawn task status --check-complete` | `0` completed, `1` failed, `2` running, `3` error |
+| `spawn task status --check-complete` | `0` completed, `1` failed (including terminated with no record), `2` running, `3` error (including no record and no instance) |
 | Any error in spawn itself (bad spec, AWS error, `--wait` timeout) | `1` |
 
-::: warning Check `state`, not only the exit code (spawn#1133)
-`--wait` exits with `exit_code`, and an `output_delivery_error` record has
-`exit_code` 0 with `state` `failed`, because the command itself succeeded. So
-`--wait` exits 0 when an output failed to upload. A spawn error also exits 1,
-the same as many commands that fail. In scripts, read the record with `-o json`,
-or use `spawn task status --check-complete`, which checks `state`.
-:::
+An `output_delivery_error` record has `exit_code` 0 and `state` `failed`,
+because the command itself succeeded. `--wait` exits 1 for it (since spawn
+v0.135.2; before that it exited 0). A spawn error also exits 1, so to tell the
+two apart in a script, read the record with `-o json`.
 
 ### Running a `task_id` again
 
@@ -366,7 +385,7 @@ record is there.
 When each task takes seconds to minutes, starting an instance per task costs
 more than the work, and tasks finish faster than new instances can launch. A
 pool starts N workers once. They pull tasks from an SQS queue made for the run
-and keep running until the queue stays empty.
+and keep running until the queue stays empty, then terminate.
 
 Use a pool for hundreds or thousands of short tasks that fit one instance type.
 Use `spawn task run` when tasks are long, need different sizes, or need
@@ -382,7 +401,8 @@ spawn task status count-lines-007 --check-complete
 spawn pool drain --run-id cohort-a
 ```
 
-1. **`create`** makes the queue `spawn-pool-<run-id>` and launches the workers.
+1. **`create`** makes the queue `spawn-pool-<run-id>` and an IAM role for this
+   pool's workers, then launches the workers.
    It waits until at least `--min-viable` workers are up. If it can't get that
    many, it deletes the queue and reports why each worker failed. Ask for N and
    get fewer, and the tasks still drain through the workers you got.
@@ -392,7 +412,8 @@ spawn pool drain --run-id cohort-a
    are SQS approximations.
 4. Each task writes the **same completion record** as `spawn task run`, so poll
    with `spawn task status <task-id>`.
-5. **`drain`** deletes the queue. Run it once every record you need is in.
+5. **`drain`** deletes the queue, waits for the workers to terminate, then
+   deletes the pool's IAM role. Run it once every record you need is in.
 
 `--run-id` is shared by all four commands. It becomes part of an SQS queue name,
 so use letters, digits, `-` and `_`.
@@ -407,7 +428,9 @@ so use letters, digits, `-` and `_`.
 | `--min-viable` | `1` | Fewest workers that count as success |
 | `--spot` | off | Launch the workers as Spot |
 | `--ttl` | `4h` | Each worker's TTL. It terminates at this age, busy or not |
-| `--idle-timeout` | `5m` | How long a worker waits on an empty queue before it stops pulling |
+| `--idle-timeout` | `5m` | How long a worker waits on an empty queue before it terminates |
+| `--cost-limit` | `0` (off) | Spend ceiling in US dollars **per worker**, compute and storage. spored terminates a worker that reaches it, as with `spawn launch --cost-limit` |
+| `--container` | | An image the pool's tasks run. Repeatable. A private ECR image gets the workers' role an ECR pull grant |
 | `--visibility-timeout` | `900` | Seconds a claimed task is hidden from other workers. Must be longer than your longest task |
 | `--s3-read` | | Bucket your tasks read inputs from. Repeatable |
 | `--s3-write` | | Bucket your tasks write outputs to. Repeatable |
@@ -419,8 +442,8 @@ The worker already exists, so a pooled task uses less of its spec:
 | Spec field | In a pool |
 |---|---|
 | `task_id`, `command`, `inputs`, `outputs`, `results_prefix` | Used as in `spawn task run` |
-| `container` | Used. A **private ECR** image can't be pulled: the worker role has no ECR permission |
-| `env` | Used for host commands. As with `task run`, not passed into a container |
+| `container` | Used. A **private ECR** image can be pulled only if you named it with `--container` at `create`; otherwise the workers' role has no ECR permission |
+| `env` | Used, for host and container commands, as in `task run` |
 | `resources.gpus` | Above 0, the container gets `--gpus all`. Otherwise ignored |
 | Every other `resources` field, `placement`, `lifecycle` | Ignored. The pool's flags decide the instance and its lifetime. `lifecycle.ttl` is still required to pass validation |
 
@@ -439,24 +462,45 @@ You pay for every worker from boot until it stops or terminates, whether or not
 it has a task. The minimum cost of a pool is N workers × the hourly rate × (time
 to work through the queue + `--idle-timeout`).
 
-- When a worker's queue has been empty for `--idle-timeout`, its worker process
-  exits.
-- spored's idle timeout is set to the same value. An idle timeout **stops** an
-  instance; it doesn't terminate it ([Costs & safety guarantees](/safety)). A
-  stopped worker bills for its EBS volume, not for compute.
-- The TTL (`--ttl`) terminates a worker that is still running, busy or not.
-- `drain` deletes only the queue. It doesn't stop or terminate workers.
+- When a worker's queue has been empty for `--idle-timeout`, the worker process
+  exits and spored **terminates** the instance. Before spawn
+  v0.136.0 it was stopped instead, and kept billing for its EBS volume until its
+  TTL.
+- A worker whose every claim fails for `--idle-timeout` terminates the same way.
+- A worker process that keeps crashing is restarted up to 20 times, then gives
+  up, and the instance terminates.
+- The TTL (`--ttl`) terminates a worker that is still running, busy or not, and
+  `--cost-limit` terminates one that has spent its limit.
+- `drain` deletes the queue, and each worker terminates at its next poll.
 
 A worker that dies mid-task doesn't remove the task from the queue, so another
 worker picks it up after the visibility timeout. A task that ran and failed is
 removed. Its completion record says why, and resubmitting it is up to you.
 
-::: warning One pool at a time per account (spawn#1134)
-Every pool's workers share one IAM role, `spawn-pool-worker`, and
-`spawn pool create` replaces that role's permissions with the new run's queue
-and buckets. Creating a second pool while the first is running can cut the
-first pool's workers off from their queue.
-:::
+Outputs a pooled task uploads are tagged with what the run cost to produce, as
+`spawn task run` outputs are ([Keeping results](/guides/results-retention)). The
+workers' role can tag objects in the results bucket and in every `--s3-write`
+bucket. Before spawn v0.136.0, pooled outputs were uploaded untagged.
+
+### Each pool's IAM role, and `drain`
+
+Each pool gets its own worker role and instance profile, named
+`spawn-pool-worker-<hash of the run id>` and tagged `spawn:pool-run-id`, so
+several pools can run in one account at once. (Before spawn v0.136.0 every pool
+shared one role, `spawn-pool-worker`, and a second `spawn pool create` cut the
+first pool's workers off from their queue. That role is no longer used, so
+you can delete it; `spawn orphans` reports it when no spawn instances are left.)
+
+A worker whose role is deleted loses its credentials, and then spored can't
+terminate it. So `spawn pool drain` deletes the role only once no worker of the
+pool is pending, running, stopping or stopped. It checks again for up to
+`--wait` (default `2m`; `0` checks once). If workers are still there after that,
+drain keeps the role and says so; run `spawn pool drain` again later to remove
+it.
+
+`drain` is safe to repeat. When the queue is already gone it prints
+`Pool <run-id> already drained (no queue found)`, still removes the role if no
+workers remain, and exits 0.
 
 ## Other `task` subcommands
 

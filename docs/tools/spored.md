@@ -14,7 +14,8 @@ instance (`sudo systemctl status spored`, `spored status`, `spored complete`).
 
 **Why it matters.** It's the reason auto-termination survives your laptop closing:
 spored enforces the lifecycle from *inside* the instance — terminate on TTL, stop
-or hibernate on idle, act on a completion signal, and clean up DNS/notifications
+or hibernate on idle (or terminate, for instances with nothing to come back to),
+act on a completion signal, and clean up DNS/notifications
 before the instance disappears. Its rules come from the instance's EC2 tags, which
 it re-reads about once a minute. See [Costs & safety guarantees](/safety) for what
 happens if spored itself fails.
@@ -24,9 +25,13 @@ happens if spored itself fails.
 Once started, spored runs a check every minute:
 
 1. **TTL** — if the absolute deadline (`spawn:ttl-deadline` tag) has passed, terminate.
-2. **Completion signal** — if the sentinel file (`/tmp/SPAWN_COMPLETE` by default) exists, take the configured action.
+2. **Completion signal** — if the sentinel file (`/tmp/SPAWN_COMPLETE` by default) exists, take the configured action. If the file appears before the `spawn:on-complete` tag is readable (EC2 tags are eventually consistent), spored re-reads the tags on that tick instead of waiting for its next scheduled refresh, up to 5 times per instance (since v0.136.0).
 3. **Cost limit** — if accumulated **compute + EBS** spend (compute rate × total compute time, carried across stop/resume, plus EBS rate × wall-clock time since launch) has exceeded `spawn:cost-limit`, terminate. FSx is not counted; `spawn launch` refuses a filesystem that alone exceeds the cap.
-4. **Idle detection** — if all activity signals have been quiet for `spawn:idle-timeout`, stop (or hibernate).
+4. **Idle detection** — if all activity signals have been quiet for `spawn:idle-timeout`, stop (or hibernate). With `spawn:terminate-on-idle=true`, terminate instead: spawn sets that on `spawn service` instances, pool workers and `spawn burst` members (since v0.136.0).
+
+Every tick spored also writes the `spawn:last-heartbeat` tag (at most once a
+minute). `spawn launch` waits for that tag to confirm spored came up, and the
+[TTL reaper](/guides/reaper) reports instances whose heartbeat has gone stale.
 
 Spot interruption notices are polled separately every 5 seconds and acted on immediately.
 
@@ -46,11 +51,38 @@ bucket, **whatever version of spawn launched it**. So:
 - `spored version` on an instance reports the spored it's running, which may
   differ from your `spawn version`.
 
+Behaviour that's new in a spored release, such as idle termination
+(`spawn:terminate-on-idle`, v0.136.0), reaches only instances running that spored
+or later. An older spored ignores the tag and stops the instance.
+
 The control-plane Lambdas you deploy yourself, such as the TTL reaper
 (`spawn reaper deploy`) and lagotto's poller (`lagotto deploy`), don't upgrade
 with the CLI either. `spawn reaper status` and `lagotto doctor` report when the
 deployed version is behind.
 :::
+
+## How it's installed, and how spawn knows it's running
+
+The instance's user data downloads spored, checks its checksum **and** its
+signature against the spore.host signing key, and installs nothing if either
+check fails. Since v0.135.2 the installer also works on:
+
+- **Rocky Linux 8 and RHEL 8**, whose curl (7.61) is older than the options the
+  installer used to pass. Before, every download failed there and the instance
+  ran with no spored.
+- **SELinux-enforcing AMIs such as Rocky Linux 9.** The installer runs
+  `restorecon` on the binary and its systemd unit, so systemd may start it.
+  Before, spored failed with `status=203/EXEC` on every restart. Nothing changes
+  on hosts without SELinux or with it disabled.
+
+After launching, `spawn launch` waits for spored's first `spawn:last-heartbeat`
+tag (up to 5 minutes on Linux, 10 on Windows). It asks SSM as well, which can
+answer first, but an AMI without `amazon-ssm-agent` (official Rocky and RHEL
+images) no longer fails verification (since v0.136.0). If neither signal
+arrives, the launch exits 1 with "spored never came up" and says which evidence
+was missing; see [Troubleshooting](/reference/troubleshooting#spored-never-came-up).
+`--wait-for-ssh=false` skips the check and says spored wasn't verified; with
+`-o json`, `spored_verified` is `false`.
 
 ## Subcommands
 
@@ -138,8 +170,9 @@ All spored configuration is stored as EC2 tags. Spawn writes them at launch; you
 | `spawn:ttl` | duration | `24h` | Maximum lifetime from launch. |
 | `spawn:ttl-deadline` | RFC3339 | `2026-05-19T14:00:00Z` | **Authoritative deadline** — set once at launch, never resets across stop/wake cycles. Takes precedence over `spawn:ttl`. |
 | `spawn:launch-time` | RFC3339 | `2026-05-18T10:00:00Z` | Original launch time, anchors the deadline. |
-| `spawn:idle-timeout` | duration | `1h` | Stop (or hibernate) after this duration of inactivity. |
+| `spawn:idle-timeout` | duration | `1h` | Stop (or hibernate, or terminate with `spawn:terminate-on-idle`) after this duration of inactivity. |
 | `spawn:hibernate-on-idle` | bool | `true` | Hibernate on idle instead of stop (set by `--on-idle hibernate`). Default: `false`. |
+| `spawn:terminate-on-idle` | bool | `true` | Terminate on idle instead of stopping. Wins over `spawn:hibernate-on-idle`. Set by `spawn service`, `spawn pool` and `spawn burst`; there's no launch flag. Default: `false`. |
 | `spawn:on-complete` | enum | `terminate` | Action on completion: `terminate`, `stop`, `hibernate`. |
 | `spawn:completion-file` | path | `/tmp/SPAWN_COMPLETE` | Sentinel file path to watch. Default: `/tmp/SPAWN_COMPLETE`. |
 | `spawn:completion-delay` | duration | `30s` | Grace period after completion file appears. Default: `30s`. |
@@ -264,6 +297,10 @@ are:
 | `fsx_mount_failed` | The FSx filesystem could not be mounted |
 | `fsx_dra_failed` | The FSx data repository association (S3 link) could not be set up |
 | `region_vacated` | No spawn-managed instances remain in the region |
+
+An idle **termination** (`spawn:terminate-on-idle`) sends no chat event yet
+([spawn#1205](https://github.com/spore-host/spawn/issues/1205)). Users logged in
+to the instance still get spored's terminate warning.
 
 The cost-limit warning is not a chat notification. At 90% of `spawn:cost-limit`,
 spored broadcasts a warning to logged-in users with `wall` and writes it to

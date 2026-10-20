@@ -28,7 +28,7 @@ breaking changes.
 | Component | Status | Latest | Notes |
 |-----------|--------|--------|-------|
 | **truffle** | <span class="doc-badge stable">Stable</span> | v0.61.0 | Instance discovery, quotas, spot/capacity search (read-only). |
-| **spawn** | <span class="doc-badge stable">Stable</span> | v0.135.0 | Launch + full lifecycle management. |
+| **spawn** | <span class="doc-badge stable">Stable</span> | v0.136.0 | Launch + full lifecycle management. |
 | **spored** | <span class="doc-badge stable">Stable</span> | ships with spawn | In-instance lifecycle daemon; built and released with spawn. |
 | **lagotto** | <span class="doc-badge stable">Stable</span> | v0.64.0 | Capacity watcher. |
 | **spore-bot** | <span class="doc-badge stable">Stable</span> | continuous | Slack/Teams control. Deployed continuously (not tag-released). |
@@ -95,7 +95,11 @@ On Windows, run the CLIs under WSL2 for the smoothest experience.
 ### What spawn can launch
 
 - **Linux instances** — Amazon Linux 2023 (the auto-selected default), Amazon
-  Linux 2, and Ubuntu AMIs. spored installs via user-data at launch.
+  Linux 2, and Ubuntu AMIs. spored installs via user-data at launch. Since spawn
+  v0.135.2 its installer also works on Rocky Linux 8 and RHEL 8 and on
+  SELinux-enforcing AMIs such as Rocky Linux 9, and since v0.136.0 a launch no
+  longer needs the SSM agent (which official Rocky and RHEL images lack) to verify
+  spored.
 - **Windows instances** — supported via SSM-first launch and connect, with spored
   running as a native Windows service. (The headless launcher path used by lagotto
   is Linux-only.)

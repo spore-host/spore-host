@@ -47,7 +47,8 @@ The ceiling applies **even when the deadline is still in the future**. The insta
 can write its own `spawn:ttl-deadline` tag, so a deadline set far into the future
 would otherwise make an instance impossible to reap. A `--ttl` longer than 7 days is
 therefore capped at 7 days, and `spawn launch` warns you when you ask for one. To
-keep instances longer, raise `REAPER_MAX_AGE` on the reaper.
+keep instances longer, raise `REAPER_MAX_AGE` on the reaper
+(`spawn reaper deploy --max-age`, or the template's `MaxAge`).
 
 Each run does the following:
 
@@ -106,14 +107,32 @@ This creates the following, all in the deploy region:
 | Execution role | `spawn-ttl-reaper-selfscan-role` |
 | Its inline policy | `spawn-ttl-reaper-selfscan-policy`, plus the AWS-managed `AWSLambdaBasicExecutionRole` for logs |
 | Artifact bucket | `spawn-reaper-artifacts-<account>-<region>`, tagged `spawn:managed=true` |
+| Log group | `/aws/lambda/spawn-ttl-reaper-selfscan`, with a 30-day retention (`--log-retention-days`) |
 | Lambda function | `spawn-ttl-reaper-selfscan` (arm64, `provided.al2023`, 256 MB, 900 s timeout) |
 | EventBridge rule | `spawn-ttl-reaper-selfscan-schedule` |
 
+The log group is created before the function, because the one Lambda would create on
+the first run has no retention and keeps its logs forever. (Before spawn v0.136.0,
+`spawn reaper deploy` set no retention.)
+
 The flags:
-- `--regions`: the comma-separated regions to scan. **The default is the deploy region
-  only**, so list every region you launch in.
+- `--regions`: the comma-separated regions to scan. For a new reaper **the default is
+  the deploy region only**, so list every region you launch in. On a re-deploy the
+  default is the regions the existing reaper already scans.
 - `--schedule`: an EventBridge schedule expression. The default is
   `rate(10 minutes)`.
+- `--spot-requests` and `--net-resources`: `off`, `report` or `reap`, for the
+  [Spot request sweep](#the-spot-request-sweep) and the network-resource sweep
+  (`REAPER_SPOT_REQUESTS` and `REAPER_NET_RESOURCES`). The reaper's default for both
+  is `report`.
+- `--max-age`: the max-age ceiling, `REAPER_MAX_AGE`, such as `336h` or `14d`. The
+  reaper's default is 7 days.
+- `--notify-url`: an http(s) URL the reaper POSTs its notifications to
+  (`REAPER_NOTIFY_URL`). spawn never prints it. Pass `-` to read it from stdin, so it
+  doesn't appear on the command line or in your shell history.
+- `--log-retention-days`: how long CloudWatch keeps the reaper's logs. The default is
+  30. It must be a value CloudWatch accepts (1, 3, 5, 7, 14, 30, 60, 90, …). Below 30,
+  [`teardown --if-idle-for`](#removing-it) can see only that much history.
 - `--version`: the spawn release to take the Lambda from. The default is your CLI's
   version. The zip is downloaded from that GitHub release
   (`ttl-reaper_lambda_linux_arm64.zip`).
@@ -125,6 +144,15 @@ The flags:
 
 ```sh
 spawn reaper deploy --region eu-west-1 --regions eu-west-1,eu-central-1 --schedule "rate(30 minutes)"
+```
+
+The four `REAPER_*` flags are checked against what the reaper accepts before anything
+is created or changed. Each sets its variable only when you pass it. An empty value
+(`--max-age ""`) removes the variable, which returns the reaper to its default:
+
+```sh
+spawn reaper deploy --spot-requests reap --max-age 14d
+printf '%s\n' "$REAPER_WEBHOOK" | spawn reaper deploy --notify-url -
 ```
 
 ### 3. Read a dry-run cycle
@@ -154,12 +182,10 @@ This asks you to type `yes`; `--yes` skips the question. It sets `REAPER_DRY_RUN
 From the next run, the reaper terminates expired `spawn:managed` instances and deletes
 orphaned spawn-managed FSx filesystems. **Termination can't be undone.**
 
-Arming doesn't change the network-resource and Spot-request sweeps. A reaper deployed
-with `spawn reaper` leaves both at their default, `report`, and `spawn reaper` has no
-flag to change them, or to change `REAPER_MAX_AGE`. A value you set directly on the
-function is lost the next time you run `spawn reaper deploy`, which rewrites the
-function's environment and keeps only the armed state. If you need these settings,
-the [template deployment](#covering-several-accounts) exposes them as parameters.
+Arming doesn't change the network-resource and Spot-request sweeps. They stay at
+`report` until you set them with `spawn reaper deploy --net-resources` and
+`--spot-requests`. A value you set directly on the function's environment is kept
+by later deploys too.
 
 ### 5. Check on it
 
@@ -170,7 +196,7 @@ spawn reaper status
 ```text
 TTL reaper in account 123456789012 (us-east-1)
   Function:  spawn-ttl-reaper-selfscan
-  Version:   0.135.0
+  Version:   0.136.0
   State:     ARMED — it reclaims expired spawn-managed resources
   Schedule:  rate(10 minutes) (enabled)
   Scanning:  us-east-1,us-west-2
@@ -178,15 +204,14 @@ TTL reaper in account 123456789012 (us-east-1)
 
 If the schedule rule is disabled, `Schedule` says `DISABLED — it will not run`. That
 matters because an armed reaper that never runs protects nothing. If the reaper has run
-in the last 30 days and reclaimed nothing in that time, `status` says so. That's what a
-protected account with nothing expired looks like, and it's also how you'd know the
-reaper isn't needed any more. (The same caveat as
-[`--if-idle-for`](#removing-it) applies: a reaper deployed less than 30 days ago gets
-this message too.)
+and reclaimed nothing, `status` says for how long, measured as described under
+[`--if-idle-for`](#removing-it). That's what a protected account with nothing expired
+looks like, and it's also how you'd know the reaper isn't needed any more.
 
 `spawn reaper status` only knows about the reaper `spawn reaper deploy` creates
 (`spawn-ttl-reaper-selfscan`). In an account covered by a
-[template deployment](#covering-several-accounts), it reports `NOT DEPLOYED`. Use
+[template deployment](#covering-several-accounts), it reports `NOT DEPLOYED`
+([spawn#1157](https://github.com/spore-host/spawn/issues/1157)). Use
 `spawn doctor` there, which detects both.
 
 ## Keeping it current
@@ -199,7 +224,7 @@ the two differ:
 
 ```text
   Version:   0.131.1
-             this CLI is 0.135.0 — they are deployed independently, so re-run `spawn reaper deploy` to put 0.135.0 in the account
+             this CLI is 0.136.0 — they are deployed independently, so re-run `spawn reaper deploy` to put 0.136.0 in the account
 ```
 
 There's no separate upgrade command. To upgrade, run `deploy` again:
@@ -208,12 +233,15 @@ There's no separate upgrade command. To upgrade, run `deploy` again:
 spawn reaper deploy --regions us-east-1,us-west-2
 ```
 
-A re-deploy keeps an armed reaper armed. Pass `--regions` again, though: without it
-the scan list is reset to the deploy region. A re-deploy also resets every other
-`REAPER_*` setting on the function to its default, so a value you set by hand
-(such as `REAPER_SPOT_REQUESTS=reap` or `REAPER_MAX_AGE`) is lost (spawn#1136). Each version's zip is stored under its own
-key (`ttl-reaper/v<version>.zip`), so the bucket holds one zip per version you've
-deployed until teardown.
+A re-deploy keeps the existing reaper's settings: its armed state, the regions it
+scans, and every `REAPER_*` variable on the function, including any you set by hand,
+unless a flag on this run sets it. Two things are applied fresh on every deploy,
+though: the schedule (`--schedule`, default `rate(10 minutes)`) and the log
+retention (`--log-retention-days`, default 30). Pass them again if you changed them.
+(Before spawn v0.136.0, a re-deploy kept only the armed state, reset the regions to
+the deploy region and dropped every other `REAPER_*` setting.) Each version's zip is
+stored under its own key (`ttl-reaper/v<version>.zip`), so the bucket holds one zip
+per version you've deployed until teardown.
 
 ## Warnings at launch
 
@@ -246,7 +274,9 @@ from `--regions`, add the region and re-deploy.
 A `--spot` launch whose lifecycle can stop the instance (an idle timeout,
 `--on-idle`, `--on-complete stop|hibernate`, `--hibernate`) makes a **persistent** Spot
 request, because EC2 can only stop a Spot instance that came from one (since spawn
-v0.129.0). A terminate-only lifecycle still makes a one-time request. The request
+v0.129.0). A terminate-only lifecycle still makes a one-time request, and so does
+an idle timeout that terminates (`spawn service`, pool workers and `spawn burst`
+members) when nothing else could stop the instance. The request
 expires at the instance's TTL deadline, or at launch plus 7 days when there's no TTL
 (since v0.131.0).
 
@@ -275,11 +305,12 @@ cancels a live original instance's request because of the request's own deadline
 `spawn extend` doesn't update that tag, so it can be out of date, and cancelling the
 request would leave the instance unable to restart after its next stop.
 
-The setting is `REAPER_SPOT_REQUESTS` (the `SpotRequests` template parameter), and it
-takes `report` (the default), `reap` or `off`. In `report` mode it logs
+The setting is `REAPER_SPOT_REQUESTS` (`spawn reaper deploy --spot-requests`, or the
+`SpotRequests` template parameter), and it takes `report` (the default), `reap` or
+`off`. In `report` mode it logs
 `WOULD cancel orphaned spot request …` and acts on nothing. In `reap` mode it logs
 `CANCELLED orphaned spot request …` and `TERMINATED spot replacement …`. If you set a
-notification webhook (`REAPER_NOTIFY_URL`), it's notified either way.
+notification webhook (`REAPER_NOTIFY_URL`, `--notify-url`), it's notified either way.
 
 ### Replacements the reaper can't terminate
 
@@ -321,9 +352,11 @@ spawn reaper teardown
 ```
 
 This removes the schedule rule and its target, the invoke permission, the function,
-the role and its policies, and the artifact bucket. The bucket is removed only if it's
-tagged `spawn:managed=true` **and** holds nothing outside `ttl-reaper/`. Otherwise
-teardown keeps it and says why.
+the role and its policies, the log group, and the artifact bucket. The bucket is
+removed only if it's tagged `spawn:managed=true` **and** holds nothing outside
+`ttl-reaper/`. Otherwise teardown keeps it and says why.
+- `--keep-logs` leaves the log group, `/aws/lambda/spawn-ttl-reaper-selfscan`. It's
+  the only record of what the reaper did.
 - `--keep-artifacts` leaves the bucket in place.
 - `--force-artifacts` removes the bucket even if it isn't tagged, for buckets created
   before the tag existed. It still refuses a bucket holding anything outside
@@ -336,21 +369,21 @@ teardown keeps it and says why.
 spawn reaper teardown --if-idle-for 720h
 ```
 
-::: warning How idleness is measured today (spawn#1136)
 The check reads the last 30 days of the reaper's logs. The reaper counts as idle when
-it ran in that window and logged no `REAPED` line, and it's then treated as idle for
-the full 30 days. That has three consequences:
-- A reaper deployed recently counts as idle for 30 days after its first run.
-- A duration over `720h` never triggers a teardown.
-- Spot request cancellations aren't counted as work.
-
-Check `spawn reaper status` before relying on it.
-:::
+it ran in that window and logged no action: no instance or filesystem `REAPED`, Spot
+request `CANCELLED`, replacement `TERMINATED` or DNS record `EXPIRING`. It has been
+idle since its first run still in the logs, or since this deployment was created (its
+role's creation date), whichever is later. So a reaper deployed an hour ago has been
+idle for an hour, not 30 days. Because the logs go back 30 days at most, a duration
+over `720h` never triggers a teardown. (Before spawn v0.136.0, any reaper that had run
+without reaping counted as idle for the full 30 days, and only `REAPED` counted as
+work.)
 
 What teardown leaves behind:
-- the function's CloudWatch log group, `/aws/lambda/spawn-ttl-reaper-selfscan`;
+- the log group, if you pass `--keep-logs`. Before spawn v0.136.0, teardown always
+  left it;
 - a bucket you named with `--bucket` at deploy time, since teardown only looks for the
-  default bucket name;
+  default bucket name ([spawn#1157](https://github.com/spore-host/spawn/issues/1157));
 - the `spawn:reaper-first-seen` tags it wrote on security groups and placement groups.
 
 Before v0.127.0, teardown deliberately kept the artifact bucket. If you tore down with
@@ -407,7 +440,7 @@ The template exposes these as parameters, with their `make` variables:
 
 It also creates CloudWatch alarms on the reaper's own failures (on by default; send them
 to an SNS topic with `ALARM_TOPIC_ARN`) and a log group with 30-day retention. A
-`spawn reaper deploy` reaper has neither. The
+`spawn reaper deploy` reaper has the log group but no alarms. The
 [reaper README](https://github.com/spore-host/spawn/tree/main/lambda/ttl-reaper#readme)
 lists every setting and alarm.
 
@@ -428,17 +461,21 @@ comes from the code, not from a tested minimal policy:
 - **`deploy`**: `iam:GetRole`, `iam:CreateRole` (with tags), `iam:PutRolePolicy`,
   `iam:AttachRolePolicy` and `iam:PassRole` on the reaper role;
   `s3:CreateBucket`, `s3:PutBucketTagging`, `s3:PutObject` and access to check the
-  bucket exists; `lambda:GetFunction`, `lambda:CreateFunction`,
+  bucket exists; `logs:CreateLogGroup`, `logs:TagResource` (the group is created with
+  tags) and `logs:PutRetentionPolicy` on the reaper's log group;
+  `lambda:GetFunction`, `lambda:CreateFunction`,
   `lambda:UpdateFunctionCode`, `lambda:UpdateFunctionConfiguration`,
   `lambda:TagResource` and `lambda:AddPermission`; `events:PutRule` and
   `events:PutTargets`.
 - **`arm`**: `lambda:GetFunction` and `lambda:UpdateFunctionConfiguration`.
-- **`status`**: `lambda:GetFunction`, `events:DescribeRule` and
-  `logs:FilterLogEvents` (for the idleness report).
+- **`status`**: `lambda:GetFunction`, `events:DescribeRule`, and for the idleness
+  report `logs:FilterLogEvents` and `iam:GetRole` on the reaper role (its creation
+  date bounds the answer).
 - **`teardown`**: `events:RemoveTargets`, `events:DescribeRule`, `events:DeleteRule`,
   `lambda:RemovePermission`, `lambda:DeleteFunction`, `iam:DeleteRolePolicy`,
-  `iam:DetachRolePolicy`, `iam:DeleteRole`, `s3:GetBucketTagging`, `s3:ListBucket`,
-  `s3:DeleteObject` and `s3:DeleteBucket`.
+  `iam:DetachRolePolicy`, `iam:DeleteRole`, `logs:DeleteLogGroup` (unless
+  `--keep-logs`), `s3:GetBucketTagging`, `s3:ListBucket`, `s3:DeleteObject` and
+  `s3:DeleteBucket`. `--if-idle-for` also needs what `status` needs for idleness.
 
 Every subcommand also calls `sts:GetCallerIdentity`. For spawn's other permissions,
 see [IAM permissions](/reference/iam-permissions).
@@ -450,8 +487,8 @@ Nobody has measured the cost of running the reaper. What's known is its shape:
   `rate(10 minutes)`, at 256 MB on arm64;
 - each run's duration depends on how many regions it scans and how many spawn
   resources are in them, and it's capped by the 900-second timeout;
-- CloudWatch Logs for each run's output. A `spawn reaper deploy` reaper sets no
-  retention on its log group, so its logs are kept until you delete them;
+- CloudWatch Logs for each run's output, kept for `--log-retention-days` (30 by
+  default);
 - one zip in S3 per version deployed.
 
 To see the actual cost, look up the function in your bill or Cost Explorer. A longer

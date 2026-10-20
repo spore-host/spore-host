@@ -69,8 +69,9 @@ spawn doesn't cap `--ttl`. The TTL reaper does: by default it reclaims any insta
 older than 7 days, whatever its deadline, because `spawn:ttl-deadline` can be
 rewritten from the instance and so can't be the only bound. spawn warns at launch
 when a `--ttl` is longer than that. To keep instances longer, raise
-`REAPER_MAX_AGE` on a [template-deployed reaper](/guides/reaper#covering-several-accounts);
-`spawn reaper deploy` can't keep that setting today (spawn#1136).
+`REAPER_MAX_AGE` on the reaper: `spawn reaper deploy --max-age 336h` (spawn v0.136.0
+or later; later re-deploys keep it), or the `MaxAge` parameter of a
+[template-deployed reaper](/guides/reaper#covering-several-accounts).
 
 `--ttl 0` is rejected ("must be greater than zero"). To launch without a TTL, omit
 `--ttl` (with no `--idle-timeout` either, a 1h idle timeout applies) or pass

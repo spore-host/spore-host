@@ -65,8 +65,34 @@ spore.host also has a **suite-wide config layer** (`sporeconfig`) so you can pin
 
 `SPORE_PROFILE`/`SPORE_REGION` override `AWS_PROFILE`/`AWS_REGION` for spore.host tools only, leaving the plain AWS CLI unaffected. `SPORE_ACCOUNT` (or `--account`) records the AWS account you expect.
 
-::: warning The account guard is only partly enforced
-Today **truffle and lagotto** stop before acting when your credentials resolve to a different account than **`--account`** says. They don't read `SPORE_ACCOUNT`. **spawn** checks neither outside `spawn doctor`, which reports a mismatch: `spawn --account … launch` launches anyway ([spawn#1118](https://github.com/spore-host/spawn/issues/1118), [truffle#206](https://github.com/spore-host/truffle/issues/206)). Run `spawn doctor` to confirm which account you're in.
+### The account guard
+
+When an account is pinned, by `--account`, `SPORE_ACCOUNT` or `account =` in
+`~/.config/spore/config.toml`, **spawn** checks your credentials with
+`sts:GetCallerIdentity` before it first uses them, on every command that touches
+AWS (since v0.135.2; before, only `spawn doctor` read it). It refuses, naming both
+accounts, when they resolve to a different account, and also when the account
+can't be determined:
+
+```text
+--account 111111111111: the current AWS credentials belong to account 222222222222; refusing to continue (check --profile / SPORE_PROFILE / AWS_PROFILE)
+```
+
+- The check runs once per set of credentials. Commands that never touch AWS
+  (`version`, `completion`, `help`) make no STS call, and with no account pinned
+  there's no extra call at all.
+- Credentials for spawn's control-plane account that come through a dedicated
+  infra profile (`SPAWN_INFRA_PROFILE`) are exempt, because that account is
+  separate by design. When the infra calls use your own profile, they're checked
+  like everything else. The compute profile, where instances launch, is always
+  checked.
+- `spawn doctor` reports a mismatch as a failed `account` check and stops there,
+  without probing the account you said you didn't mean.
+
+::: warning truffle and lagotto
+**truffle and lagotto** stop before acting when your credentials resolve to a
+different account than **`--account`** says. They don't read `SPORE_ACCOUNT`
+([truffle#206](https://github.com/spore-host/truffle/issues/206)).
 :::
 
 ## Authentication vs permissions vs "what runs where"

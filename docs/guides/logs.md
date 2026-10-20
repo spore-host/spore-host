@@ -112,7 +112,7 @@ skips the cache and fetches again.
 spawn still has to find the instance in EC2 before it looks in the cache. EC2
 lists a terminated instance for only a while after it ends, and after that
 `spawn logs` reports `no instance found matching "my-job", alive or recently
-terminated`, even if a cached copy exists (spawn#1139). The file is plain text,
+terminated`, even if a cached copy exists (spawn#1160). The file is plain text,
 so you can read it directly:
 
 ```sh

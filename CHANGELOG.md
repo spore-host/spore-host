@@ -31,6 +31,26 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **Docs updated for spawn v0.135.2 and v0.136.0.** IAM permissions: launch
+  verification reads spored's heartbeat tag with `ec2:DescribeInstances`, so the
+  SSM statements are optional for launch (#605); new sections for worker-pool
+  and reaper permissions (`logs:*` for `spawn reaper deploy`/`teardown`, the
+  `iam:Delete*` set `spawn pool drain` uses). The reaper guide documents
+  `deploy --spot-requests`, `--net-resources`, `--max-age`, `--notify-url` and
+  `--log-retention-days`, `teardown --keep-logs`, settings kept across
+  re-deploys and the corrected idleness measure, and drops the warnings for the
+  fixed bugs. Tasks and pools: `env` reaches containers, the 2 GiB container
+  memory floor and `instance_health`, `--wait` exit codes, `task status`
+  reconciling with EC2, `spawn terminate` flushing task logs, per-pool IAM
+  roles, `pool create --cost-limit`/`--container`, `pool drain --wait`, and
+  workers that terminate. Also: `spawn:terminate-on-idle` and
+  `spawn:last-heartbeat` tags, idle termination for `spawn service`, pools and
+  `spawn burst`, the 8h `spawn app launch` default TTL, the account guard on
+  every spawn command, `exponential-jitter` and optional `queue_id` in batch
+  queues, `--efa`/`--placement-group` without `--mpi`, `--completion-file` with
+  `--command`/`--mpi-command`, spored on EL8 and SELinux AMIs, and the "spored
+  never came up" vs "could not be verified" messages. Warnings for still-open
+  issues now point at their successor issues.
 - **Removed `docs/DNSSEC_CONFIGURATION.md`.** It was a one-off operator runbook
   from 2025-12, kept off the site but published in the repo. It still said
   "pending registrar update", but DNSSEC for spore.host has been live since then

@@ -34,13 +34,15 @@ on AMIs spawn builds.
 | `spawn:ttl-deadline` | `2026-04-30T21:00:00Z` | **Authoritative** termination deadline, written together with `spawn:ttl`. This is what spored and the [TTL reaper](/guides/reaper) enforce. It keeps counting while the instance is stopped; `spawn extend` moves it. |
 | `spawn:on-complete` | `terminate` | Action when the workload signals completion: `terminate`, `stop`, or `hibernate`. It has nothing to do with the TTL: TTL expiry always terminates. |
 | `spawn:completion-file` | `/tmp/SPAWN_COMPLETE` | File whose appearance signals completion. Written only when `spawn:on-complete` is set. |
-| `spawn:idle-timeout` | `30m` | Stop (or hibernate) if idle for this duration. Never terminates. |
+| `spawn:idle-timeout` | `30m` | Stop (or hibernate) if idle for this duration. Terminates instead when `spawn:terminate-on-idle` is set. |
 | `spawn:hibernate-on-idle` | `true` | Hibernate instead of stopping when idle (set by `--on-idle hibernate`). |
+| `spawn:terminate-on-idle` | `true` | Terminate instead of stopping when idle. Takes precedence over `spawn:hibernate-on-idle`. spawn sets it on `spawn service` instances, pool workers and `spawn burst` members, which have nothing to come back to. Needs spored v0.136.0 or later; an older spored stops the instance. |
 | `spawn:session-timeout` | `30m` | Auto-logout for idle shells (sets `TMOUT` for login shells). `0` disables it. It doesn't stop or terminate the instance. |
 | `spawn:cost-limit` | `50.0000` | Terminate when cumulative **compute + EBS** cost reaches this amount (USD). Compute accumulates across stop/resume; EBS accrues on wall-clock time, including while stopped. FSx/EFS are not counted. |
 | `spawn:price-per-hour` | `0.192000` | On-demand hourly rate, written at launch. spored computes cost and enforces `spawn:cost-limit` from it. |
 | `spawn:price-source` | `live` | Where `spawn:price-per-hour` came from: `live` (the AWS Price List, at launch) or `static` (truffle's built-in fallback table). |
 | `spawn:compute-seconds` | `5400` | Cumulative running seconds across stop/start cycles. Written by spored every few minutes. |
+| `spawn:last-heartbeat` | `2026-10-19T14:03:00Z` | Written by spored about once a minute while it runs, on Linux and Windows. `spawn launch` waits for it to confirm spored came up, and the [reaper](/guides/reaper) reports running instances whose heartbeat is more than 10 minutes old. |
 
 `spawn:ttl-remaining` is no longer written: spawn stopped writing it when
 stopping an instance. You may still see it on instances stopped by an older spawn;

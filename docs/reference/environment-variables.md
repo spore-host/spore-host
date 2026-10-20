@@ -26,7 +26,7 @@ The suite-wide [`sporeconfig`](/guides/aws-auth) layer (all CLIs), resolved flag
 |----------|-------------|
 | `SPORE_PROFILE` | AWS profile for spore.host tools (overrides `AWS_PROFILE` for them) |
 | `SPORE_REGION` | Default region for spore.host tools |
-| `SPORE_ACCOUNT` | Expected AWS account ID. Only `spawn doctor` checks it today; truffle and lagotto enforce the `--account` flag, not this variable, and spawn enforces neither ([spawn#1118](https://github.com/spore-host/spawn/issues/1118)) |
+| `SPORE_ACCOUNT` | Expected AWS account ID. spawn refuses to act when your credentials resolve to a different account, or to one it can't determine (since v0.135.2). truffle and lagotto enforce the `--account` flag, not this variable. See [the account guard](/guides/aws-auth#the-account-guard) |
 
 ```sh
 # Use a named profile

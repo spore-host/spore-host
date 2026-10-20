@@ -39,7 +39,7 @@ launch won't work.
 | `AWS CLI available` | `aws` on your `PATH` | ⚠ (needed for `aws login`) |
 | `SSH key` | `~/.ssh/id_ed25519`, `id_rsa` or `id_ecdsa`, or a spawn-managed key | ⚠ (spawn generates a key for you) |
 | `AWS credentials` | `sts:GetCallerIdentity` | ✗, and every AWS check after it is skipped |
-| `account` | The account your credentials resolve to | ✗ if it isn't the one in `SPORE_ACCOUNT` or `--account` |
+| `account` | The account your credentials resolve to | ✗ if it isn't the one in `--account`, `SPORE_ACCOUNT` or the config file's `account`. doctor then stops: the report holds only the credentials and account checks |
 | `region` | The resolved region | ✗ if there isn't one |
 | `EC2 describe permission` | `ec2:DescribeInstances` | ✗ |
 | `EC2 launch permission` | `ec2:RunInstances` with `DryRun` | ✗ |
@@ -256,7 +256,7 @@ portal's endpoint.
 ### Disconnecting an account
 
 There's no command for this yet
-([spawn#457](https://github.com/spore-host/spawn/issues/457)). Removing the role
+([spore-host#602](https://github.com/spore-host/spore-host/issues/602)). Removing the role
 cuts off the portal's access:
 
 ```sh
@@ -266,7 +266,7 @@ aws iam delete-role --role-name spore-portal-onboard
 ```
 
 Deleting the role doesn't remove the portal's record of the account; that's
-what spawn#457 is about.
+what spore-host#602 is about.
 
 ## See also
 

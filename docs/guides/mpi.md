@@ -55,6 +55,27 @@ spawn launch \
 
 `--efa` requires an EFA-supported instance type (p4d, hpc7g, c5n, and others). spore.host automatically selects an EFA-enabled security group and places all instances in a cluster placement group for lowest latency.
 
+### EFA without `--mpi`
+
+Since spawn v0.135.2, `--efa` and `--placement-group` also take effect on a
+launch without `--mpi`. That's how to build an EFA fleet of **different instance
+types**, such as a GPU client and CPU proxies, which can't be one MPI job array.
+(Before v0.135.2 both flags were silently ignored without `--mpi`: the instance
+came up with a plain ENA interface and outside the placement group.)
+
+Without `--mpi`, spawn doesn't create the security group EFA needs, one that
+admits all traffic from itself. Create it yourself and pass it with
+`--security-group-ids`, along with the same cluster placement group for every
+instance. Without `--mpi`, spawn doesn't create the placement group either, so it
+must already exist
+([spawn#1168](https://github.com/spore-host/spawn/issues/1168) tracks having spawn
+create it):
+
+```sh
+spawn launch --name efa-client --instance-type p5.48xlarge --efa --placement-group my-efa-group --security-group-ids sg-0123456789abcdef0 --ttl 4h
+spawn launch --name efa-proxy --instance-type c7gn.16xlarge --efa --placement-group my-efa-group --security-group-ids sg-0123456789abcdef0 --ttl 4h
+```
+
 ## Instance placement
 
 By default, MPI clusters are placed in a cluster placement group named `spawn-mpi-<job-array-name>-<az>` for minimum latency. spawn creates it on demand in whichever AZ the cluster lands in (so [AZ fallback](#availability-zone-fallback) can pick a zone with capacity), and cleans up the groups for any AZs it tried and moved on from. If you have an existing placement group:
