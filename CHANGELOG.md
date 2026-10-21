@@ -196,6 +196,11 @@ own changelogs for CLI releases.
   spore.host publishes no images (#392), so the script builds into your own
   registry, and that the default alias `f8g1e7l5` is the beta account's.
 
+### Security
+- **Built with Go 1.26.10** for GO-2026-6809 (disclosed 2026-10-21), which
+  makes `crypto/x509` distrust compromised intermediate certificates. The CI
+  Go pin moves 1.26.9 → 1.26.10.
+
 ### Changed
 - **The ParaView catalog container is now based on Ubuntu 26.04 LTS** (from
   24.04). Built for linux/amd64 and checked: every apt package resolves, no
