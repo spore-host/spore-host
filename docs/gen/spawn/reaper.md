@@ -22,7 +22,7 @@ the reaper terminates instances, and that is not reversible.
 
   spawn doctor                 # does anything cover this account today?
   spawn reaper deploy          # install it, unarmed
-  spawn reaper status          # deployed? armed? on what schedule?
+  spawn reaper status          # deployed? armed? on what schedule? covered anyway?
   spawn reaper arm             # start actually reclaiming
   spawn reaper teardown        # remove it
 
@@ -60,13 +60,21 @@ spawn reaper arm [flags]
 ### `spawn reaper deploy`
 
 Create the reaper's execution role, upload its Lambda artifact to a bucket in
-this account, create the function, and put it on a schedule.
+this account, create its log group with a retention (30 days by default), create
+the function, and put it on a schedule.
 
 Deploys with dry-run ON. Nothing is reclaimed until 'spawn reaper arm'.
 
 The artifact comes from the spawn GitHub Release matching --version (default: this
 binary's version). --artifact overrides that with a local path or an explicit URL, for
 mirrored or air-gapped environments.
+
+Re-running it upgrades an existing reaper in place and keeps its settings: the
+armed state, the scanned regions and every other REAPER_* variable stay as they
+are unless a flag here sets them. --spot-requests, --net-resources, --max-age and
+--notify-url set the matching variable; pass an empty value ("") to remove one
+and return the reaper to its default. The notify URL is never printed; pass "-"
+to read it from stdin instead of the command line.
 
 ```
 spawn reaper deploy [flags]
@@ -78,8 +86,14 @@ spawn reaper deploy [flags]
 |------|-------|------|---------|-------------|
 | `--artifact` |  | string |  | Use this Lambda zip instead of downloading a release asset (local path or URL) |
 | `--bucket` |  | string |  | S3 bucket in THIS account to hold the artifact (default: spawn-reaper-artifacts-&lt;account&gt;-&lt;region&gt;) |
-| `--regions` |  | string |  | Comma-separated regions for the reaper to scan (default: the deploy region) |
-| `--schedule` |  | string | `rate(10 minutes)` | EventBridge schedule expression |
+| `--elastic-ips` |  | string |  | Orphaned launch Elastic IP sweep, REAPER_ELASTIC_IPS: off\|report\|reap (default: keep; the reaper's default is reap, or off when REAPER_NET_RESOURCES=off) |
+| `--log-retention-days` |  | int32 |  | Days CloudWatch keeps the reaper's logs, a value CloudWatch accepts: 1, 3, 5, 7, 14, 30, 60, 90, ... (default: keep the existing reaper's; 30 for a new one). Below 30, 'teardown --if-idle-for' can see at most that much history |
+| `--max-age` |  | string |  | Max-age ceiling, REAPER_MAX_AGE, e.g. 336h or 14d (default: keep; the reaper's default is 7d) |
+| `--net-resources` |  | string |  | Network-resource sweep, REAPER_NET_RESOURCES: off\|report\|reap (default: keep; the reaper's default is report) |
+| `--notify-url` |  | string |  | URL the reaper POSTs notifications to, REAPER_NOTIFY_URL; never printed. "-" reads it from stdin (default: keep) |
+| `--regions` |  | string |  | Comma-separated regions for the reaper to scan (default: keep the existing reaper's; the deploy region for a new one) |
+| `--schedule` |  | string |  | EventBridge schedule expression (default: keep the existing reaper's; rate(10 minutes) for a new one) |
+| `--spot-requests` |  | string |  | Orphaned Spot-request sweep, REAPER_SPOT_REQUESTS: off\|report\|reap (default: keep; the reaper's default is report) |
 | `--version` |  | string |  | spawn release to take the reaper artifact from (default: this binary's version) |
 
 ### `spawn reaper status`
@@ -92,8 +106,9 @@ spawn reaper status
 
 ### `spawn reaper teardown`
 
-Remove the reaper from this account: the schedule, the Lambda, its role, and
-the S3 bucket holding its artifact.
+Remove the reaper from this account: the schedule, the Lambda, its role, its
+CloudWatch log group, and the S3 bucket holding its artifact. --keep-logs leaves the
+log group, which is the only record of what the reaper did.
 
 The bucket used to be left behind deliberately (#653). Under "leave no trace"
 that is wrong — an idle reaper that tidied everything except a bucket has left a
@@ -105,6 +120,10 @@ ttl-reaper/; a bucket that fails either check is reported and kept, with
 --force-artifacts to override. So the liberty is only taken over a bucket that is
 provably spawn's and holds only spawn's artifacts.
 
+The bucket is the one deploy used. Deploy records it on the function
+(spawn:artifact-bucket); --bucket overrides that, and is needed for a reaper
+deployed with --bucket by a spawn older than that record.
+
 ```
 spawn reaper teardown [flags]
 ```
@@ -113,7 +132,9 @@ spawn reaper teardown [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
+| `--bucket` |  | string |  | Artifact bucket to remove (default: the one recorded on the function at deploy time, else spawn-reaper-artifacts-&lt;account&gt;-&lt;region&gt;) |
 | `--force-artifacts` |  | bool |  | Remove the artifact bucket even if it is not tagged spawn:managed=true (for buckets created before the tag existed) |
-| `--if-idle-for` |  | duration | `0s` | Only tear down if the reaper has reclaimed nothing for at least this long (e.g. 720h); otherwise report and exit 0 |
+| `--if-idle-for` |  | duration | `0s` | Only tear down if the reaper has reclaimed nothing for at least this long, at most 720h (the logs it reads); otherwise report and exit 0 |
 | `--keep-artifacts` |  | bool |  | Leave the artifact bucket in place (it is removed by default) |
+| `--keep-logs` |  | bool |  | Leave the reaper's CloudWatch log group in place (it is removed by default) |
 
