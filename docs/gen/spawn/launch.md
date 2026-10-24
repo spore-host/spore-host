@@ -14,7 +14,7 @@ Examples:
   spawn launch
 
   # From truffle
-  truffle search m7i.large | spawn launch
+  truffle find m7i.large | spawn launch
 
   # Direct
   spawn launch --instance-type m7i.large --region us-east-1
@@ -27,8 +27,8 @@ spawn launch <name> [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--active-ports` |  | string |  | TCP ports whose established connections are counted and reported (the spawn:logged-in-count tag). They do NOT prevent idle termination: an abandoned browser tab holds a connection open forever. To keep a busy app alive, use --active-processes (e.g. '8787' for RStudio, '8787,8888' for RStudio+Jupyter) |
-| `--active-processes` |  | string |  | Process names to monitor, prevents idle termination while any are running (e.g. 'rsession' for RStudio, 'rsession,jupyter' for multiple) |
+| `--active-ports` |  | string |  | TCP ports whose established connections are counted and reported (the spawn:logged-in-count tag). They do NOT prevent the idle stop: an abandoned browser tab holds a connection open forever. To keep a busy app alive, use --active-processes (e.g. '8787' for RStudio, '8787,8888' for RStudio+Jupyter) |
+| `--active-processes` |  | string |  | Process names to monitor, prevents the idle stop while any are running (e.g. 'rsession' for RStudio, 'rsession,jupyter' for multiple) |
 | `--allow-cidr` |  | string |  | CIDR allowed to reach the managed Windows security group (RDP 3389 + SSH 22); default 0.0.0.0/0 |
 | `--allow-cost-limit-overrun` |  | bool |  | Proceed even when the storage this launch creates exceeds --cost-limit on its own. You are committing to a bill the cap cannot bound. |
 | `--ami` |  | string |  | AMI ID (ami-...); omit or use 'auto' to auto-detect the latest AL2023 |
@@ -49,8 +49,10 @@ spawn launch <name> [flags]
 | `--detach` |  | bool |  | Run sweep orchestration in Lambda (auto-enabled for parameter sweeps) |
 | `--dns-api-endpoint` |  | string |  | Lambda Function URL of a custom DNS updater (https://&lt;id&gt;.lambda-url.&lt;region&gt;.on.aws/). Also SPAWN_DNS_API_ENDPOINT, dns.api_endpoint in ~/.spawn/config.yaml, or SSM /spawn/dns/api_endpoint |
 | `--dns-domain` |  | string |  | Register DNS under this zone instead of spore.host (needs an updater serving it; see docs/custom-dns.md). Also SPAWN_DNS_DOMAIN, dns.domain in ~/.spawn/config.yaml, or SSM /spawn/dns/domain |
+| `--dns-function-arn` |  | string |  | ARN of the Lambda function behind --dns-api-endpoint; the instance role is granted lambda:InvokeFunctionUrl on it (required with a custom endpoint). Also SPAWN_DNS_FUNCTION_ARN, dns.function_arn in ~/.spawn/config.yaml, or SSM /spawn/dns/function_arn |
 | `--dns` |  | string |  | Override DNS name if different from --name (advanced) |
 | `--dry-run` |  | bool |  | Resolve and print the launch configuration without launching anything (no AWS mutation) |
+| `--efa-interfaces` |  | int |  | With --efa: number of EFA interfaces, one per network card (0 = every EFA the instance type supports; 1 = a single interface). More than one gets its public IP from an Elastic IP, released on terminate |
 | `--efa` |  | bool |  | Enable Elastic Fabric Adapter for ultra-low latency MPI (requires supported instance types) |
 | `--efs-id` |  | string |  | EFS filesystem ID to mount (fs-xxx) |
 | `--efs-mount-options` |  | string |  | Custom EFS mount options (overrides profile) |
@@ -77,7 +79,7 @@ spawn launch <name> [flags]
 | `--iam-role-tags` |  | stringSlice |  | Tags for IAM role (key=value format) |
 | `--iam-role` |  | string |  | IAM role name (creates if doesn't exist) |
 | `--iam-trust-services` |  | stringSlice | `[ec2]` | Services that can assume role |
-| `--idle-timeout` |  | string |  | Auto-terminate if idle, e.g. 30m, 2h, 1d (defaults to 1h if neither --ttl nor --idle-timeout set) |
+| `--idle-timeout` |  | string |  | Stop the instance after this much idleness (see --on-idle), e.g. 30m, 2h, 1d (defaults to 1h if neither --ttl nor --idle-timeout set) |
 | `--instance-names` |  | string |  | Instance name template (e.g., 'worker-{index}', default: '{job-array-name}-{index}') |
 | `--instance-profile` |  | string |  | Attach this EXISTING IAM instance profile by name, bypassing all --iam-role/--iam-policy/--iam-policy-file resolution and the spored-instance-profile default entirely. Use when you need a deterministic, auditable choice instead of spawn's create/reuse heuristic (#550) — e.g. a profile you've already scoped to a specific data bucket. |
 | `--instance-type` |  | string |  | Instance type |
@@ -144,7 +146,7 @@ spawn launch <name> [flags]
 | `--volume-size` |  | int32 |  | Root EBS volume size in GiB (0 = use AMI default) |
 | `--vpc` |  | string |  | VPC ID |
 | `--wait-for-running` |  | bool | `true` | Wait until running |
-| `--wait-for-ssh` |  | bool | `true` | Wait until SSH is ready |
+| `--wait-for-ssh` |  | bool | `true` | Wait until SSH is ready, then verify spored came up (false skips both) |
 | `--wait-timeout` |  | string |  | Timeout for --wait (e.g., 2h, 30m, 0=no timeout) |
 | `--wait` |  | bool |  | Wait for sweep/launch to complete (requires --detach) |
 | `--webhook-correlation` |  | string |  | Opaque blob echoed verbatim in the spot-webhook/completion-webhook payload so a consumer can correlate the event to its own record (never parsed by spawn) |
