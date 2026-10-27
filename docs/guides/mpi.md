@@ -115,10 +115,10 @@ spawn launch \
 
 ## Imaging a cluster node
 
-Every node authorizes the cluster's SSH key for root, because `mpirun` reaches the other ranks over ssh. Since spawn v0.147.0, `spawn ami create` run on a cluster node takes that key out of root's `authorized_keys` for the snapshot and puts it back on the running node afterwards, so the image doesn't authorize the cluster's key ([spawn#1343](https://github.com/spore-host/spawn/issues/1343)). Your own keys are kept. Rank 0 must still be running when you image a non-zero rank, because spawn matches its key exactly. Otherwise spawn warns.
+Every node authorizes the cluster's SSH key for root, because `mpirun` reaches the other ranks over ssh. `spawn ami create` leaves the source node's keys alone, because the cluster may still be running. Since spawn v0.147.0, an instance launched from an image of a cluster node removes the old cluster's key at its first boot: every line in `/root/.ssh/authorized_keys` that ends in `spawn-mpi-cohort` ([spawn#1343](https://github.com/spore-host/spawn/issues/1343)). Your own keys are kept, and a new `--mpi` cluster then installs its own key.
 
 ::: warning Images of a non-zero rank made before v0.147.0
-On those nodes, an earlier spawn installed rank 0's public key with ssh-keygen's default comment (`root@ip-...`). An image of such a node keeps that line, and every instance launched from it authorizes the old cluster's rank-0 key for root. The image doesn't record that it came from an MPI node, so spawn can't warn you about it. Rebuild it: launch an instance from the image, delete the `root@ip-...` line in `/root/.ssh/authorized_keys` that isn't yours, then run `spawn ami create` again and delete the old image. Images of rank 0, and images made with v0.147.0 or later, don't need this.
+On those nodes, an earlier spawn installed rank 0's public key with ssh-keygen's default comment (`root@ip-...`) instead of `spawn-mpi-cohort`, so nothing can tell it apart from your own keys. An image of such a node keeps the line, and every instance launched from it authorizes the old cluster's rank-0 key for root. The image doesn't record that it came from an MPI node, so spawn can't warn you. Rebuild it: launch an instance from the image, delete the `root@ip-...` line in `/root/.ssh/authorized_keys` that isn't yours, run `spawn ami create` on that instance, and delete the old image.
 :::
 
 ## Shared storage with FSx Lustre
