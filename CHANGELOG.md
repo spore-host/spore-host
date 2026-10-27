@@ -31,6 +31,12 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **MPI guide: imaging a cluster node** ([spawn#1343](https://github.com/spore-host/spawn/issues/1343)).
+  Explains that `spawn ami create` (spawn v0.147.0+) keeps the cluster's SSH
+  key out of the image, and how to rebuild an image of a non-zero rank made
+  by an earlier spawn, which still authorizes the old rank-0 key for root and
+  can't be detected from the image's tags.
+
 - **Docs updated for spawn v0.135.2 and v0.136.0.** IAM permissions: launch
   verification reads spored's heartbeat tag with `ec2:DescribeInstances`, so the
   SSM statements are optional for launch (#605); new sections for worker-pool
