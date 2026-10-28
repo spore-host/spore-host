@@ -113,6 +113,14 @@ spawn launch \
   --mpi-command './sim'
 ```
 
+## Imaging a cluster node
+
+Every node authorizes the cluster's SSH key for root, because `mpirun` reaches the other ranks over ssh. `spawn ami create` leaves the source node's keys alone, because the cluster may still be running. Since spawn v0.147.0, an instance launched from an image of a cluster node removes the old cluster's key at its first boot: every line in `/root/.ssh/authorized_keys` that ends in `spawn-mpi-cohort` ([spawn#1343](https://github.com/spore-host/spawn/issues/1343)). Your own keys are kept, and a new `--mpi` cluster then installs its own key.
+
+::: warning Images of a non-zero rank made before v0.147.0
+On those nodes, an earlier spawn installed rank 0's public key with ssh-keygen's default comment (`root@ip-...`) instead of `spawn-mpi-cohort`, so nothing can tell it apart from your own keys. An image of such a node keeps the line, and every instance launched from it authorizes the old cluster's rank-0 key for root. The image doesn't record that it came from an MPI node, so spawn can't warn you. Rebuild it: launch an instance from the image, delete the `root@ip-...` line in `/root/.ssh/authorized_keys` that isn't yours, run `spawn ami create` on that instance, and delete the old image.
+:::
+
 ## Shared storage with FSx Lustre
 
 For large datasets that all cluster nodes need to read, attach an FSx Lustre filesystem:

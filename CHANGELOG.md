@@ -31,6 +31,13 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **MPI guide: imaging a cluster node** ([spawn#1343](https://github.com/spore-host/spawn/issues/1343)).
+  Explains that from spawn v0.147.0 an instance launched from an image of a
+  cluster node drops the old cluster's `spawn-mpi-cohort` key at first boot.
+  Also how to rebuild an image of a non-zero rank made by an earlier spawn:
+  its untagged rank-0 key can't be told from a user's key, and the image's
+  tags give no way to detect it.
+
 - **Docs updated for spawn v0.135.2 and v0.136.0.** IAM permissions: launch
   verification reads spored's heartbeat tag with `ec2:DescribeInstances`, so the
   SSM statements are optional for launch (#605); new sections for worker-pool
