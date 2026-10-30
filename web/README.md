@@ -1,300 +1,126 @@
-# Spore.host Web Interface
+# web/: the spore.host site and portal
 
-Landing page and future web dashboard for managing spores (EC2 instances).
+Two things live here and ship together to `s3://spore-host-website` behind
+CloudFront:
 
-## 📁 Structure
+- **The marketing pages**: `index.html` (the landing page), `privacy.html`,
+  `terms.html` and `library.html`. Plain HTML and CSS with no build step.
+- **The portal** at <https://spore.host/app>: a Vite + TypeScript single-page app
+  in `app/` that runs the spore.host tools in the browser. It is driven by the
+  same libraries the CLIs are ported to:
+  [`@spore-host/spawn-ts`](https://github.com/spore-host/spawn-ts),
+  [`@spore-host/truffle-ts`](https://github.com/spore-host/truffle-ts) and
+  [`@spore-host/lagotto-ts`](https://github.com/spore-host/lagotto-ts). There is
+  no portal backend of its own. AWS calls go from the tab to AWS with the signed-in
+  user's short-lived credentials, and the account-wide features (cost history,
+  teams, the software catalog, Slack) call the shared dashboard API at
+  `api.spore.host`.
+
+`dashboard.html` and `js/` are the older dashboard. The build does not copy them
+into `dist/` (see `scripts/copy-static.mjs`), and whether to retire them is an
+open decision, so they are left as they are.
+
+## Layout
 
 ```
 web/
-├── index.html          # Landing page
-├── dashboard.html      # Dashboard page
-├── css/
-│   └── style.css      # Spore-themed styling
-├── js/
-│   └── main.js        # Interactive features & API client
-└── README.md          # This file
+├── index.html, privacy.html, terms.html, library.html   marketing pages (no build)
+├── css/style.css          styles for the marketing pages and the portal
+├── assets/                images, brand files, the vendored Rive runtime
+├── app/                   the portal
+│   ├── index.html         entry point (the only Vite input)
+│   ├── main.ts            boot: config, session, shell
+│   ├── shell.ts           header, sidebar, sign-in gate, hash router
+│   ├── config.ts          build-time defaults, overridable per visit (?region=…)
+│   ├── session.ts         in-memory credentials, expiry warning, disclosure level
+│   ├── disclosure.ts      the guided / standard / expert levels
+│   ├── pricing.ts         the one place an instance type becomes a shown price
+│   ├── finderror.ts       wording for a truffle query that can't be read
+│   ├── auth/              Globus sign-in → STS AssumeRoleWithWebIdentity
+│   ├── guided/            the curated "what are you doing?" picker and launch flow
+│   └── surfaces/          one file per tool, listed in surfaces/registry.ts
+├── scripts/copy-static.mjs   copies the marketing pages + css/assets into dist/
+├── vite.config.ts         build and test config
+└── package.json           the three -ts libraries + Vite, TypeScript, Vitest
 ```
 
-## 🎨 Current Features
+## Surfaces
 
-### Landing Page
-- Hero section with adaptive logo
-- Installation instructions (Homebrew, Scoop, Manual)
-- Feature showcase for all six tools: Truffle, Spawn, Spored, Lagotto, Spore-bot, and the MCP server
-- Key features grid
-- Usage examples
-- Coming Soon section for web dashboard
+Each tool is a `ToolSurface` in `app/surfaces/`, loaded lazily the first time it
+is opened. Adding a tool means adding one surface file and one entry in
+`surfaces/registry.ts`.
 
-### Design
-- Dark theme with bioluminescent glow effects
-- Spore-inspired color palette (blues and greens)
-- Responsive design for mobile/tablet/desktop
-- Smooth animations and transitions
-- OS-aware default installation tab
+| Surface | Sign-in | What it does |
+|---|---|---|
+| Instances | yes | spawn-ts's Dashboard: launch, list, terminate, cost meters, orphans. At guided, the curated picker and a one-button launch replace the launch form. |
+| Find instances | no | truffle-ts's natural-language search over its bundled catalog. Works offline. At guided, the curated picker. |
+| Terminal | yes | A shell on an instance over SSM Session Manager (no SSH, no port 22). |
+| Cost history | yes | The account's spend over time, from the dashboard API. |
+| Software catalog | no | The strata formations, from the dashboard API. |
+| Teams | yes | Team membership, from the dashboard API. Read-only at guided. |
+| Slack | no | Connects a Slack workspace through the dashboard API's OAuth flow. |
+| Watch capacity | yes | lagotto-ts's `CapacityWatcher` polling for an instance type to become available, in this tab only. |
+| Connect account | no | Bring your own AWS account through a CloudFormation quick-create link. |
 
-## 🚀 Future: Web Dashboard
+**Disclosure levels.** One setting in the header, guided, standard or expert,
+changes what every surface shows. Guided replaces free-text and pattern fields
+with curated cards, and expert adds per-row detail.
 
-The landing page is designed to evolve into a full management dashboard:
+**Sign-in.** Globus Auth (institutional login through CILogon), then STS
+`AssumeRoleWithWebIdentity` into the portal role, for an hour. The credentials are
+held in memory and never persisted. What is saved is the disclosure level (in
+`localStorage`) and the portal config such as the region (in `sessionStorage`, so
+it survives the sign-in redirect). The role's permissions are in `infra/tofu/portal-oidc/main.tf`.
 
-### Planned Features
+**Prices.** Every price the portal shows is a static figure from truffle-ts for
+the session's region. The portal role has no `pricing:*` access, so the live
+Price List is never called. Each price is shown with truffle-ts's origin label,
+which says it is static, why, and when it was collected (for example,
+`static, collected 2026-07 (live Price List not consulted (offline lookup))`). A
+type with no static price in the region is shown as unknown, never as zero.
+Outside us-east-1 that is most types: truffle-ts 0.6's table prices about 25 of
+its 231 catalog types per region. The guided launch then asks the user to confirm
+that they don't know the cost before it starts anything.
 
-#### 1. Instance Management
-- **List View**: All provisioned spores across regions
-- **Detail View**: Individual instance information
-- **Controls**: Start, stop, terminate, extend TTL
-- **Bulk Actions**: Manage multiple instances at once
+**Watch capacity.** Uses its own `CapacityFinder` over
+`ec2:DescribeInstanceTypeOfferings` and `ec2:DescribeSpotPriceHistory`, not
+truffle-ts's `AwsLiveFinder`. The live finder needs `ec2:DescribeInstanceTypes`,
+which the portal role doesn't have, and it lists every type in the region on each
+check. The comment at the top of `surfaces/lagotto.ts` has the details.
 
-#### 2. Monitoring
-- **Real-Time Metrics**: CPU, network, disk I/O, GPU utilization
-- **Graphs**: Historical performance data via CloudWatch
-- **Alerts**: Notifications for high usage or approaching TTL
-- **Cost Tracking**: Running costs per instance and totals
-
-#### 3. Web SSH
-- **Browser-based Terminal**: Connect via AWS Session Manager
-- **Key Management**: Upload and manage SSH keys
-- **Multi-Tab**: Connect to multiple instances simultaneously
-- **Copy/Paste**: Full clipboard support
-
-#### 4. Remote Desktop (NICE DCV)
-- **Graphical Access**: Full desktop for GPU workloads
-- **Low Latency**: Optimized streaming protocol
-- **Multi-Monitor**: Support for multiple displays
-- **File Transfer**: Drag-and-drop file sharing
-
-#### 5. Settings & Configuration
-- **Preferences**: Default regions, instance types, TTLs
-- **Credentials**: AWS profile management
-- **Quotas**: View and request quota increases
-- **Notifications**: Email/Slack alerts
-
-#### 6. Team Features (Future)
-- **Multi-User**: Shared instance management
-- **Permissions**: Role-based access control
-- **Audit Log**: Track all actions
-- **Cost Allocation**: Per-user or per-team billing
-
-## 🏗️ Architecture
-
-### Current (Static Landing Page)
-```
-User → CloudFront → S3 (static site)
-```
-
-### Future (Full Dashboard)
-```
-User → CloudFront → S3 (static UI)
-                  ↓
-                API Gateway
-                  ↓
-        ┌─────────┴─────────┐
-        ↓                   ↓
-    Lambda (API)     Lambda (WebSocket)
-        ↓                   ↓
-        ↓            Real-time Updates
-        ↓
-    ┌───┴───┐
-    ↓       ↓
-   EC2     DynamoDB
-  (AWS)   (State)
-```
-
-### Technology Stack (Planned)
-- **Frontend**: Vanilla JS → React (when needed)
-- **Backend**: AWS Lambda (Node.js or Python)
-- **API**: API Gateway (REST + WebSocket)
-- **Auth**: Cognito or IAM-based
-- **Storage**: DynamoDB for state, S3 for assets
-- **Real-time**: WebSockets for live metrics
-- **SSH**: AWS Session Manager + WebSocket proxy
-- **DCV**: NICE DCV Web Client SDK
-
-## 📋 Deployment
-
-### Option 1: S3 + CloudFront (Recommended)
+## Develop
 
 ```bash
-# 1. Create S3 bucket for website
-aws s3 mb s3://spore-host-website --region us-east-1
-
-# 2. Enable static website hosting
-aws s3 website s3://spore-host-website \
-    --index-document index.html \
-    --error-document index.html
-
-# 3. Upload website files
-aws s3 sync web/ s3://spore-host-website/ \
-    --delete \
-    --acl public-read
-
-# 4. Create CloudFront distribution (see DEPLOYMENT.md)
-
-# 5. Point spore.host DNS to CloudFront
-# Update Route53 A record to CloudFront distribution
-```
-
-### Option 2: GitHub Pages (Simple)
-
-```bash
-# 1. Push web/ directory to gh-pages branch
-git subtree push --prefix web origin gh-pages
-
-# 2. Configure custom domain in repository settings
-# Settings → Pages → Custom domain: spore.host
-
-# 3. Update DNS
-# Add CNAME record: spore.host → spore-host.github.io
-```
-
-### Option 3: Local Testing
-
-```bash
-# Simple HTTP server
 cd web
-python3 -m http.server 8000
-
-# Visit: http://localhost:8000
+npm ci
+npm run dev          # Vite dev server; the portal is at /app/
+npm run typecheck    # tsc --noEmit
+npm test             # Vitest (happy-dom)
+npm run build        # dist/: the portal bundle plus the copied marketing pages
+npm run preview      # serve dist/ locally
 ```
 
-## 🔐 Security Considerations
+Search, the guided picker and the software catalog work without signing in. The
+signed-in surfaces need a Globus client id and the portal role ARN, as build-time
+`VITE_*` variables (see `app/config.ts`) or as `?client_id=…&role_arn=…` on the
+URL.
 
-### Current (Static Site)
-- Read-only content
-- No user data
-- No authentication needed
+`app/surfaces/lagotto.harness.html` and `terminal.harness.html` are dev-only
+pages that mount a real surface against stubbed AWS responses. Open them under
+`npm run dev`. They are not build inputs and never ship.
 
-### Future (Dashboard)
-- **Authentication**: AWS Cognito or IAM credentials
-- **Authorization**: Instance ownership verification
-- **Encryption**: TLS for all traffic, encrypted WebSockets
-- **API Keys**: Scoped permissions per user
-- **Audit Logging**: Track all management actions
-- **CORS**: Proper origin restrictions
-- **CSP**: Content Security Policy headers
-- **Rate Limiting**: Prevent API abuse
+Several tests use truffle-ts's real bundled catalog on purpose, not a fixture
+(see the header of `app/guided/shapes.test.ts`). A truffle-ts upgrade that changes
+a guided pick or a price fails them.
 
-## 🎯 Implementation Phases
+## CI and deploy
 
-### Phase 1: Landing Page ✅ (Current)
-- Static HTML/CSS/JS
-- Installation instructions
-- Feature showcase
-- Examples and documentation links
+- **`.github/workflows/web-ci.yml`** runs on any pull request that touches `web/**`:
+  `npm ci`, typecheck, test, build.
+- **`.github/workflows/deploy-site.yaml`** runs on every push to `main` that
+  touches `web/**`. It runs the same checks, then syncs `dist/` to S3 and
+  invalidates CloudFront. **Merging to main deploys the site and the portal.**
 
-### Phase 2: Read-Only Dashboard (Next)
-- List instances across regions
-- View instance details
-- Display metrics (via CloudWatch API)
-- No control actions yet
-
-### Phase 3: Instance Control
-- Start/stop/terminate actions
-- Extend TTL
-- SSH key management
-- Basic cost tracking
-
-### Phase 4: Web SSH
-- AWS Session Manager integration
-- Browser-based terminal
-- Multi-instance tabs
-
-### Phase 5: Monitoring & Alerts
-- Real-time metrics via WebSocket
-- Historical graphs
-- Custom alerts
-- Cost notifications
-
-### Phase 6: Remote Desktop
-- NICE DCV integration
-- Graphical desktop access
-- File transfer
-- Multi-monitor support
-
-### Phase 7: Team Features
-- Multi-user support
-- Permissions and roles
-- Shared instances
-- Team billing
-
-## 📝 API Design (Future)
-
-### REST Endpoints
-```
-GET    /api/instances              List all instances
-GET    /api/instances/:id          Get instance details
-POST   /api/instances              Launch new instance
-PATCH  /api/instances/:id          Update instance (extend TTL)
-DELETE /api/instances/:id          Terminate instance
-GET    /api/instances/:id/metrics  Get CloudWatch metrics
-POST   /api/instances/:id/start    Start stopped instance
-POST   /api/instances/:id/stop     Stop running instance
-GET    /api/instances/:id/ssh      Get SSH connection info
-POST   /api/instances/:id/session  Create Session Manager session
-```
-
-### WebSocket Events
-```
-subscribe:instance:metrics   Real-time CPU/network/disk/GPU
-subscribe:instance:logs      Tail instance logs
-subscribe:instance:state     State changes (running/stopped/terminated)
-notify:ttl:warning          TTL expiring soon
-notify:quota:limit          Approaching quota limit
-```
-
-## 🧪 Testing
-
-### Current
-```bash
-# Visual regression testing (manual)
-open web/index.html
-
-# Responsive testing
-# Use browser dev tools to test mobile/tablet views
-```
-
-### Future
-```bash
-# Unit tests
-npm test
-
-# E2E tests
-npm run test:e2e
-
-# API tests
-npm run test:api
-```
-
-## 📊 Analytics (Future)
-
-Consider adding:
-- Google Analytics or Plausible for page views
-- Error tracking (Sentry)
-- Performance monitoring (Lighthouse CI)
-- User feedback widget
-
-## 🤝 Contributing
-
-When adding features to the web interface:
-
-1. Keep mobile-first responsive design
-2. Maintain spore theme (dark + glow)
-3. Add loading states for all async operations
-4. Include error handling and user feedback
-5. Test across browsers (Chrome, Firefox, Safari, Edge)
-6. Update this README with new features
-
-## 📚 Resources
-
-- [AWS Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)
-- [NICE DCV Web Client SDK](https://docs.aws.amazon.com/dcv/latest/adminguide/client-web.html)
-- [API Gateway WebSocket APIs](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-websocket-api.html)
-- [CloudWatch Metrics](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/working_with_metrics.html)
-
-## 🔮 Vision
-
-Transform `spore.host` from a CLI-first tool into a hybrid experience:
-- **CLI**: Fast, scriptable, power-user focused
-- **Web**: Visual, intuitive, accessible to everyone
-- **Both**: Use whichever fits your workflow
-
-The web interface should feel like a natural extension of the CLI, not a replacement. Power users can script with spawn/truffle, beginners can click through the web UI, and everyone can monitor their spores from anywhere.
+Both are filtered on `web/**`, so a pull request whose diff doesn't touch `web/`
+runs neither. `npm run deploy` (build, then `deploy.sh`) is the manual
+equivalent from a workstation.
