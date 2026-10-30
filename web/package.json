@@ -14,9 +14,9 @@
     "deploy": "npm run build && ./deploy.sh"
   },
   "dependencies": {
-    "@spore-host/lagotto-ts": "^0.2.0",
-    "@spore-host/spawn-ts": "^0.6.1",
-    "@spore-host/truffle-ts": "^0.5.0"
+    "@spore-host/lagotto-ts": "^0.3.0",
+    "@spore-host/spawn-ts": "^0.8.1",
+    "@spore-host/truffle-ts": "^0.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
