@@ -620,8 +620,10 @@ footer {
 .truffle-q:focus-visible { outline: 2px solid var(--truffle); outline-offset: -2px; }
 .truffle-form button { font: inherit; cursor: pointer; padding: 0.5rem 1rem; border-radius: var(--radius); border: 1px solid var(--truffle); background: var(--truffle); color: #fff; }
 .truffle-count, .truffle-note { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
-.truffle-note { margin-top: 0.75rem; }
+.truffle-note { margin-top: 0.75rem; padding-left: 1.5rem; }
+.truffle-price sup { font-size: 0.7em; margin-left: 0.1em; color: var(--text-muted); }
 .truffle-status.error { color: var(--accent-red); }
+.truffle-status.hint { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.35rem; }
 .truffle-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 0.8rem; margin-bottom: 0.5rem; background: var(--bg-card); }
 .truffle-row-head { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
 .truffle-type { font-weight: 700; color: var(--truffle); }
@@ -852,6 +854,7 @@ footer {
 .lagotto-match-type { font-weight: 700; font-size: 1.05rem; color: var(--lagotto); font-family: ui-monospace, monospace; }
 .lagotto-match-kind { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
 .lagotto-match-price { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+.lagotto-match-origin { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--text-muted); }
 .lagotto-match-meta { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; margin: 0.6rem 0 0; font-size: 0.85rem; }
 .lagotto-match-meta dt { color: var(--text-muted); }
 .lagotto-match-meta dd { margin: 0; color: var(--text); }
@@ -901,6 +904,7 @@ footer {
 .guided-card-cost.unknown, .guided-card.errored .guided-card-machine { color: var(--accent-red); }
 /* "cheapest of N that fit" — smaller than the price, because it's context for the
    choice rather than a fact the user has to weigh. */
+.guided-card-origin { display: block; margin-top: 0.1rem; font-size: 0.75rem; opacity: 0.75; }
 .guided-card-alts { display: block; margin-top: 0.1rem; font-size: 0.8rem; opacity: 0.8; }
 .guided-escape {
   font: inherit; cursor: pointer; padding: 0.4rem 0; border: 0; background: none;
@@ -915,6 +919,7 @@ footer {
 .guided-cost { font-size: 1.1rem; }
 .guided-cost b { font-variant-numeric: tabular-nums; }
 .guided-cost.unknown { font-size: 0.95rem; color: var(--accent-red); }
+.guided-price-origin { font-size: 0.8rem; color: var(--text-muted); margin-top: -0.25rem; }
 .guided-reassure { color: var(--text-muted); font-size: 0.85rem; }
 /* The unknown-price acknowledgement. Deliberately not muted: it gates the launch
    button, so it has to read as something to act on rather than fine print. */

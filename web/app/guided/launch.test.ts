@@ -6,7 +6,7 @@
 // would be a real defect that no amount of live clicking would reveal until it
 // cost someone money.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SpawnClient } from "@spore-host/spawn-ts";
+import { MockProvider, SpawnClient } from "@spore-host/spawn-ts";
 import { mountGuidedLaunch } from "./launch.js";
 import { GUIDED_SHAPES } from "./shapes.js";
 import { costLimitFor } from "./cost.js";
@@ -117,31 +117,66 @@ describe("mountGuidedLaunch", () => {
     dispose();
   });
 
-  it("qualifies the price when the session's region isn't the catalog's", async () => {
-    // The confirmation renders the session region and a us-east-1 catalog price as
-    // two adjacent facts. Outside us-east-1 they are not the same fact, and
-    // priceIsEstimate doesn't cover it — it flags hand-seeded entries only.
-    const { client } = stubClient();
-    const dispose = mountGuidedLaunch(host, {
-      client,
-      region: "ap-southeast-2",
-      onEscape: vi.fn(),
-    });
-    await settle();
-    host.querySelector<HTMLButtonElement>(".guided-card")!.click();
-    await settle();
-    const cost = host.querySelector(".guided-cost")!.textContent!.replace(/\s+/g, " ");
-    expect(cost).toContain("us-east-1");
-    expect(cost).toContain("ap-southeast-2");
-    dispose();
-  });
+  describe("prices for the session's region", () => {
+    // truffle-ts 0.6 keys its static prices by region. The confirmation used to show
+    // a us-east-1 catalog price beside the session's region with a "may differ"
+    // caveat; now the figure is the region's own, or unknown.
+    const memory = GUIDED_SHAPES.filter((s) => s.id === "lots-of-memory");
 
-  it("does not qualify the price in the catalog's own region", async () => {
-    // A caveat that fires always is one nobody reads.
-    const { client } = stubClient();
-    const dispose = await pickFirst(client); // region: us-east-1
-    expect(host.querySelector(".guided-cost")!.textContent).not.toContain("may differ");
-    dispose();
+    async function confirmIn(region: string, client: SpawnClient, shapes = memory) {
+      const dispose = mountGuidedLaunch(host, { client, region, onEscape: vi.fn(), shapes });
+      await settle();
+      host.querySelector<HTMLButtonElement>(".guided-card")!.click();
+      await settle();
+      return dispose;
+    }
+
+    it("quotes the region's price and launches with it", async () => {
+      const { client, launch } = stubClient();
+      const dispose = await confirmIn("eu-west-1", client);
+      const cost = host.querySelector(".guided-cost")!.textContent!.replace(/\s+/g, " ");
+      expect(cost).toContain("$0.9588 per hour"); // us-east-1 is $0.8568
+      host.querySelector<HTMLButtonElement>(".guided-go")!.click();
+      await settle();
+      const input = launch.mock.calls[0]![0] as any;
+      expect(input.region).toBe("eu-west-1");
+      expect(input.pricePerHour).toBe(0.9588);
+      expect(input.costLimit).toBe(costLimitFor(0.9588, memory[0]!.defaultTtlHours));
+      dispose();
+    });
+
+    it("says the price is static, why, and when it was collected", async () => {
+      const { client } = stubClient();
+      const dispose = await confirmIn("us-east-1", client);
+      const origin = host.querySelector(".guided-price-origin")!.textContent!.replace(/\s+/g, " ");
+      expect(origin).toContain("us-east-1 price:");
+      expect(origin).toMatch(/static, collected \d{4}-\d{2}/);
+      expect(origin).toContain("live Price List not consulted");
+      dispose();
+    });
+
+    it("treats a region with no static price as unknown: acknowledgement, no cost limit", async () => {
+      // ap-southeast-2 has no static table. Under 0.5 this quoted us-east-1's price
+      // with a caveat; now it is the unknown-price path, which gates the button.
+      const { client, launch } = stubClient();
+      const dispose = await confirmIn("ap-southeast-2", client);
+      const cost = host.querySelector(".guided-cost")!;
+      expect(cost.classList.contains("unknown")).toBe(true);
+      expect(cost.textContent).toContain("ap-southeast-2");
+      expect(host.querySelector(".guided-price-origin")!.textContent).toContain(
+        "no static price table for region ap-southeast-2",
+      );
+      const go = host.querySelector<HTMLButtonElement>(".guided-go")!;
+      expect(go.disabled).toBe(true);
+      host.querySelector<HTMLInputElement>(".guided-ack-box")!.click();
+      go.click();
+      await settle();
+      const input = launch.mock.calls[0]![0] as any;
+      expect(input.pricePerHour).toBe(0);
+      expect("costLimit" in input).toBe(false);
+      expect(input.ttl).toBe(`${memory[0]!.defaultTtlHours}h`);
+      dispose();
+    });
   });
 
   it("offers the escape hatch on the confirmation, not just the picker", async () => {
@@ -274,6 +309,63 @@ describe("mountGuidedLaunch", () => {
       const dispose = await mountUnpriced(client);
       const cost = host.querySelector(".guided-cost")!.textContent!.replace(/\s+/g, " ");
       expect(cost).toContain("most expensive");
+      dispose();
+    });
+  });
+
+  describe("against spawn-ts 0.8's launch checks (real SpawnClient, mock provider)", () => {
+    // spawn-ts 0.7/0.8 refuse, before any AWS call, specs they used to accept: an
+    // unparseable or non-positive TTL, Spot with a stopping lifecycle, an idle CPU
+    // threshold outside 0-100, oversized user data or tags. The stub client above
+    // can't see any of that, so these go through the real client.
+    it("sends a launch every guided shape passes", async () => {
+      for (const shape of GUIDED_SHAPES) {
+        host.innerHTML = "";
+        const client = new SpawnClient({ provider: new MockProvider() });
+        const dispose = mountGuidedLaunch(host, {
+          client,
+          region: "us-east-1",
+          onEscape: vi.fn(),
+          shapes: [shape],
+        });
+        await settle();
+        host.querySelector<HTMLButtonElement>(".guided-card")!.click();
+        await settle();
+        host.querySelector<HTMLInputElement>(".guided-ack-box")?.click();
+        host.querySelector<HTMLButtonElement>(".guided-go")!.click();
+        await settle();
+        await settle();
+        const msg = host.querySelector(".guided-msg")!;
+        expect(msg.className, `${shape.id}: ${msg.textContent}`).toBe("guided-msg ok");
+        const [inst] = await client.list();
+        expect(inst?.ttlMs, shape.id).toBe(shape.defaultTtlHours * 3600_000);
+        dispose();
+      }
+    });
+
+    it("shows spawn-ts's refusal and launches nothing", async () => {
+      // A negative TTL can't come from the curated list (a test above pins every TTL
+      // positive), so this forces one to check the refusal reaches the user intact.
+      // spawn-ts 0.6 launched this with no TTL at all.
+      const client = new SpawnClient({ provider: new MockProvider() });
+      const dispose = mountGuidedLaunch(host, {
+        client,
+        region: "us-east-1",
+        onEscape: vi.fn(),
+        shapes: [{ ...GUIDED_SHAPES[0]!, defaultTtlHours: -1 }],
+      });
+      await settle();
+      host.querySelector<HTMLButtonElement>(".guided-card")!.click();
+      await settle();
+      host.querySelector<HTMLButtonElement>(".guided-go")!.click();
+      await settle();
+      await settle();
+      const msg = host.querySelector(".guided-msg")!;
+      expect(msg.className).toBe("guided-msg error");
+      expect(msg.textContent).toMatch(/^Couldn't start it: refusing to launch with ttl "-1h"/);
+      expect(await client.list()).toEqual([]);
+      // Re-enabled, so the user can go back and pick something else.
+      expect(host.querySelector<HTMLButtonElement>(".guided-back")!.disabled).toBe(false);
       dispose();
     });
   });

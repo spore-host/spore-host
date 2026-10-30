@@ -7,8 +7,10 @@
 // query is the wrong first question — "gpu with 80gb for training" is only
 // writable by someone who already knows what they need — so guided mode shows the
 // curated picker instead. `standard` and up get the query box.
-import { find, CATALOG_AS_OF, type FindResult } from "@spore-host/truffle-ts";
+import { find, describePriceOrigin, CATALOG_AS_OF, type FindResult } from "@spore-host/truffle-ts";
 import type { Disposable, SurfaceContext, ToolSurface } from "./types.js";
+import { describeFindError } from "../finderror.js";
+import { priceFor } from "../pricing.js";
 import { atLeast, type DisclosureLevel } from "../disclosure.js";
 import { mountGuidedPicker } from "../guided/picker.js";
 import { readHashParam, writeHashParams } from "../hashstate.js";
@@ -37,7 +39,8 @@ export const truffleSurface: ToolSurface = {
              worth leading with, being the one a researcher would actually type. -->
         <p class="truffle-hint">Natural language — e.g. <code>gpu with 80gb for training</code>,
           <code>nvidia h100</code>, <code>8 gpus a100</code>, <code>32 vcpus arm</code>.
-          Offline catalog (as of ${escapeHtml(CATALOG_AS_OF)}).</p>
+          Offline catalog (as of ${escapeHtml(CATALOG_AS_OF)}); prices are static
+          figures for <b>${escapeHtml(ctx.session.region)}</b>.</p>
         <form class="truffle-form">
           <input class="truffle-q" type="search" placeholder="describe what you need…" autocomplete="off" />
           <button type="submit">Search</button>
@@ -62,10 +65,10 @@ export const truffleSurface: ToolSurface = {
       try {
         const found = await find(query);
         if (mine !== seq) return; // a newer search superseded this one
-        renderResults(results, found, ctx.level);
+        renderResults(results, found, ctx.level, ctx.session.region);
       } catch (err) {
         if (mine !== seq) return;
-        results.innerHTML = `<div class="truffle-status error">${escapeHtml((err as Error).message)}</div>`;
+        results.innerHTML = findErrorHtml(err);
       }
     }
 
@@ -110,6 +113,7 @@ function mountGuided(host: HTMLElement, ctx: SurfaceContext): Disposable {
   host.appendChild(root);
 
   const dispose = mountGuidedPicker(root, {
+    region: ctx.session.region,
     // Carry the chosen shape across. Navigating bare discarded the GuidedChoice, so
     // "A big GPU for training" landed the user on a fresh picker demanding the same
     // choice they had just made (or, unsigned-in, on a sign-in gate that forgets it).
@@ -128,18 +132,48 @@ function mountGuided(host: HTMLElement, ctx: SurfaceContext): Disposable {
   };
 }
 
-function renderResults(host: HTMLElement, found: FindResult[], level: DisclosureLevel): void {
+/**
+ * A `find()` failure, as the error line and, under it, the parser's hint.
+ *
+ * From truffle-ts 0.6 a query of only unknown words (`zzqx`) throws
+ * `UnrecognizedQueryError` rather than returning all 231 types, so this is now a
+ * state a user reaches by mistyping. Its message is "what was wrong" then "try a
+ * vendor (…)"; one run of text made the hint read as part of the error.
+ */
+function findErrorHtml(err: unknown): string {
+  const e = describeFindError(err);
+  const lead = e.unrecognized ? "Couldn't read that query: " : "";
+  const hint = e.hint ? `<div class="truffle-status hint">${escapeHtml(e.hint)}</div>` : "";
+  return `<div class="truffle-status error">${escapeHtml(lead + e.message)}</div>${hint}`;
+}
+
+function renderResults(host: HTMLElement, found: FindResult[], level: DisclosureLevel, region: string): void {
   if (found.length === 0) {
     host.innerHTML = `<div class="truffle-status">no matches — try relaxing the query</div>`;
     return;
   }
   const expert = atLeast(level, "expert");
-  const rows = found
-    .slice(0, 50)
+  const shown = found.slice(0, 50);
+  // Every price here is static, and a static price must say so, why and when it was
+  // collected. The label is long, so each distinct one is printed once under the table
+  // and each price carries its footnote number, rather than repeating it on 50 rows.
+  // An unknown price gets a footnote too: "—" alone doesn't say whether the type is
+  // unpriced everywhere or only in this region.
+  const notes: string[] = [];
+  const noteFor = (label: string): number => {
+    const at = notes.indexOf(label);
+    if (at >= 0) return at + 1;
+    notes.push(label);
+    return notes.length;
+  };
+  const rows = shown
     .map((r) => {
       const i = r.instance;
       const gib = (i.memoryMib / 1024).toFixed(i.memoryMib % 1024 === 0 ? 0 : 1);
-      const price = i.onDemandPrice != null ? `$${i.onDemandPrice.toFixed(4)}/hr${i.estimatedPrice ? "*" : ""}` : "—";
+      const quote = priceFor(i, region);
+      const label = describePriceOrigin(quote.origin);
+      const n = noteFor(label);
+      const price = `${quote.price != null ? `$${quote.price.toFixed(4)}/hr` : "—"}<sup>${n}</sup>`;
       const gpu = i.gpus ? `${i.gpus}× ${escapeHtml(i.gpuModel ?? "GPU")}` : "";
       const reasons = r.reasons.map((x) => `<li>${escapeHtml(x)}</li>`).join("");
       // Expert gets the fields a capacity/topology decision actually turns on —
@@ -147,21 +181,23 @@ function renderResults(host: HTMLElement, found: FindResult[], level: Disclosure
       // vendor + VRAM (a framework requirement, not a preference), the family for
       // a quota lookup, and nested-virt support. They're in the catalog already;
       // standard hides them because they're noise to someone comparing two boxes.
-      const detail = expert ? `<dl class="truffle-detail">${expertFields(r)}</dl>` : "";
+      const detail = expert ? `<dl class="truffle-detail">${expertFields(r, label)}</dl>` : "";
       return `
         <div class="truffle-row">
           <div class="truffle-row-head">
             <span class="truffle-type">${escapeHtml(i.instanceType)}</span>
             <span class="truffle-specs">${i.vcpus} vCPU · ${gib} GiB · ${escapeHtml(i.architecture)}${gpu ? " · " + gpu : ""}</span>
-            <span class="truffle-price">${price}</span>
+            <span class="truffle-price" title="${escapeHtml(label)}">${price}</span>
           </div>
           <ul class="truffle-reasons">${reasons}</ul>
           ${detail}
         </div>`;
     })
     .join("");
-  const note = found.some((r) => r.instance.estimatedPrice) ? `<div class="truffle-note">* estimated price (type not in the live-pulled region)</div>` : "";
-  host.innerHTML = `<div class="truffle-count">${found.length} match${found.length === 1 ? "" : "es"}${found.length > 50 ? " (showing 50)" : ""}</div>${rows}${note}`;
+  const legend = `<ol class="truffle-note">${notes
+    .map((l) => `<li>${escapeHtml(region)} on-demand price: ${escapeHtml(l)}</li>`)
+    .join("")}</ol>`;
+  host.innerHTML = `<div class="truffle-count">${found.length} match${found.length === 1 ? "" : "es"}${found.length > 50 ? " (showing 50)" : ""}</div>${rows}${legend}`;
 }
 
 /**
@@ -172,7 +208,7 @@ function renderResults(host: HTMLElement, found: FindResult[], level: Disclosure
  * some entries, and printing a zero there would state something false about the
  * hardware to the one user most likely to act on it.
  */
-function expertFields(r: FindResult): string {
+function expertFields(r: FindResult, priceLabel: string): string {
   const i = r.instance;
   const rows: Array<[string, string]> = [["family", i.instanceFamily]];
   if (i.physicalCores != null) rows.push(["physical cores", String(i.physicalCores)]);
@@ -181,9 +217,10 @@ function expertFields(r: FindResult): string {
   if (i.gpuManufacturer) rows.push(["GPU vendor", i.gpuManufacturer]);
   if (i.gpuMemoryMib != null) rows.push(["GPU memory", `${i.gpuMemoryMib} MiB (total)`]);
   if (i.nestedVirt != null) rows.push(["nested virt", i.nestedVirt ? "yes" : "no"]);
-  // Say where the price came from. An estimate presented as a price is the same
-  // defect as a fabricated one, and expert is the level that can act on knowing.
-  rows.push(["price source", i.estimatedPrice ? "hand seed (estimate)" : "live AWS pull"]);
+  // Say where the price came from, in full on the row itself. This used to read
+  // "live AWS pull" for every catalog entry, which was false: the bundled catalog is
+  // a static snapshot, and nothing on this surface calls the Price List.
+  rows.push(["price source", priceLabel]);
   return rows
     .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`)
     .join("");

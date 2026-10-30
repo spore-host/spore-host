@@ -16,7 +16,8 @@
 // plausible-looking string. A query that returns nothing renders as an honest
 // "couldn't resolve this" rather than an empty card.
 
-import { find, type FindResult } from "@spore-host/truffle-ts";
+import { CATALOG_REGION, find, type FindResult, type PriceOrigin } from "@spore-host/truffle-ts";
+import { priceFor } from "../pricing.js";
 
 export interface GuidedShape {
   id: string;
@@ -162,11 +163,11 @@ export const WATCH_SHAPES: readonly GuidedShape[] = [
     id: "watch-trainium",
     label: "An AWS training chip",
     blurb: "Trainium. Cheaper per unit of training than the equivalent GPU, when free.",
-    // "trainium", not "trn2": truffle-ts's parser doesn't read `trn2` as a family and
-    // returns 231 results spanning every family in the catalog, so price-ranking them
-    // resolves this card to a `t4g.nano`. "trainium" resolves to trn1, which is what
-    // the catalog actually carries. A query that confidently returns the wrong thing
-    // is worse than one that returns nothing.
+    // "trainium", not "trn2". Under truffle-ts 0.5 `trn2` parsed as an unknown word and
+    // returned all 231 catalog types, so price-ranking resolved this card to a
+    // `t4g.nano`. From 0.6 a bare family matches itself, and the bundled catalog has
+    // no trn2, so it returns nothing (checked 2026-10-29). "trainium" resolves to
+    // trn1, which is what the catalog actually carries.
     query: "trainium",
     defaultTtlHours: 2,
     // Trainium instances carry no `gpus`, so this must be false: `cheapest()` would
@@ -201,8 +202,16 @@ export interface GuidedRecommendation {
   shape: GuidedShape;
   /** The cheapest catalog match that clears the shape's minimums. */
   pick: FindResult;
-  /** $/hr for `pick`, or undefined when the catalog has no usable price. */
+  /** The region `pricePerHour` is for — the session's, which is where it launches. */
+  region: string;
+  /** $/hr for `pick` in `region`, or undefined when no usable price is known. */
   pricePerHour?: number;
+  /**
+   * Where `pricePerHour` came from (or, when it's undefined, why there is none).
+   * Every price the portal shows is static, and a static price must say so, why,
+   * and when it was collected; render it with truffle-ts's `describePriceOrigin`.
+   */
+  priceOrigin: PriceOrigin;
   /** pricePerHour × defaultTtlHours, when a price is known. */
   estimatedTotal?: number;
   /**
@@ -219,7 +228,7 @@ export interface GuidedRecommendation {
 }
 
 /**
- * Resolve one shape to a concrete recommendation.
+ * Resolve one shape to a concrete recommendation, priced for `region`.
  *
  * Returns undefined when the query matches nothing, so the caller can say so
  * rather than render an empty card. Does NOT catch errors — a broken catalog is a
@@ -229,17 +238,21 @@ export interface GuidedRecommendation {
 export async function resolveShape(
   shape: GuidedShape,
   finder: typeof find = find,
+  region: string = CATALOG_REGION,
 ): Promise<GuidedRecommendation | undefined> {
   const found = await finder(shape.query);
   if (found.length === 0) return undefined;
 
-  const pick = cheapest(found, shape.wantsGpu) ?? found[0]!;
-  const price = usablePrice(pick);
+  const pick = cheapest(found, shape.wantsGpu, region) ?? found[0]!;
+  const quote = priceFor(pick.instance, region);
+  const price = quote.price;
 
   return {
     shape,
     pick,
+    region,
     pricePerHour: price,
+    priceOrigin: quote.origin,
     estimatedTotal: price != null ? price * shape.defaultTtlHours : undefined,
     priceIsEstimate: pick.instance.estimatedPrice === true,
     totalMatches: found.length,
@@ -250,38 +263,39 @@ export async function resolveShape(
 export async function resolveAllShapes(
   finder: typeof find = find,
   shapes: readonly GuidedShape[] = GUIDED_SHAPES,
+  region: string = CATALOG_REGION,
 ): Promise<Array<GuidedRecommendation | undefined>> {
-  return Promise.all(shapes.map((s) => resolveShape(s, finder)));
+  return Promise.all(shapes.map((s) => resolveShape(s, finder, region)));
 }
 
 /**
- * A price we're willing to show, or undefined.
+ * A price we're willing to show for `r` in `region`, or undefined.
  *
- * Rejects zero as well as null, and both halves still earn their keep:
+ * Delegates to `priceFor`, which takes the row's own price when it describes this
+ * region and otherwise the region-keyed static table (truffle-ts 0.6). Before 0.6
+ * this read `r.instance.onDemandPrice` alone, which is a us-east-1 figure, and the
+ * confirmation showed it next to whatever region the session was in.
  *
- * - **Null** is the normal case for a type with no on-demand row at all — since
- *   truffle-ts 0.5.0, `p6e-gb200.36xlarge` and `p5e.48xlarge` carry no price
- *   rather than a guessed one, so a price-ranked picker must skip them instead of
- *   ranking them at 0.
- * - **Zero** is defence in depth. truffle-ts now refuses to write a non-positive
- *   price (truffle-ts#42), so this shouldn't fire — but a zero is the single most
- *   damaging wrong price here, because it *sorts first*: a naive "cheapest option"
- *   picker recommends an H100 box, at no charge, ahead of a $0.13 t4g. That's a
- *   one-line guard against an upstream regression that no amount of clicking would
- *   reveal, so it stays.
+ * Zero and null are both "no price", and both halves still earn their keep:
+ *
+ * - **Null** is the normal case for a type with no on-demand row at all
+ *   (`p6e-gb200.36xlarge`, `p5e.48xlarge`), and from truffle-ts 0.6 for most types
+ *   outside us-east-1, whose static table prices ~25 of the catalog's 231 types per
+ *   region. A price-ranked picker must skip them instead of ranking them at 0.
+ * - **Zero** is defence in depth. truffle-ts refuses to write a non-positive price
+ *   (truffle-ts#42), but a zero is the single most damaging wrong price here because
+ *   it *sorts first*: a naive "cheapest option" picker recommends an H100 box, at no
+ *   charge, ahead of a $0.13 t4g.
  *
  * This replaced a named quarantine of `p6e-gb200.36xlarge` (fabricated at
  * $0.2000/hr for 72×B200) and `p5.4xlarge` (`onDemandPrice: 0`), removed once
- * truffle-ts#39 and #42 landed in 0.5.0. Worth recording *why* that list was
- * names rather than a plausibility threshold: no per-vCPU floor could separate
- * those entries from real cheap instances — `t4g.nano` is legitimately
- * $0.0021/vCPU against the bad B200's $0.00139, only 34% apart — so any threshold
- * strict enough to catch the fabrication also rejected honest bargains. If a
- * future bad price shows up, name it again; don't invent a threshold.
+ * truffle-ts#39 and #42 landed in 0.5.0. No per-vCPU plausibility floor could
+ * separate those entries from real cheap instances (`t4g.nano` is legitimately
+ * $0.0021/vCPU against the bad B200's $0.00139), so if a future bad price shows up,
+ * name it again; don't invent a threshold.
  */
-function usablePrice(r: FindResult): number | undefined {
-  const p = r.instance.onDemandPrice;
-  return typeof p === "number" && p > 0 ? p : undefined;
+function usablePrice(r: FindResult, region: string): number | undefined {
+  return priceFor(r.instance, region).price;
 }
 
 /**
@@ -297,8 +311,8 @@ function usablePrice(r: FindResult): number | undefined {
  * Returns undefined when nothing survives the filters, so the caller falls back to
  * the top match and reports the price as unknown rather than inventing one.
  */
-function cheapest(found: FindResult[], wantsGpu: boolean): FindResult | undefined {
-  let candidates = found.filter((r) => usablePrice(r) != null);
+function cheapest(found: FindResult[], wantsGpu: boolean, region: string): FindResult | undefined {
+  let candidates = found.filter((r) => usablePrice(r, region) != null);
 
   if (!wantsGpu) {
     const cpuOnly = candidates.filter((r) => !r.instance.gpus);
@@ -311,7 +325,7 @@ function cheapest(found: FindResult[], wantsGpu: boolean): FindResult | undefine
   let best: FindResult | undefined;
   let bestPrice = Infinity;
   for (const r of candidates) {
-    const p = usablePrice(r)!;
+    const p = usablePrice(r, region)!;
     if (p < bestPrice) {
       best = r;
       bestPrice = p;
