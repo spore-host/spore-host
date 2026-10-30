@@ -1,27 +1,10 @@
-// The two cost facts guided mode has to get right, kept in one place because both
-// are easy to state wrongly and neither is obvious from the call site.
+// The cost limit guided mode launches with, kept apart because it is easy to state
+// wrongly and not obvious from the call site. (The region a price is for used to live
+// here too, as a hand-kept "us-east-1"; truffle-ts 0.6 prices by region, so the price
+// itself now says which region it is for. See ../pricing.ts.)
 //
 // Pure — no DOM, no truffle-ts, no spawn-ts. So the arithmetic that decides how
 // much of the user's money is at risk is testable on its own.
-
-/**
- * The region the bundled catalog's on-demand prices are quoted in.
- *
- * truffle-ts does not export this, so we assert it here: `gen-catalog.mjs` defaults
- * to `--region us-east-1` (line 20) and the Pricing API filter uses that region
- * code, so every `onDemandPrice` in the bundled snapshot is a us-east-1 figure.
- *
- * It matters because the guided confirmation renders the *session's* region beside
- * the cost. Without saying so, a us-east-1 price shown to a user in ap-southeast-2
- * is off by roughly 15-30% with nothing on screen to suggest it. `priceIsEstimate`
- * does not cover this: it flags hand-seeded entries, so a genuinely pulled price
- * shown in the wrong region carries no qualifier at all.
- *
- * If truffle-ts ever exports the region its snapshot was built from, import that
- * instead of this — a constant that has to be kept in sync by hand is the weaker
- * version of this fact.
- */
-export const CATALOG_PRICE_REGION = "us-east-1";
 
 /**
  * How much slack the cost limit gets over the TTL-implied total.
