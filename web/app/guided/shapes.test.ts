@@ -85,10 +85,10 @@ describe("resolveShape against the real bundled catalog", () => {
   });
 
   it("picks the CHEAPEST match, not truffle's first", async () => {
-    // truffle-ts treats vcpus/memory as MINIMUMS and ranks by its own size
-    // preference: find("4 vcpus 16gb") returns r8g.12xlarge (48 vCPU, 384 GiB,
-    // ~$2.83/hr) first, while t4g.xlarge (exactly 4/16, ~$0.13/hr) is further
-    // down. Handing over truffle's first result would quote 21× the right cost.
+    // Under truffle-ts 0.5, find("4 vcpus 16gb") opened with r8g.12xlarge (48 vCPU,
+    // ~$2.83/hr) and t4g.xlarge (~$0.13/hr) was further down. 0.6 ranks closest fit
+    // first, so here the two agree; the assertion is kept because the pick must be
+    // the cheapest whatever truffle's order is (see cheapest() in shapes.ts).
     const small = GUIDED_SHAPES.find((s) => s.id === "small-analysis")!;
     const rec = (await resolveShape(small))!;
 
@@ -142,6 +142,58 @@ describe("resolveShape against the real bundled catalog", () => {
     // surprise a first-time user.
     const rec = (await resolveShape(GUIDED_SHAPES.find((s) => s.id === "small-analysis")!))!;
     expect(rec.pricePerHour).toBeLessThan(0.5);
+  });
+});
+
+describe("resolveShape prices for the session's region (truffle-ts 0.6)", () => {
+  const memory = GUIDED_SHAPES.find((s) => s.id === "lots-of-memory")!;
+  const small = GUIDED_SHAPES.find((s) => s.id === "small-analysis")!;
+
+  it("quotes the region's static price, not us-east-1's", async () => {
+    // r7g.4xlarge is $0.8568 in us-east-1 and $0.9588 in eu-west-1 in truffle-ts's
+    // static table. Under 0.5 the portal showed the first next to "eu-west-1".
+    const east = (await resolveShape(memory, undefined, "us-east-1"))!;
+    const west = (await resolveShape(memory, undefined, "eu-west-1"))!;
+    expect(east.pick.instance.instanceType).toBe("r7g.4xlarge");
+    expect(west.pick.instance.instanceType).toBe("r7g.4xlarge");
+    expect(east.pricePerHour).toBe(0.8568);
+    expect(west.pricePerHour).toBe(0.9588);
+    expect(west.region).toBe("eu-west-1");
+    expect(west.estimatedTotal).toBeCloseTo(0.9588 * memory.defaultTtlHours, 6);
+  });
+
+  it("says a price is static, why, and when it was collected", async () => {
+    // The owner's rule for any static price (truffle#184). Every portal price is
+    // static: the federated role has no pricing:* and nothing calls the Price List.
+    for (const region of ["us-east-1", "eu-west-1"]) {
+      const rec = (await resolveShape(memory, undefined, region))!;
+      expect(rec.priceOrigin.source, region).toBe("static");
+      expect(rec.priceOrigin.collectedOn, region).toMatch(/^\d{4}-\d{2}/);
+      expect(rec.priceOrigin.reason, region).toBeTruthy();
+    }
+  });
+
+  it("reports no price, and why, in a region with no static table", async () => {
+    // eu-north-1 has no static table at all. Borrowing us-east-1's $0.1344 here is
+    // the 0.5 behaviour this replaces.
+    const rec = (await resolveShape(small, undefined, "eu-north-1"))!;
+    expect(rec).toBeDefined();
+    expect(rec.pricePerHour).toBeUndefined();
+    expect(rec.estimatedTotal).toBeUndefined();
+    expect(rec.priceOrigin.source).toBe("unknown");
+    expect(rec.priceOrigin.reason).toContain("eu-north-1");
+  });
+
+  it("ranks by the region's prices, among the types priced there", async () => {
+    // eu-west-1's static table has no t4g.xlarge, the us-east-1 pick. The pick must
+    // be one that region has a price for, and the cheapest of those.
+    const rec = (await resolveShape(small, undefined, "eu-west-1"))!;
+    const { find, staticOnDemandPrice } = await import("@spore-host/truffle-ts");
+    const priced = (await find(small.query))
+      .filter((r) => !r.instance.gpus)
+      .map((r) => staticOnDemandPrice(r.instance.instanceType, "eu-west-1").price)
+      .filter((p): p is number => p !== undefined);
+    expect(rec.pricePerHour).toBe(Math.min(...priced));
   });
 });
 
