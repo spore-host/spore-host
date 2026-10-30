@@ -143,13 +143,8 @@ function mountGuided(host: HTMLElement, ctx: SurfaceContext): Disposable {
 function findErrorHtml(err: unknown): string {
   const e = describeFindError(err);
   const lead = e.unrecognized ? "Couldn't read that query: " : "";
-  const suggest = e.suggestions.length
-    ? `<div class="truffle-status hint">Did you mean ${e.suggestions
-        .map(([from, to]) => `<code>${escapeHtml(to)}</code> for <code>${escapeHtml(from)}</code>`)
-        .join(", ")}?</div>`
-    : "";
   const hint = e.hint ? `<div class="truffle-status hint">${escapeHtml(e.hint)}</div>` : "";
-  return `<div class="truffle-status error">${escapeHtml(lead + e.message)}</div>${suggest}${hint}`;
+  return `<div class="truffle-status error">${escapeHtml(lead + e.message)}</div>${hint}`;
 }
 
 function renderResults(host: HTMLElement, found: FindResult[], level: DisclosureLevel, region: string): void {

@@ -4,8 +4,10 @@
 // `UnrecognizedQueryError` instead of returning every type. Its message is two
 // lines: what was wrong, then a "Try a vendor (…), processor (…)" hint. Shown as one
 // run of text, the hint reads as part of the error. A contradictory query
-// (`intel graviton`) throws a plain parse error in the same two-line shape, so it
-// gets the same split. spawn-ts 0.8.1's Dashboard picker renders it this way too.
+// (`intel graviton`) throws a plain Error ("conflicting architectures: …"), which
+// goes through the same split and simply has no hint. spawn-ts 0.8.1's Dashboard
+// picker shows the two lines separately too. The first line already carries
+// truffle's `(did you mean "nvidia"?)`, so the suggestions are not repeated.
 
 import { UnrecognizedQueryError } from "@spore-host/truffle-ts";
 
@@ -14,8 +16,6 @@ export interface FindErrorText {
   message: string;
   /** The rest, if any: how to phrase it instead. */
   hint?: string;
-  /** "did you mean" pairs, unknown term → closest known one. */
-  suggestions: Array<[string, string]>;
   /** True for a query truffle could not read, as opposed to a lookup that failed. */
   unrecognized: boolean;
 }
@@ -28,7 +28,6 @@ export function describeFindError(err: unknown): FindErrorText {
   return {
     message: (first ?? raw).trim(),
     ...(hint ? { hint } : {}),
-    suggestions: unrecognized ? Object.entries(err.suggestions) : [],
     unrecognized,
   };
 }

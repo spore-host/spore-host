@@ -480,6 +480,7 @@ export const lagottoSurface: ToolSurface = {
       startBtn.hidden = true;
       disposePicker = mountGuidedPicker(picker, {
         shapes: WATCH_SHAPES,
+        region,
         heading: "What are you waiting for?",
         hint: "Pick the closest match. We'll watch for anything in that family — a smaller one in the same family is still a machine you can use.",
         // Not "I know what I need": the thing one level up is a pattern field, and the
@@ -601,7 +602,7 @@ const SPOT_LOOKBACK_MS = 60 * 60 * 1000;
  * single-region watch. Declaring it keeps a future multi-region form from being
  * quietly answered by this one region.
  */
-function portalCapacityFinder(ec2: EC2Client, region: string): CapacityFinder {
+export function portalCapacityFinder(ec2: EC2Client, region: string): CapacityFinder {
   return {
     regions: [region],
     async search(matcher: RegExp): Promise<FinderInstanceType[]> {

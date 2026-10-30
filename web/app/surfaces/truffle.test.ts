@@ -22,8 +22,8 @@ function search(host: HTMLElement, q: string): void {
 
 const config = { region: "us-east-1" } as PortalConfig;
 
-function ctxAt(level: DisclosureLevel, navigate = vi.fn()): SurfaceContext {
-  const session = new SessionController("us-east-1", null);
+function ctxAt(level: DisclosureLevel, navigate = vi.fn(), region = "us-east-1"): SurfaceContext {
+  const session = new SessionController(region, null);
   session.setLevel(level);
   return { session, config, level, navigate };
 }
@@ -124,7 +124,80 @@ describe("truffleSurface disclosure", () => {
       new Event("submit", { cancelable: true }),
     );
     await settle();
-    expect(host.querySelector(".truffle-detail")!.textContent).toMatch(/live AWS pull|estimate/);
+    // It used to say "live AWS pull" for every catalog row, which was false: the
+    // bundled catalog is a static snapshot. truffle-ts 0.6 says which, why and when.
+    const detail = host.querySelector(".truffle-detail")!.textContent!;
+    expect(detail).toMatch(/static, collected \d{4}-\d{2}/);
+    expect(detail).not.toContain("live AWS pull");
+    d.dispose();
+  });
+
+  it("labels every price with its origin, once per distinct origin", async () => {
+    const d = await truffleSurface.mount(host, ctxAt("standard"));
+    await settle();
+    search(host, "nvidia h100");
+    await settle();
+    const notes = [...host.querySelectorAll(".truffle-note li")].map((li) => li.textContent!);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes[0]).toMatch(/^us-east-1 on-demand price: static, collected \d{4}-\d{2} \(.+\)$/);
+    // Each price points at its footnote.
+    const price = host.querySelector(".truffle-price")!;
+    expect(price.querySelector("sup")!.textContent).toBe("1");
+    d.dispose();
+  });
+
+  it("prices for the session's region", async () => {
+    // r7g.4xlarge: $0.8568 in us-east-1, $0.9588 in eu-west-1 (truffle-ts 0.6 static
+    // table). The catalog's own price is us-east-1's, so 0.5 showed it everywhere.
+    const d = await truffleSurface.mount(host, ctxAt("standard", vi.fn(), "eu-west-1"));
+    await settle();
+    search(host, "r7g.4xlarge");
+    await settle();
+    const rows = [...host.querySelectorAll(".truffle-row")];
+    expect(rows).toHaveLength(1); // 0.6: an exact type matches itself
+    expect(rows[0]!.querySelector(".truffle-price")!.textContent).toBe("$0.9588/hr1");
+    expect(host.querySelector(".truffle-note")!.textContent).toContain("eu-west-1 on-demand price: static");
+    d.dispose();
+  });
+
+  it("explains an unreadable query, with the hint on its own line", async () => {
+    // truffle-ts 0.6 throws UnrecognizedQueryError for a query of only unknown words,
+    // where 0.5 returned all 231 types. The message is "what was wrong" then "try a
+    // vendor (…)"; shown as one string, the hint read as part of the error.
+    const d = await truffleSurface.mount(host, ctxAt("standard"));
+    await settle();
+    search(host, "zzqx");
+    await settle();
+    expect(host.querySelectorAll(".truffle-row")).toHaveLength(0);
+    const error = host.querySelector(".truffle-status.error")!.textContent!;
+    expect(error).toBe('Couldn\'t read that query: no recognised search terms; unknown term: "zzqx"');
+    const hints = [...host.querySelectorAll(".truffle-status.hint")].map((h) => h.textContent!);
+    expect(hints.some((h) => h.startsWith("Try a vendor"))).toBe(true);
+    d.dispose();
+  });
+
+  it("keeps the parser's suggestion for a near-miss, once", async () => {
+    const d = await truffleSurface.mount(host, ctxAt("standard"));
+    await settle();
+    search(host, "nvidai");
+    await settle();
+    const text = host.querySelector(".truffle-results")!.textContent!;
+    expect(text).toContain('(did you mean "nvidia"?)');
+    expect(text.match(/did you mean/gi)).toHaveLength(1);
+    d.dispose();
+  });
+
+  it("shows a plain parse error without calling the query unreadable", async () => {
+    // A contradictory query is a plain Error ("conflicting architectures"), not an
+    // UnrecognizedQueryError: the words were read, they just disagree.
+    const d = await truffleSurface.mount(host, ctxAt("standard"));
+    await settle();
+    search(host, "intel graviton");
+    await settle();
+    expect(host.querySelectorAll(".truffle-row")).toHaveLength(0);
+    const error = host.querySelector(".truffle-status.error")!.textContent!;
+    expect(error).not.toContain("\n");
+    expect(error).not.toMatch(/^Couldn't read that query/);
     d.dispose();
   });
 

@@ -36,6 +36,8 @@ let searchFilters: string[] = [];
  * its time in); a test that needs a match sets it.
  */
 let offerings: Array<{ InstanceType: string; Location: string }> = [];
+/** When set, DescribeInstanceTypeOfferings rejects with this instead. */
+let offeringsError: unknown = null;
 
 vi.mock("@aws-sdk/client-ec2", () => {
   class DescribeInstanceTypeOfferingsCommand {
@@ -49,6 +51,7 @@ vi.mock("@aws-sdk/client-ec2", () => {
     async send(cmd: unknown): Promise<unknown> {
       if (cmd instanceof DescribeInstanceTypeOfferingsCommand) {
         searches++;
+        if (offeringsError) throw offeringsError;
         for (const f of cmd.input.Filters ?? []) {
           if (f.Name === "instance-type") searchFilters.push(...(f.Values ?? []));
         }
@@ -60,14 +63,15 @@ vi.mock("@aws-sdk/client-ec2", () => {
   return { EC2Client, DescribeInstanceTypeOfferingsCommand, DescribeSpotPriceHistoryCommand };
 });
 
-const { lagottoSurface } = await import("./lagotto.js");
+const { lagottoSurface, portalCapacityFinder } = await import("./lagotto.js");
+const { EC2Client } = await import("@aws-sdk/client-ec2");
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const config = { region: "us-east-1" } as PortalConfig;
 
-function ctxAt(level: DisclosureLevel = "standard"): SurfaceContext {
-  const session = new SessionController("us-east-1", null);
+function ctxAt(level: DisclosureLevel = "standard", region = "us-east-1"): SurfaceContext {
+  const session = new SessionController(region, null);
   session.setLevel(level);
   vi.spyOn(session, "getCreds").mockReturnValue({
     accessKeyId: "AKIAIOSFODNN7EXAMPLE",
@@ -119,6 +123,7 @@ describe("lagottoSurface across a re-mount", () => {
     searches = 0;
     searchFilters = [];
     offerings = [];
+    offeringsError = null;
     document.body.innerHTML = "";
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -354,6 +359,7 @@ describe("lagottoSurface at guided", () => {
     searches = 0;
     searchFilters = [];
     offerings = [];
+    offeringsError = null;
     document.body.innerHTML = "";
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -549,6 +555,110 @@ describe("lagottoSurface at guided", () => {
     host.querySelector<HTMLButtonElement>(".guided-escape")!.click();
     expect(ctx.session.level).toBe("standard");
     expect(ctx.navigate).not.toHaveBeenCalled();
+    d.dispose();
+  });
+});
+
+// What lagotto-ts 0.3 and truffle-ts 0.6 changed under this surface.
+describe("lagottoSurface on lagotto-ts 0.3 / truffle-ts 0.6", () => {
+  let host: HTMLElement;
+
+  beforeEach(() => {
+    searches = 0;
+    searchFilters = [];
+    offerings = [];
+    offeringsError = null;
+    document.body.innerHTML = "";
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    location.hash = "#/lagotto";
+  });
+
+  const checkOnce = async () => {
+    host.querySelector<HTMLButtonElement>(".lagotto-once")!.click();
+    await settle();
+    await settle();
+  };
+
+  it("declares the one region its finder serves", () => {
+    // lagotto-ts 0.3 refuses a watch naming a region the finder doesn't declare, and
+    // answers a finder that declares nothing only for a single-region watch.
+    const f = portalCapacityFinder(new EC2Client({}) as never, "eu-west-1");
+    expect(f.regions).toEqual(["eu-west-1"]);
+  });
+
+  it("prices an on-demand match for the session's region, and says where from", async () => {
+    // r7g.4xlarge: $0.8568 in us-east-1, $0.9588 in eu-west-1. 0.5's onDemandPrice()
+    // was us-east-1 whatever the region.
+    offerings = [{ InstanceType: "r7g.4xlarge", Location: "eu-west-1a" }];
+    const d = await lagottoSurface.mount(host, ctxAt("standard", "eu-west-1"));
+    await settle();
+    fill(host, { pattern: "r7g.4xlarge" });
+    await checkOnce();
+    expect(host.querySelector(".lagotto-match-price")!.textContent).toBe("$0.9588/hr");
+    expect(host.querySelector(".lagotto-match-origin")!.textContent).toMatch(
+      /^on-demand price: static, collected \d{4}-\d{2}-\d{2} \(live Price List not consulted/,
+    );
+    d.dispose();
+  });
+
+  it("does not let an unpriced type satisfy a price cap", async () => {
+    // eu-west-1 has no static price for p5.48xlarge. A cap must not pass on a price
+    // nobody knows; the hint says so up front.
+    offerings = [{ InstanceType: "p5.48xlarge", Location: "eu-west-1a" }];
+    const d = await lagottoSurface.mount(host, ctxAt("standard", "eu-west-1"));
+    await settle();
+    expect(host.querySelector(".lagotto-pricehint")!.textContent).toContain(
+      "static eu-west-1 prices, and a type with no static price never matches a cap",
+    );
+    fill(host, { pattern: "p5.*", max: "1000" });
+    await checkOnce();
+    expect(host.querySelector(".lagotto-match")).toBeNull();
+    expect(host.querySelector(".lagotto-result")!.textContent).toContain("No matching capacity");
+    d.dispose();
+  });
+
+  it("puts lagotto-ts's warnings in the log, not the console", async () => {
+    // A pattern nothing in the region matches is usually a typo. lagotto-ts 0.3 says
+    // so through onWarning, which by default goes to console.warn.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const d = await lagottoSurface.mount(host, ctxAt("standard"));
+    await settle();
+    fill(host, { pattern: "p55.*" });
+    await checkOnce();
+    const log = host.querySelector(".lagotto-log")!.textContent!;
+    expect(log).toContain('warning: watch tab-us-east-1-p55.* pattern "p55.*" matches no known instance type');
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    d.dispose();
+  });
+
+  it("still names the missing permission when EC2 denies the call", async () => {
+    // lagotto-ts 0.3 wraps a failure of every region in an AggregateError, which hid
+    // the UnauthorizedOperation the friendly message keys on.
+    offeringsError = Object.assign(new Error("You are not authorized to perform this operation."), {
+      name: "UnauthorizedOperation",
+    });
+    const d = await lagottoSurface.mount(host, ctxAt("standard"));
+    await settle();
+    fill(host, { pattern: "p5.*" });
+    await checkOnce();
+    const result = host.querySelector(".lagotto-result")!;
+    expect(result.className).toContain("error");
+    expect(result.textContent).toContain("needs ec2:DescribeInstanceTypeOfferings");
+    d.dispose();
+  });
+
+  it("prices the guided watch cards for the session's region", async () => {
+    // ap-southeast-2 has no static table, so every card is unpriced there, and says why.
+    const d = await lagottoSurface.mount(host, ctxAt("guided", "ap-southeast-2"));
+    await settle();
+    await settle();
+    const card = host.querySelector(".guided-card.ready")!;
+    expect(card.querySelector(".guided-card-cost")!.textContent).toContain("ap-southeast-2");
+    expect(card.querySelector(".guided-card-origin")!.textContent).toContain(
+      "no static price table for region ap-southeast-2",
+    );
     d.dispose();
   });
 });

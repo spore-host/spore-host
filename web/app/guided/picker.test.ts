@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GUIDED_SHAPES } from "./shapes.js";
 import { mountGuidedPicker } from "./picker.js";
+import { find } from "@spore-host/truffle-ts";
 
 /** Let the per-card resolveShape promises settle. */
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -125,6 +126,56 @@ describe("mountGuidedPicker", () => {
     expect(card.disabled).toBe(true);
     card.click();
     expect(onChoose).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it("says a curated query the catalog can't read is ours to fix, not the user's", async () => {
+    // From truffle-ts 0.6, find() throws UnrecognizedQueryError for a query of only
+    // unknown words. On a card that is a portal defect (the user typed nothing), so
+    // it says so and points at the other cards, keeping the parser's reason. Driven
+    // through the real find() with a query 0.6 rejects.
+    const dispose = mountGuidedPicker(host, {
+      onChoose: vi.fn(),
+      onEscape: vi.fn(),
+      shapes: [{ ...GUIDED_SHAPES[0]!, query: "zzqx" }],
+      finder: find,
+    });
+    await settle();
+    const card = host.querySelector<HTMLButtonElement>(".guided-card")!;
+    expect(card.classList.contains("errored")).toBe(true);
+    const text = card.querySelector(".guided-card-machine")!.textContent!;
+    expect(text).toContain("no longer matches the catalog");
+    expect(text).toContain('unknown term: "zzqx"');
+    expect(text).toContain("try another option");
+    // The parser's multi-line hint is for a user who typed the query; not here.
+    expect(text).not.toContain("Try a vendor");
+    expect(card.disabled).toBe(true);
+    dispose();
+  });
+
+  it("labels every card's price with where it came from", async () => {
+    // Every portal price is static and must say so, why, and when it was collected.
+    const dispose = mountGuidedPicker(host, { onChoose: vi.fn(), onEscape: vi.fn() });
+    await settle();
+    const origins = [...host.querySelectorAll(".guided-card-origin")].map((e) => e.textContent!);
+    expect(origins).toHaveLength(GUIDED_SHAPES.length);
+    for (const o of origins) expect(o).toMatch(/^us-east-1 price: static, collected \d{4}-\d{2}/);
+    dispose();
+  });
+
+  it("prices the cards for the region it is given", async () => {
+    const dispose = mountGuidedPicker(host, {
+      onChoose: vi.fn(),
+      onEscape: vi.fn(),
+      region: "eu-north-1",
+      shapes: [GUIDED_SHAPES[0]!],
+    });
+    await settle();
+    const card = host.querySelector(".guided-card")!;
+    expect(card.querySelector(".guided-card-cost")!.textContent).toContain("price unknown for this");
+    expect(card.querySelector(".guided-card-origin")!.textContent).toContain(
+      "eu-north-1 price: unavailable (no static price table for region eu-north-1)",
+    );
     dispose();
   });
 
