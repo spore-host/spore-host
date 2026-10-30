@@ -10,7 +10,8 @@
 // access. That's the right way round: the beginner's entry point must not be the
 // one that breaks first.
 
-import { find } from "@spore-host/truffle-ts";
+import { describePriceOrigin, find } from "@spore-host/truffle-ts";
+import { describeFindError } from "../finderror.js";
 import {
   GUIDED_SHAPES,
   resolveShape,
@@ -43,6 +44,12 @@ export interface GuidedPickerOptions {
   finder?: typeof find;
   /** Shapes to offer. Defaults to the curated list; overridable for tests. */
   shapes?: readonly GuidedShape[];
+  /**
+   * The region to price each card for — the session's. Defaults to the bundled
+   * catalog's region (us-east-1), which is the only region whose static table prices
+   * most of the catalog.
+   */
+  region?: string;
   /**
    * Copy overrides, for a caller whose action is not "launch this".
    *
@@ -105,7 +112,7 @@ export function mountGuidedPicker(host: HTMLElement, opts: GuidedPickerOptions):
       <span class="guided-card-machine">finding a machine…</span>`;
     cards.appendChild(card);
 
-    void resolveShape(shape, opts.finder ?? find)
+    void resolveShape(shape, opts.finder ?? find, opts.region)
       .then((rec) => {
         if (!live) return;
         card.classList.remove("loading");
@@ -128,8 +135,14 @@ export function mountGuidedPicker(host: HTMLElement, opts: GuidedPickerOptions):
         // that would report a fact about the catalog's contents that we don't have.
         card.classList.remove("loading");
         card.classList.add("errored");
-        card.querySelector(".guided-card-machine")!.textContent =
-          `couldn't look this up: ${(err as Error).message}`;
+        // A curated query the catalog can't read (truffle-ts 0.6's
+        // UnrecognizedQueryError) is the portal's defect, not the user's: they typed
+        // nothing. Saying "try another option" points them somewhere that works, and
+        // the parser's own reason is kept for whoever reports it.
+        const e = describeFindError(err);
+        card.querySelector(".guided-card-machine")!.textContent = e.unrecognized
+          ? `this option's search no longer matches the catalog (${e.message}) — try another option`
+          : `couldn't look this up: ${e.message}`;
       });
   }
 
@@ -172,16 +185,30 @@ function describe(
       ? `<span class="guided-card-alts">cheapest of ${rec.totalMatches} that fit</span>`
       : "";
 
-  if (costLine) return `<b>${specs}</b>${costLine(rec)}${of}`;
+  const origin = priceOriginLine(rec);
+  if (costLine) return `<b>${specs}</b>${costLine(rec)}${origin}${of}`;
 
   if (rec.pricePerHour == null) {
     return `<b>${specs}</b><span class="guided-card-cost unknown">price unknown for this
-      type — check before launching</span>${of}`;
+      type in ${escapeHtml(rec.region)} — check before launching</span>${origin}${of}`;
   }
   const est = rec.priceIsEstimate ? " (estimated)" : "";
   return `<b>${specs}</b><span class="guided-card-cost">about
     $${rec.estimatedTotal!.toFixed(2)} for ${rec.shape.defaultTtlHours} hours
-    ($${rec.pricePerHour.toFixed(4)}/hr${est}, compute only)</span>${of}`;
+    ($${rec.pricePerHour.toFixed(4)}/hr${est}, compute only)</span>${origin}${of}`;
+}
+
+/**
+ * Where a card's price came from, in truffle-ts's fixed words.
+ *
+ * On every card, priced or not, and for every caller (the watch list too): a static
+ * price must say it is static, why, and its collection date, and an unknown one says
+ * why it is unknown. Shared by the confirmation in launch.ts.
+ */
+export function priceOriginLine(rec: GuidedRecommendation): string {
+  return `<span class="guided-card-origin">${escapeHtml(rec.region)} price: ${escapeHtml(
+    describePriceOrigin(rec.priceOrigin),
+  )}</span>`;
 }
 
 function escapeHtml(s: string): string {

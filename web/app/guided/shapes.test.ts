@@ -272,6 +272,8 @@ describe("WATCH_SHAPES", () => {
     const rec = {
       shape: WATCH_SHAPES[0]!,
       pick: stub({ instanceType: "z9.custom", instanceFamily: "" }),
+      region: "us-east-1",
+      priceOrigin: { source: "unknown" as const },
       priceIsEstimate: false,
       totalMatches: 1,
     };
