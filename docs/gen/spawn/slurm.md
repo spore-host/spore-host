@@ -7,13 +7,13 @@ with minimal changes. Supports array jobs, MPI jobs, and GPU jobs.
 
 Examples:
   # Convert Slurm script to spawn parameters
-  spawn slurm convert job.sbatch --output params.yaml
+  spawn slurm convert job.sbatch --output-file params.yaml
 
   # Estimate cost before running
   spawn slurm estimate job.sbatch
 
-  # Convert and submit in one step
-  spawn slurm submit job.sbatch --spot
+  # Convert and submit in one step (for spot, put "#SPAWN --spot=true" in the script)
+  spawn slurm submit job.sbatch
 
 ```
 spawn slurm
@@ -31,7 +31,7 @@ Supported Slurm directives:
   --mem=XGB            → Memory requirement for instance selection
   --cpus-per-task=N    → CPU requirement for instance selection
   --gres=gpu:N         → GPU requirement and instance selection
-  --nodes=N            → Multi-node MPI job (requires --mpi flag)
+  --nodes=N            → Refused when N &gt; 1 (launch with spawn launch --mpi)
   --job-name=NAME      → Instance name prefix
 
 Custom #SPAWN directives (optional):
@@ -40,9 +40,16 @@ Custom #SPAWN directives (optional):
   #SPAWN --spot=true           → Enable spot instances
   #SPAWN --ami=AMI_ID          → Override AMI
 
+Each array task (or the single job) becomes one row whose command: is the
+job script, with SLURM_* variables exported. Multi-node MPI jobs (--nodes &gt; 1)
+cannot be expressed as a parameter file and are refused.
+
+Launch the file in the foreground (--no-detach): a detached sweep does not run
+row commands yet. An --array=...%N limit becomes --max-concurrent N.
+
 Example:
-  spawn slurm convert train.sbatch --output params.yaml
-  spawn launch --params params.yaml
+  spawn slurm convert train.sbatch --output-file params.yaml
+  spawn launch train --param-file params.yaml --no-detach
 
 ```
 spawn slurm convert <script.sbatch> [flags]
@@ -81,8 +88,10 @@ Parse a Slurm batch script, convert to spawn parameters, and launch immediately.
 This is a convenience command that combines 'convert' and 'launch' in one step.
 For complex jobs, consider using 'convert' first to review the generated parameters.
 
+Spot instances come from the script ("#SPAWN --spot=true"); there is no --spot flag.
+
 Example:
-  spawn slurm submit train.sbatch --spot --yes
+  spawn slurm submit train.sbatch --yes
 
 ```
 spawn slurm submit <script.sbatch> [flags]

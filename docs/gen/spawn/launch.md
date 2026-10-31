@@ -14,7 +14,7 @@ Examples:
   spawn launch
 
   # From truffle
-  truffle search m7i.large | spawn launch
+  truffle find m7i.large | spawn launch
 
   # Direct
   spawn launch --instance-type m7i.large --region us-east-1
@@ -27,10 +27,11 @@ spawn launch <name> [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--active-ports` |  | string |  | TCP ports whose established connections are counted and reported (the spawn:logged-in-count tag). They do NOT prevent idle termination: an abandoned browser tab holds a connection open forever. To keep a busy app alive, use --active-processes (e.g. '8787' for RStudio, '8787,8888' for RStudio+Jupyter) |
-| `--active-processes` |  | string |  | Process names to monitor, prevents idle termination while any are running (e.g. 'rsession' for RStudio, 'rsession,jupyter' for multiple) |
+| `--active-ports` |  | string |  | TCP ports whose established connections are counted and reported (the spawn:logged-in-count tag). They do NOT prevent the idle stop: an abandoned browser tab holds a connection open forever. To keep a busy app alive, use --active-processes (e.g. '8787' for RStudio, '8787,8888' for RStudio+Jupyter) |
+| `--active-processes` |  | string |  | Process names to monitor, prevents the idle stop while any are running (e.g. 'rsession' for RStudio, 'rsession,jupyter' for multiple) |
 | `--allow-cidr` |  | string |  | CIDR allowed to reach the managed Windows security group (RDP 3389 + SSH 22); default 0.0.0.0/0 |
 | `--allow-cost-limit-overrun` |  | bool |  | Proceed even when the storage this launch creates exceeds --cost-limit on its own. You are committing to a bill the cap cannot bound. |
+| `--allow-missing-endpoints` |  | bool |  | With --no-public-ip: launch even when the subnet lacks a VPC endpoint or NAT route it needs. What is missing is still listed; without it the bootstrap may not install spored, spored may not enforce --ttl or --cost-limit, and spawn connect may not reach the instance |
 | `--ami` |  | string |  | AMI ID (ami-...); omit or use 'auto' to auto-detect the latest AL2023 |
 | `--attach-volume` |  | stringArray |  | Attach an EBS volume from a snapshot, mounted at a path: snap-xxx:/mount/point[:ro]. Repeatable. Read-only is the common case for shared reference data. |
 | `--auto-placement-group` |  | bool | `true` | Automatically create placement group for MPI job arrays (default: true) |
@@ -44,13 +45,17 @@ spawn launch <name> [flags]
 | `--completion-webhook-url` |  | string |  | On workload completion (--completion-file detected), spored POSTs a fire-once, best-effort notice to this URL (spawn#497) — lets a caller wait on its own webhook/queue instead of polling an artifact against a pre-guessed deadline; empty = disabled |
 | `--compliance-strict` |  | bool |  | Strict mode: fail on warnings (default: show warnings only) |
 | `--config` |  | string |  | Launch config YAML file (supports plugins: list) |
-| `--cost-limit` |  | float64 |  | Total spend ceiling in USD, covering compute AND storage (0 = disabled). spored terminates the instance when compute + EBS reaches it; a launch whose storage alone exceeds it is refused up front, because storage outlives the instance and spored cannot reclaim it against the cap. |
+| `--cost-limit` |  | float64 |  | Total spend ceiling in USD, covering compute AND storage (0 = disabled). spored terminates the instance when compute + EBS + public IPv4 reaches it; a launch whose storage alone exceeds it is refused up front, because storage outlives the instance and spored cannot reclaim it against the cap. |
 | `--count` |  | int | `1` | Number of instances to launch (job array) |
 | `--detach` |  | bool |  | Run sweep orchestration in Lambda (auto-enabled for parameter sweeps) |
 | `--dns-api-endpoint` |  | string |  | Lambda Function URL of a custom DNS updater (https://&lt;id&gt;.lambda-url.&lt;region&gt;.on.aws/). Also SPAWN_DNS_API_ENDPOINT, dns.api_endpoint in ~/.spawn/config.yaml, or SSM /spawn/dns/api_endpoint |
 | `--dns-domain` |  | string |  | Register DNS under this zone instead of spore.host (needs an updater serving it; see docs/custom-dns.md). Also SPAWN_DNS_DOMAIN, dns.domain in ~/.spawn/config.yaml, or SSM /spawn/dns/domain |
+| `--dns-function-arn` |  | string |  | ARN of the Lambda function behind --dns-api-endpoint; the instance role is granted lambda:InvokeFunctionUrl on it (required with a custom endpoint). Also SPAWN_DNS_FUNCTION_ARN, dns.function_arn in ~/.spawn/config.yaml, or SSM /spawn/dns/function_arn |
 | `--dns` |  | string |  | Override DNS name if different from --name (advanced) |
 | `--dry-run` |  | bool |  | Resolve and print the launch configuration without launching anything (no AWS mutation) |
+| `--efa-group` |  | string |  | With --efa: create or join the security group spawn-efa-NAME, which admits all traffic between its members, so separate launches (different instance types, no --mpi) can share one EFA fabric. Launch them in one AZ. Unused groups are deleted by the reaper |
+| `--efa-interfaces` |  | int |  | With --efa: number of EFA interfaces, one per network card (0 = every EFA the instance type supports; 1 = a single interface). More than one gets its public IP from an Elastic IP, released on terminate |
+| `--efa-secondary-type` |  | string | `efa-only` | With --efa on a multi-card type (more than one EFA interface): the interface type on each network card after card 0. efa-only (default) is the EFA device alone, with no IP, so all IP traffic uses card 0. efa is EFA with ENA: each card also gets a private IP in the launch subnet, so IP traffic (S3, say) can use that card's bandwidth. Only the primary interface gets the public or Elastic IP. The OS must route the extra interfaces: Ubuntu's cloud-init and Amazon Linux's amazon-ec2-net-utils set up per-interface policy routing at boot; spawn adds none. Refused without multi-card EFA |
 | `--efa` |  | bool |  | Enable Elastic Fabric Adapter for ultra-low latency MPI (requires supported instance types) |
 | `--efs-id` |  | string |  | EFS filesystem ID to mount (fs-xxx) |
 | `--efs-mount-options` |  | string |  | Custom EFS mount options (overrides profile) |
@@ -77,28 +82,36 @@ spawn launch <name> [flags]
 | `--iam-role-tags` |  | stringSlice |  | Tags for IAM role (key=value format) |
 | `--iam-role` |  | string |  | IAM role name (creates if doesn't exist) |
 | `--iam-trust-services` |  | stringSlice | `[ec2]` | Services that can assume role |
-| `--idle-timeout` |  | string |  | Auto-terminate if idle, e.g. 30m, 2h, 1d (defaults to 1h if neither --ttl nor --idle-timeout set) |
+| `--idle-cpu-threshold` |  | string |  | CPU percentage below which spored counts the instance as idle (above 0, at most 100; default 5). Stored in the launch's config object, not a tag |
+| `--idle-timeout` |  | string |  | Stop the instance after this much idleness (see --on-idle), e.g. 30m, 2h, 1d (defaults to 1h if neither --ttl nor --idle-timeout set) |
 | `--instance-names` |  | string |  | Instance name template (e.g., 'worker-{index}', default: '{job-array-name}-{index}') |
-| `--instance-profile` |  | string |  | Attach this EXISTING IAM instance profile by name, bypassing all --iam-role/--iam-policy/--iam-policy-file resolution and the spored-instance-profile default entirely. Use when you need a deterministic, auditable choice instead of spawn's create/reuse heuristic (#550) — e.g. a profile you've already scoped to a specific data bucket. |
+| `--instance-profile` |  | string |  | Attach this EXISTING IAM instance profile by name, bypassing all --iam-role/--iam-policy/--iam-policy-file resolution and the spored-instance-profile default entirely. Use when you need a deterministic, auditable choice instead of spawn's create/reuse heuristic (#550) — e.g. a profile you've already scoped to a specific data bucket. A --nested-spawn role (spawn-instance-nested-*) named here requires --ttl, as --nested-spawn does. |
 | `--instance-type` |  | string |  | Instance type |
 | `--interactive` |  | bool |  | Force interactive wizard |
 | `--job-array-name` |  | string |  | Job array group name (required if --count &gt; 1) |
+| `--keep-on-error` |  | bool |  | If the launch fails after the instance was created (spored never came up, it never reached running, ...), keep the instance instead of terminating it. For a job array or sweep, keep every member when the launch fails part way, and keep a member whose spored never came up. A kept instance has no TTL/idle/cost-limit enforcement until spored is confirmed running |
 | `--key-name` |  | string |  | SSH key pair name (EC2 KeyName) |
 | `--launch-delay` |  | string | `0s` | Delay between instance launches (e.g., 5s) |
 | `--max-concurrent-auto` |  | bool |  | Derive --max-concurrent from the account's real AWS quota headroom for the sweep's instance type(s)/region, instead of a user-supplied number (spawn#492) |
 | `--max-concurrent-per-region` |  | int |  | Max instances running simultaneously per region (0 = unlimited) |
 | `--max-concurrent` |  | int |  | Max instances running simultaneously (0 = unlimited) |
+| `--metrics-bind` |  | string |  | With --metrics: the address to listen on, an IP address or localhost (default localhost; 0.0.0.0 for a scraper on another host) |
+| `--metrics-path` |  | string |  | With --metrics: the HTTP path to serve metrics on (default /metrics) |
+| `--metrics-port` |  | int |  | With --metrics: the metrics server's port, 1024-65535 (default 9090) |
+| `--metrics` |  | bool |  | Start spored's Prometheus metrics server and tag the instance spawn:metrics-enabled=true, which deployment/prometheus's EC2 discovery matches. It listens on localhost unless --metrics-bind is set, and the security group must admit the scraper (see docs/self-hosted-monitoring.md) |
 | `--min-viable` |  | int | `1` | Job array: minimum members that must launch for success (default 1; ignored for --mpi) |
 | `--mode` |  | string | `balanced` | Distribution mode: balanced (fair share) or opportunistic (prioritize available regions) |
 | `--mpi-command` |  | string |  | Command to run via mpirun across the MPI cohort (alternative to --command). Rank 0 runs mpirun as root. Its output goes to /var/log/spawn-command.log on rank 0 (read it with 'spawn array logs &lt;name&gt; --index 0'), and its exit code is recorded to /tmp/SPAWN_EXITCODE there. When it exits, pass or fail, every member is signalled, so --on-complete fires across the whole cohort. |
 | `--mpi-processes-per-node` |  | int |  | MPI processes per node (default: vCPU count) |
 | `--mpi` |  | bool |  | Enable MPI cluster setup (requires --count &gt; 1) |
 | `--name` |  | string |  | Name your spore (sets Name tag, DNS, and hostname). Either this or the positional form `spawn launch <name>`; both are accepted (#499). |
+| `--nested-spawn` |  | bool |  | Give the instance an IAM role that lets a spawn CLI running on it launch, list, connect to, extend and terminate its own child instances (e.g. a workflow head node). Opt-in: the default spored-instance-role never gets these grants. Children are tagged spawn:managed=true and get their own TTL and spored; a nested spore cannot create IAM roles, so children use the default profile, an existing --instance-profile, or --nested-spawn. Requires --ttl. |
 | `--nested-virtualization` |  | bool |  | Enable nested virtualization (run KVM/Hyper-V inside the instance). Requires a C8i/M8i/R8i instance type. |
 | `--nist-800-171` |  | bool |  | Enable NIST 800-171 Rev 3 compliance mode |
 | `--nist-800-53` |  | string |  | Enable NIST 800-53 compliance (low, moderate, high) |
 | `--no-detach` |  | bool |  | Disable auto-detach for parameter sweeps (requires --ttl or --idle-timeout) |
 | `--no-dns` |  | bool |  | Do not register DNS for this instance (by default spored registers the --name/--dns name). Overrides dns.enabled in ~/.spawn/config.yaml for this launch (#549) |
+| `--no-public-ip` |  | bool |  | Launch with private IPs only: no public IP on any interface, and no Elastic IP for a multi-card --efa launch, so the region's Elastic IP quota does not limit the fleet. Needs --subnet-id, or --az to let spawn pick a subnet. Before anything is created spawn checks that the subnet can reach what spored and the SSM agent need: a NAT gateway route, or VPC endpoints for s3 (gateway), ec2, ssm, ssmmessages and ec2messages (interface, private DNS enabled), and refuses the launch if not. spawn connect uses SSM. Refused with --dns and --wait-for-ssh; the DNS record --name implies is skipped |
 | `--no-timeout` |  | bool |  | Disable automatic timeout (NOT RECOMMENDED: creates zombie risk) |
 | `--notify-platform` |  | string |  | Chat platform for lifecycle notifications: slack (default), teams, or discord |
 | `--on-complete` |  | string |  | Action when workload signals completion: terminate, stop, hibernate. Use 'terminate' for batch/headless workloads — 'stop' leaves EBS (and any attached EIP) billing indefinitely, which is easy to forget in accounts without a hosted reaper |
@@ -109,7 +122,7 @@ spawn launch <name> [flags]
 | `--params` |  | string |  | Inline JSON parameters for sweep |
 | `--placement-group` |  | string |  | AWS Placement Group for MPI instances (auto-created if not specified) |
 | `--plugin` |  | stringArray |  | Plugin to install at launch (ref[@version], repeatable) |
-| `--pre-stop-timeout` |  | string |  | Max time to wait for --pre-stop command (default: 5m, spot: 90s) |
+| `--pre-stop-timeout` |  | string |  | Max time to wait for --pre-stop command (default: 5m, spot: 90s; on spot never past the interruption) |
 | `--pre-stop` |  | string |  | Shell command to run on the instance before any lifecycle-triggered stop/terminate (e.g., "aws s3 sync /results s3://bucket/") |
 | `--print-config` |  | bool |  | Alias for --dry-run |
 | `--queue-template` |  | string |  | Queue template name (use 'spawn queue template list' to see options) |
@@ -137,14 +150,16 @@ spawn launch <name> [flags]
 | `--tag` |  | stringArray |  | Custom tag key=value on the instance and its created volumes (repeatable). The spawn: prefix is reserved. |
 | `--team` |  | string |  | Team ID: tag instance with spawn:team-id for team-shared access |
 | `--template-var` |  | stringToString |  | Template variables (key=value) |
-| `--terminate-on-error` |  | bool |  | If post-launch verification fails (e.g. spored didn't come up), terminate the instance instead of leaving it running |
+| `--tracing-exporter` |  | string |  | With --tracing: where spans go. Only stdout (the default) is available; xray is refused, because the instance role spawn creates does not grant xray:PutTraceSegments |
+| `--tracing-sampling` |  | string |  | With --tracing: the fraction of traces kept, 0 to 1 (default 0.1) |
+| `--tracing` |  | bool |  | Turn on spored's OpenTelemetry tracing. Spans go to spored's journal (the stdout exporter) |
 | `--ttl` |  | string |  | Auto-terminate after duration (e.g., 8h, 90m, 1d, 2d12h; defaults to 1h idle if not set) |
 | `--user-data-file` |  | string |  | User data file |
 | `--user-data` |  | string |  | User data (@file or inline) |
 | `--volume-size` |  | int32 |  | Root EBS volume size in GiB (0 = use AMI default) |
 | `--vpc` |  | string |  | VPC ID |
 | `--wait-for-running` |  | bool | `true` | Wait until running |
-| `--wait-for-ssh` |  | bool | `true` | Wait until SSH is ready |
+| `--wait-for-ssh` |  | bool |  | Linux: also wait (up to 2 min) for SSH on port 22; refused at once if no attached security group allows tcp/22. Off by default: spawn connect uses SSM, and spored is verified either way. --wait-for-ssh=false, given explicitly, skips the spored check too (Windows: skips the password wait) |
 | `--wait-timeout` |  | string |  | Timeout for --wait (e.g., 2h, 30m, 0=no timeout) |
 | `--wait` |  | bool |  | Wait for sweep/launch to complete (requires --detach) |
 | `--webhook-correlation` |  | string |  | Opaque blob echoed verbatim in the spot-webhook/completion-webhook payload so a consumer can correlate the event to its own record (never parsed by spawn) |

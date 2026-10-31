@@ -42,11 +42,12 @@ spawn burst [flags]
 |------|-------|------|---------|-------------|
 | `--ami` |  | string |  | Linux AMI ID (default: the newest self-owned spawn-* AMI that fits --instance-type, else Amazon Linux 2023) |
 | `--count` |  | int | `1` | Number of instances to launch |
-| `--idle-timeout` |  | string |  | Also terminate an instance after it has been idle this long (e.g. 1h). Empty disables idle termination. |
+| `--idle-timeout` |  | string |  | Also terminate an instance after it has been idle this long (e.g. 1h). Empty disables the idle terminate. |
 | `--instance-profile` |  | string |  | Attach this EXISTING IAM instance profile by name instead of the default spored-instance-profile, which spawn creates or reuses as spawn launch does. Its role must let spored read and write its own tags, terminate itself, and use the spawn-hybrid-registry table. |
 | `--instance-type` |  | string | `t3.micro` | EC2 instance type |
 | `--job-array-id` |  | string |  | Job array ID to join (required) |
 | `--job-array-name` |  | string |  | Job array name, used by spawn array status/cancel (defaults to the job array ID) |
+| `--keep-on-error` |  | bool |  | Keep instances instead of terminating them when the burst fails after launching some, or when an instance's spored never comes up. A kept instance whose spored is not confirmed has no TTL/idle enforcement |
 | `--key-name` |  | string |  | SSH key pair name |
 | `--security-group-ids` |  | stringSlice |  | Security group IDs (comma-separated or repeated) |
 | `--spot` |  | bool |  | Use Spot instances |
