@@ -264,11 +264,44 @@ spored complete --file /var/run/myapp/done
 ```
 
 **Sequence after file appears:**
-1. `completion` notification sent immediately (Slack, Teams or Discord)
-2. Users warned via `wall`
-3. `spawn:completion-delay` grace period (default 30s)
-4. `spawn:pre-stop` command runs (if set)
-5. `spawn:on-complete` action: terminate, stop, or hibernate
+1. spored notices the file at its next check (it checks once a minute)
+2. `completion` notification sent (Slack, Teams or Discord)
+3. Users warned via `wall`
+4. `spawn:completion-delay` grace period (default 30s)
+5. `spawn:pre-stop` command runs (if set), then DNS and plugin cleanup
+6. Users warned again, and 5 seconds later the `spawn:on-complete` action: terminate, stop, or hibernate
+
+### How long after the command exits does the instance terminate?
+
+spored does not watch the process. It polls for the completion file on a
+one-minute ticker, so the wait starts when the file appears, not when your
+command's last line is printed. A `--command` writes the file as soon as the
+command and its output pipe have closed: a background process that still holds
+the command's output delays it
+([spawn#1459](https://github.com/spore-host/spawn/issues/1459)).
+
+From the completion file to the terminate call (spored v0.153.0 and later):
+
+| Step | Time |
+|---|---|
+| Ticker phase: the file waits for spored's next check | 0–60 s |
+| `--completion-delay` | 30 s by default |
+| `spawn:pre-stop` hook | 0 s if unset; up to `spawn:pre-stop-timeout` (5 min by default) |
+| Task-record flush, DNS and plugin cleanup | usually under a few seconds; each cleanup step is capped at 10 s |
+| Warning to logged-in users | 5 s |
+
+With the defaults and no pre-stop hook that is **about 35–95 s**. EC2 shows the
+instance `shutting-down` within seconds of the call. TTL, cost-limit and idle
+terminations skip the completion delay: 0–60 s from the deadline to spored's
+check, then the pre-stop hook, the cleanup and the 5 s warning.
+
+Before v0.153.0, the last spawn-managed instance in a region waited another
+60 s before terminating, for the `region_vacated` check, whether or not a
+notifier was configured: **about 95–155 s** with the defaults. That check now
+runs only when notifications are enabled, and its settle window is the waits
+above, so it adds nothing
+([spawn#1456](https://github.com/spore-host/spawn/issues/1456)). An instance
+launched by an older CLI keeps its old spored until `spawn upgrade-spored`.
 
 ---
 
@@ -296,7 +329,7 @@ are:
 | `spot_replacement_retired` | A replacement EC2 launched from a leaked Spot request was found; spored cancels the request and terminates the replacement. Sent to the original instance's users. |
 | `fsx_mount_failed` | The FSx filesystem could not be mounted |
 | `fsx_dra_failed` | The FSx data repository association (S3 link) could not be set up |
-| `region_vacated` | No spawn-managed instances remain in the region |
+| `region_vacated` | No other spawn-managed instance was running or pending in the region when this one's termination was decided, nor when it terminated |
 
 An idle **termination** (`spawn:terminate-on-idle`) sends no chat event yet
 ([spawn#1205](https://github.com/spore-host/spawn/issues/1205)). Users logged in
@@ -311,12 +344,15 @@ addition to the chat event.
 
 ## Logs and diagnostics
 
-```sh
-# View daemon logs
-journalctl -u spored -n 100
-journalctl -u spored -f
+spored writes its log to `/var/log/spored.log` (`%PROGRAMDATA%` on Windows),
+not to the journal, so `journalctl -u spored` shows nothing from spored
+itself. From your machine, `spawn logs <name> --which spored` reads it.
 
-# Raw log file
+```sh
+# From your machine
+spawn logs my-job --which spored
+
+# On the instance
 tail -f /var/log/spored.log
 
 # Full status with cost breakdown

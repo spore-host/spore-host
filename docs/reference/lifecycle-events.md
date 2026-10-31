@@ -25,7 +25,7 @@ Spored emits lifecycle events when significant things happen to a running instan
 | `pre_stop_timeout` | The pre-stop hook ran past `spawn:pre-stop-timeout` | 🟠 *name* shutdown task TIMED OUT — output may be incomplete |
 | `fsx_mount_failed` | The FSx filesystem could not be mounted | ℹ️ *name*: fsx_mount_failed |
 | `fsx_dra_failed` | The FSx data repository association (S3 link) could not be set up | ℹ️ *name*: fsx_dra_failed |
-| `region_vacated` | No spawn-managed instances remain in the region | ℹ️ *name*: region_vacated |
+| `region_vacated` | When an instance terminates and no other spawn-managed instance was running or pending in the region when the termination was decided, nor just before it terminates | ℹ️ *name*: region_vacated |
 
 Events the bot has no dedicated message for are delivered in the generic ℹ️ form.
 
@@ -64,3 +64,15 @@ touch /tmp/SPAWN_COMPLETE
 ```
 
 Spored sees the file, sends the `completion` notification, waits 30 seconds, then terminates the instance.
+
+spored checks for the file once a minute, so the instance terminates about
+35–95 s after the file appears with the defaults (no pre-stop hook). The full
+breakdown is in [How long after the command exits does the instance
+terminate?](/tools/spored#how-long-after-the-command-exits-does-the-instance-terminate).
+
+The `region_vacated` check never delays the termination (spored v0.153.0 and
+later, [spawn#1456](https://github.com/spore-host/spawn/issues/1456)). Without
+a notifier it doesn't run. With one, it counts the region's other spawn-managed
+instances when the termination is decided and again just before it, so an
+instance relaunched in between suppresses the event; one launched after the
+termination does not.
