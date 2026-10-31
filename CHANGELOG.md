@@ -31,6 +31,11 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **How long after a command exits the instance terminates** ([spawn#1456](https://github.com/spore-host/spawn/issues/1456)).
+  The spored page has a breakdown from the completion file to the terminate call: the one-minute poll, `--completion-delay`, the pre-stop hook, cleanup and the 5 s warning, about 35–95 s with the defaults.
+  It notes that before spored v0.153.0 the last instance in a region waited another 60 s for the `region_vacated` check, and that a background process holding the command's output delays the completion file ([spawn#1459](https://github.com/spore-host/spawn/issues/1459)).
+  The logs section now says spored logs to `/var/log/spored.log`, not the journal, and shows `spawn logs --which spored` in place of `journalctl -u spored`.
+
 - **MPI guide: imaging a cluster node** ([spawn#1343](https://github.com/spore-host/spawn/issues/1343)).
   Explains that from spawn v0.147.0 an instance launched from an image of a
   cluster node drops the old cluster's `spawn-mpi-cohort` key at first boot.
