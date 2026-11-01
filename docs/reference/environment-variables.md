@@ -36,6 +36,12 @@ export AWS_PROFILE=research-account
 AWS_REGION=eu-west-1 spawn launch --name eu-test
 ```
 
+## Update notice
+
+| Variable | Description |
+|----------|-------------|
+| `SPORE_NO_UPDATE_CHECK` | Set to any value to turn off the "A newer version … is available" notice that spawn and truffle print to stderr after a command, and the background release check behind it. `CI` (any value) does the same. From libs v0.51.4 (the spawn and truffle releases that include it), the notice and check are also skipped automatically when stderr is not a terminal, for example when a script or batch harness captures it. Explicit checks (`spawn version`, `truffle version`) ignore all three. |
+
 ## Slack and Teams integration
 
 | Variable | Description |
