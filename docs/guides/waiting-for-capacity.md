@@ -143,6 +143,42 @@ retrying forever.
 
 ---
 
+## Or: hold the capacity and launch it yourself
+
+`--action hold` is the third option. When capacity appears, Lagotto reserves it
+instead of launching:
+
+```sh
+lagotto watch "p5.48xlarge" \
+  --regions us-east-1,us-west-2,us-east-2 \
+  --action hold \
+  --notify email:you@example.com \
+  --ttl 7d
+```
+
+The reservation is a targeted On-Demand Capacity Reservation for **one**
+instance, Linux/UNIX, in the matched AZ, and it ends **30 minutes** after it's
+created (fixed, not configurable). It bills at the On-Demand rate from the moment
+it exists, so **the worst case is 30 minutes of On-Demand time for one instance,
+used or not**.
+
+Get the id and AZ from the notification or `lagotto status <watch-id>`, then
+launch into it within the 30 minutes:
+
+```sh
+spawn launch --region us-west-2 --az us-west-2b \
+  --instance-type p5.48xlarge \
+  --reservation-id cr-0123456789abcdef0 \
+  --ttl 6h
+```
+
+If you won't use it, `lagotto cancel <watch-id>` releases it early (lagotto
+v0.65.0 and later; it needs `ec2:CancelCapacityReservation` on your own
+credentials). See [Holding capacity](/tools/lagotto#holding-capacity-action-hold)
+for where the id appears in each version, the IAM, and a Local Zone caveat.
+
+---
+
 ## 4. Clean up
 
 A watch ends on its own when it matches, fails, or its TTL expires. To stop one
@@ -151,6 +187,9 @@ early:
 ```sh
 lagotto cancel <watch-id>
 ```
+
+For a hold that already fired, the same command releases the reservation
+(lagotto v0.65.0 and later).
 
 When no watches remain, the poller disables its own schedule automatically. To
 remove the poller (the Lambda, schedule and topic):

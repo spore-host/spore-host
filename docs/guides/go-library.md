@@ -332,7 +332,7 @@ matches, err := store.ListMatchHistory(ctx, "w-mywatch01")
 |----------|-------|-------------|
 | `watcher.ActionNotify` | `"notify"` | Fire notifications, do not launch |
 | `watcher.ActionSpawn` | `"spawn"` | Launch instance using `LaunchConfigJSON` |
-| `watcher.ActionHold` | `"hold"` | Record match, take no action |
+| `watcher.ActionHold` | `"hold"` | Create a 30-minute targeted On-Demand Capacity Reservation for the match |
 
 ## API reference
 
