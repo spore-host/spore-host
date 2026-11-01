@@ -35,6 +35,8 @@ own changelogs for CLI releases.
   Three commands read a launch YAML, and they are three different formats: `spawn launch --config` (only a `plugins:` list), lagotto's `--spawn-config`, and a sweep's `--param-file`.
   The page lists every lagotto `--spawn-config` key with its type, meaning, default and matching `spawn launch` flag, the param-file row keys, and a table of common `spawn launch` flags showing where each can be written (`--az` is `lagotto watch --azs`, not a key).
   The waiting-for-capacity guide, the lagotto page and the sweep guide link to it. The plugins guide no longer says `spawn launch --config` ignores unknown keys: since spawn v0.137.0 they are an error.
+- **`SPORE_NO_UPDATE_CHECK` is documented** ([libs#69](https://github.com/spore-host/libs/issues/69)).
+  The environment-variables reference now says it turns off spawn's and truffle's update notice and the release check behind it, that `CI` does the same, and that from libs v0.51.4 runs with stderr not a terminal are suppressed automatically.
 
 - **How long after a command exits the instance terminates** ([spawn#1456](https://github.com/spore-host/spawn/issues/1456)).
   The spored page has a breakdown from the completion file to the terminate call: the one-minute poll, `--completion-delay`, the pre-stop hook, cleanup and the 5 s warning, about 35–95 s with the defaults.
