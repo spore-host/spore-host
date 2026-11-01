@@ -7,13 +7,17 @@
 // point, and duplicating the list is how the two views drift apart.
 
 import type { SpawnClient } from "@spore-host/spawn-ts";
+import { describePriceOrigin } from "@spore-host/truffle-ts";
 import { mountGuidedPicker, type GuidedChoice, type GuidedPickerOptions } from "./picker.js";
 import { GUIDED_SHAPES, resolveShape } from "./shapes.js";
-import { CATALOG_PRICE_REGION, costLimitFor } from "./cost.js";
+import { costLimitFor } from "./cost.js";
 
 export interface GuidedLaunchOptions {
   client: SpawnClient;
-  /** The region, shown in the confirmation — a cost figure without a region is half a fact. */
+  /**
+   * The region: shown in the confirmation, launched into, and the one every price is
+   * for. A cost figure without a region is half a fact.
+   */
   region: string;
   /** "I know what I need" — hand control back to the caller (raise the level). */
   onEscape(): void;
@@ -52,6 +56,7 @@ export function mountGuidedLaunch(host: HTMLElement, opts: GuidedLaunchOptions):
     disposeStep = mountGuidedPicker(root, {
       onChoose: (choice) => showConfirm(choice),
       onEscape: opts.onEscape,
+      region: opts.region,
       ...(opts.finder ? { finder: opts.finder } : {}),
       ...(opts.shapes ? { shapes: opts.shapes } : {}),
     });
@@ -75,19 +80,26 @@ export function mountGuidedLaunch(host: HTMLElement, opts: GuidedLaunchOptions):
     // onDemandPrice × hours, which excludes the EBS volume, data transfer and
     // anything the instance itself pulls — so "Up to $X" is a bound the number
     // does not actually bound, and saying so is cheaper than being wrong.
+    //
+    // The origin line follows the figure in both branches. Every portal price is
+    // static, and a static price must say so, why, and when it was collected; an
+    // unknown one says why it is unknown (often: no static price for this type in
+    // this region, which from truffle-ts 0.6 is most types outside us-east-1).
+    const origin = `<p class="guided-price-origin">${escapeHtml(opts.region)} price:
+         ${escapeHtml(describePriceOrigin(rec.priceOrigin))}</p>`;
     const cost = priceUnknown
       ? `<p class="guided-cost unknown">We don't have a price for
-           <code>${escapeHtml(i.instanceType)}</code> in the offline catalog, so we
+           <code>${escapeHtml(i.instanceType)}</code> in ${escapeHtml(opts.region)}, so we
            can't tell you what this costs — and machines without a listed price are
            usually the most expensive ones. Check the
            <a href="https://aws.amazon.com/ec2/pricing/on-demand/" target="_blank"
               rel="noopener">AWS pricing page</a> for
-           <code>${escapeHtml(i.instanceType)}</code> before you launch.</p>`
+           <code>${escapeHtml(i.instanceType)}</code> before you launch.</p>${origin}`
       : `<p class="guided-cost">Up to <b>$${rec.estimatedTotal!.toFixed(2)}</b>
            — $${rec.pricePerHour!.toFixed(4)} per hour${
              rec.priceIsEstimate ? " (estimated)" : ""
            }, for at most ${shape.defaultTtlHours} hours. Compute only; storage and
-           data transfer are extra.${regionCaveat(opts.region)}</p>`;
+           data transfer are extra.</p>${origin}`;
 
     // Two limits, and they fail differently, so both are named. The TTL is enforced
     // by the daemon on the instance; the spend cap is derived from the tags. Saying
@@ -207,7 +219,7 @@ export function mountGuidedLaunch(host: HTMLElement, opts: GuidedLaunchOptions):
     // Show the picker meanwhile, so a slow catalog read isn't a blank panel — and so
     // a resolve failure leaves the user somewhere useful instead of nowhere.
     showPicker();
-    void resolveShape(shape, opts.finder)
+    void resolveShape(shape, opts.finder, opts.region)
       .then((rec) => {
         if (!live) return;
         // resolveShape returns undefined for no-match. Don't open a confirmation for
@@ -240,20 +252,6 @@ export function mountGuidedLaunch(host: HTMLElement, opts: GuidedLaunchOptions):
 function instanceName(shapeId: string): string {
   const stamp = new Date().toISOString().slice(5, 16).replace(/[-:T]/g, "");
   return `${shapeId}-${stamp}`;
-}
-
-/**
- * The one clause that connects the price to the region shown above it.
- *
- * The confirmation renders the session's region and the catalog's price as two
- * adjacent facts, and they're only the same fact in us-east-1. Empty string there,
- * because a caveat that fires always is one nobody reads.
- */
-function regionCaveat(region: string): string {
-  if (region === CATALOG_PRICE_REGION) return "";
-  return ` Priced for ${escapeHtml(CATALOG_PRICE_REGION)}; ${escapeHtml(
-    region,
-  )} may differ.`;
 }
 
 function escapeHtml(s: string): string {

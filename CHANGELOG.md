@@ -14,6 +14,30 @@ own changelogs for CLI releases.
 ## [Unreleased]
 
 ### Changed
+- **The portal runs on spawn-ts 0.8.1, truffle-ts 0.6.0 and lagotto-ts 0.3.0**
+  (was 0.6.1, 0.5.0 and 0.2.0, with a second, older truffle-ts bundled for the
+  instance picker). What users see change:
+  - **Prices are for your region, and say where they came from.** Every price in
+    Find instances, the guided cards, the guided launch confirmation and Watch
+    capacity is truffle-ts's static figure for the session's region, labelled
+    with its origin, for example `static, collected 2026-07 (live Price List not
+    consulted (offline lookup))`. The portal used to show the us-east-1 price in
+    every region. A type with no static price in the region now shows as unknown,
+    which outside us-east-1 is most types, so the guided launch asks you to
+    confirm the unknown cost and launches without a spend cap. The expert
+    "price source" line said "live AWS pull" for catalog prices that were never
+    live.
+  - **A search truffle can't read says so.** A query of only unknown words
+    (`zzqx`) shows "Couldn't read that query" with truffle's hint underneath,
+    where it used to list every instance type.
+  - **Watch capacity** compares a price cap against the region's static price,
+    so a type with no price there never satisfies a cap. lagotto-ts's warnings,
+    such as a pattern that matches no type in the region, appear in the watch
+    log. A denied EC2 call still names the missing permission.
+  - **Launches** go through spawn-ts 0.8's checks, which refuse an invalid TTL,
+    Spot with a stopping lifecycle, an idle CPU threshold outside 0-100 and
+    oversized user data or tags before any AWS call, and terminate an instance
+    whose launch fails after it was created. The refusal text is shown as is.
 - **OpenTofu state is remote and locked** (#580). Every `infra/tofu` root now
   keeps its state in `s3://spore-host-tofu-state-966362334030/<root>/terraform.tfstate`.
   The bucket is versioned, encrypted, private and TLS-only, and is created by

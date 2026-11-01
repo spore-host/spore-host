@@ -9,16 +9,25 @@
 // What the browser must supply is the CapacityFinder seam — lagotto-ts owns the
 // interface and deliberately ships no AWS client.
 //
-// Why a portal-local finder instead of truffle-ts's AwsLiveFinder: capacity
-// watching needs AZ-LEVEL offering data ("is p5.48xlarge offered in us-east-1b
-// right now?"), and truffle-ts's live finder is region-agnostic — its
-// InstanceType carries no region/availableAZs (results are deduped across
-// regions) and its getSpotPricing is still a stub (truffle-ts#18). So this file
-// implements the seam directly over ec2:DescribeInstanceTypeOfferings (+
-// DescribeSpotPriceHistory for a Spot watch), the same two calls Go truffle's
-// getAvailabilityZones / GetSpotPricing make. When truffle-ts#18 lands and its
-// finder grows per-region AZs, this can collapse to lagotto-ts's
-// truffleFinderAdapter.
+// Why a portal-local finder rather than truffle-ts's AwsLiveFinder through
+// lagotto-ts's `truffleFinderFor`. The comment that stood here said to switch once
+// truffle-ts had per-region rows and AZs, and 0.6 has both (`includeAZs: true`). It
+// still isn't switched, for two reasons checked against truffle-ts 0.6.0's source:
+//
+// - AwsLiveFinder.search lists the region's types with ec2:DescribeInstanceTypes,
+//   and the portal's federated role doesn't grant it
+//   (infra/tofu/portal-oidc/main.tf, ReadSpotAndQuotas). Switching here alone would
+//   turn every watch into UnauthorizedOperation until that role changes, which is an
+//   infra change and a deploy, not a web one.
+// - It pages through every type in the region (~800, 100 a page) on every check
+//   before filtering locally, where this finder pushes a glob into one
+//   DescribeInstanceTypeOfferings filter. At a 30s cadence that is ~9 calls a check
+//   instead of 1.
+//
+// So this file implements lagotto-ts's CapacityFinder seam directly over
+// ec2:DescribeInstanceTypeOfferings (+ DescribeSpotPriceHistory for a Spot watch),
+// the same two calls Go truffle's getAvailabilityZones / GetSpotPricing make, and
+// declares the one region it serves, as lagotto-ts 0.3 requires.
 import {
   DescribeInstanceTypeOfferingsCommand,
   DescribeSpotPriceHistoryCommand,
@@ -27,7 +36,7 @@ import {
 } from "@aws-sdk/client-ec2";
 import { CapacityWatcher, type CapacityFinder, type FinderInstanceType, type FinderSpotPrice } from "@spore-host/lagotto-ts/live";
 import type { MatchResult, Watch } from "@spore-host/lagotto-ts";
-import { onDemandPrice } from "@spore-host/truffle-ts";
+import { describePriceOrigin, staticOnDemandPrice } from "@spore-host/truffle-ts";
 import type { Disposable, SurfaceContext, ToolSurface } from "./types.js";
 import { atLeast, LEVEL_CONTROL_NAME } from "../disclosure.js";
 import { readHashParam, writeHashParams } from "../hashstate.js";
@@ -62,7 +71,6 @@ export const lagottoSurface: ToolSurface = {
         sessionToken: creds.sessionToken,
       },
     });
-    const watcher = new CapacityWatcher({ finder: portalCapacityFinder(ec2, region) });
 
     const root = document.createElement("div");
     // The guided variant is a class on the root rather than a different template: the
@@ -155,6 +163,14 @@ export const lagottoSurface: ToolSurface = {
     const resume = root.querySelector<HTMLElement>(".lagotto-resume")!;
     const result = root.querySelector<HTMLElement>(".lagotto-result")!;
     const log = root.querySelector<HTMLElement>(".lagotto-log")!;
+
+    // lagotto-ts 0.3 reports what it can't decide as warnings, e.g. a pattern that
+    // matches no instance type offered in the region (a typo, usually), and would
+    // print them to the console. A user never looks there, so they go in the log.
+    const watcher = new CapacityWatcher({
+      finder: portalCapacityFinder(ec2, region),
+      onWarning: (w) => appendLog(`warning: ${w.message}`),
+    });
 
     let aborter: AbortController | null = null;
     // True once the watch was ended by something other than the user: a re-mount
@@ -297,18 +313,16 @@ export const lagottoSurface: ToolSurface = {
     }
 
     // What "Max $/hr" is compared against differs by an order of trustworthiness
-    // between the two modes, and the difference decides whether the cap works:
-    // a Spot watch prices live per AZ, while an on-demand watch is compared against
-    // truffle-ts's static us-east-1 table. Outside us-east-1 that makes the
-    // on-demand cap approximate — a cost guard that doesn't quite guard — and
-    // that fact previously existed only in a comment on portalCapacityFinder.
+    // between the two modes, and the difference decides whether the cap works: a Spot
+    // watch prices live per AZ, while an on-demand watch is compared against
+    // truffle-ts's static table for this region. A type with no static price in the
+    // region can never satisfy a cap (lagotto-ts treats an unknown price as over any
+    // ceiling), and outside us-east-1 that is most types, so the hint says so.
     const priceHint = root.querySelector<HTMLElement>(".lagotto-pricehint")!;
     const syncPriceHint = (): void => {
       priceHint.textContent = spotEl.checked
         ? "blank = no cap; compared against live Spot prices"
-        : `blank = no cap; compared against a static us-east-1 estimate${
-            region === "us-east-1" ? "" : ` — approximate in ${region}`
-          }`;
+        : `blank = no cap; compared against static ${region} prices, and a type with no static price never matches a cap`;
     };
     spotEl.addEventListener("change", syncPriceHint);
     syncPriceHint();
@@ -350,6 +364,7 @@ export const lagottoSurface: ToolSurface = {
             <span class="lagotto-match-kind">${spot ? "Spot" : "on-demand"}</span>
             <span class="lagotto-match-price">${m.price != null ? `$${m.price.toFixed(4)}/hr` : "price unknown"}</span>
           </div>
+          <p class="lagotto-match-origin">${escapeHtml(matchPriceOrigin(m, spot))}</p>
           <dl class="lagotto-match-meta">
             <dt>Region</dt><dd>${escapeHtml(m.region)}</dd>
             <dt>Zone</dt><dd>${escapeHtml(m.availabilityZone || "—")}</dd>
@@ -465,6 +480,7 @@ export const lagottoSurface: ToolSurface = {
       startBtn.hidden = true;
       disposePicker = mountGuidedPicker(picker, {
         shapes: WATCH_SHAPES,
+        region,
         heading: "What are you waiting for?",
         hint: "Pick the closest match. We'll watch for anything in that family — a smaller one in the same family is still a machine you can use.",
         // Not "I know what I need": the thing one level up is a pattern field, and the
@@ -541,15 +557,25 @@ export const lagottoSurface: ToolSurface = {
  */
 function watchCostLine(rec: GuidedRecommendation): string {
   if (rec.pricePerHour == null) {
-    return `<span class="guided-card-cost unknown">no listed price for this family —
-      these are usually the most expensive machines available, so check AWS pricing
-      before you launch one</span>`;
+    return `<span class="guided-card-cost unknown">no listed price for this type in
+      ${escapeHtml(rec.region)} — these are usually the most expensive machines
+      available, so check AWS pricing before you launch one</span>`;
   }
   const est = rec.priceIsEstimate ? ", estimated" : "";
   const perDay = rec.pricePerHour * 24;
   return `<span class="guided-card-cost">$${rec.pricePerHour.toFixed(2)}/hr once you
     launch it${est} — about $${Math.round(perDay).toLocaleString("en-US")} a day.
     Watching costs nothing.</span>`;
+}
+
+/**
+ * Where a match's price came from. A Spot match is priced live from
+ * DescribeSpotPriceHistory; an on-demand one from truffle-ts's static table, which
+ * must say it is static, why, and when it was collected.
+ */
+function matchPriceOrigin(m: MatchResult, spot: boolean): string {
+  if (spot) return "Spot price: live, from EC2 Spot price history";
+  return `on-demand price: ${describePriceOrigin(staticOnDemandPrice(m.instanceType, m.region).origin)}`;
 }
 
 // ── The CapacityFinder seam, implemented over the EC2 API ─────────────────────
@@ -565,13 +591,20 @@ const SPOT_LOOKBACK_MS = 60 * 60 * 1000;
  * truffle uses: DescribeInstanceTypeOfferings at AZ granularity for "what is
  * offered where", and DescribeSpotPriceHistory for a Spot watch's prices.
  *
- * On-demand prices come from truffle-ts's static table (`onDemandPrice`), NOT the
- * Pricing API — the portal's federated role has no `pricing:*`, and the price
- * only gates the watch's maxPrice comparison. It's a us-east-1 "as of" estimate,
- * so a maxPrice on an on-demand watch is approximate; a Spot watch prices live.
+ * On-demand prices come from truffle-ts's static table for THIS region
+ * (`staticOnDemandPrice(type, region)`, truffle-ts 0.6), NOT the Pricing API: the
+ * portal's federated role has no `pricing:*`, and the price only gates the watch's
+ * maxPrice comparison. A type with no static price in the region is left unpriced,
+ * which lagotto-ts reads as failing any cap. A Spot watch prices live.
+ *
+ * Declares `regions: [region]`: lagotto-ts 0.3 refuses a watch naming a region its
+ * finder doesn't declare, and a finder that declares nothing only answers a
+ * single-region watch. Declaring it keeps a future multi-region form from being
+ * quietly answered by this one region.
  */
-function portalCapacityFinder(ec2: EC2Client, region: string): CapacityFinder {
+export function portalCapacityFinder(ec2: EC2Client, region: string): CapacityFinder {
   return {
+    regions: [region],
     async search(matcher: RegExp): Promise<FinderInstanceType[]> {
       // AZ-level offerings, so a match can name the zone to launch in. EC2's
       // instance-type filter takes shell wildcards, so a glob pattern is pushed
@@ -602,7 +635,7 @@ function portalCapacityFinder(ec2: EC2Client, region: string): CapacityFinder {
       return Array.from(azsByType, ([instanceType, azs]) => ({
         instanceType,
         region,
-        onDemandPrice: onDemandPrice(instanceType),
+        onDemandPrice: staticOnDemandPrice(instanceType, region).price,
         // Sorted so the AZ a match reports is stable across checks rather than
         // following the API's page order.
         availableAZs: azs.sort(),
@@ -663,6 +696,10 @@ function toEc2Wildcard(source: string): string | null {
 
 /** AWS SDK errors are noisy; surface the actionable part. */
 function describeAwsError(err: unknown): string {
+  // lagotto-ts 0.3 wraps a failure of every region in an AggregateError ("all 1
+  // region queries failed: …"). With one region that is the one EC2 error, so it is
+  // unwrapped; otherwise a denied call would lose the message naming the permission.
+  if (err instanceof AggregateError && err.errors.length === 1) err = err.errors[0];
   const e = err as { name?: string; message?: string };
   if (e?.name === "UnauthorizedOperation" || e?.name === "AccessDenied" || e?.name === "AccessDeniedException") {
     return "Your role can't read instance-type offerings in this account (needs ec2:DescribeInstanceTypeOfferings).";
