@@ -5,9 +5,13 @@ Schedule an instance launch to fire at a clock time (--at), after a delay
 when capacity appears. The motivating case is launching into an EC2 Capacity
 Block at its reserved start time:
 
-  lagotto launch --at 2026-07-01T08:00:00Z --spawn-config block.yaml
+  lagotto launch --reservation-id cr-0123456789abcdef0 --at-reservation-start \
+    --spawn-config block.yaml
 
-where block.yaml sets reservation_id + capacity_block.
+--reservation-id makes the instance launch into that reservation: lagotto reads
+it and sets reservation_id, capacity_block (for a Capacity Block), the instance
+type and the AZ to match. Setting reservation_id + capacity_block in the spawn
+config and passing --at also works.
 
 This is driven by EventBridge Scheduler in the hosted poller stack, so it
 requires 'lagotto deploy' to have been run (the schedule targets the poller
@@ -30,8 +34,8 @@ lagotto launch [flags]
 | `--if-exists` |  | string |  | If an instance with this Name already exists at fire time: skip\|launch\|replace (default: skip for --at/--after, launch for --cron) |
 | `--name` |  | string |  | Instance Name tag (the overlap dedup key); defaults to the spawn config's name |
 | `--region` |  | string |  | AWS region to launch in (default: from your AWS config) |
-| `--reservation-id` |  | string |  | Capacity Block reservation id (cr-…) to launch into |
+| `--reservation-id` |  | string |  | Capacity Reservation or Capacity Block id (cr-…) to launch into: sets the spawn config's reservation_id (and capacity_block for a Capacity Block), and its instance type and --az from the reservation; a different value in the spawn config is an error |
 | `--retry-interval` |  | duration | `30s` | With --at-reservation-start: how often to retry through the boundary until the launch succeeds |
-| `--spawn-config` |  | string |  | spawn LaunchConfig YAML (required): a local path, an s3://bucket/key URI, or '-' for stdin. Referenced user_data_file / iam_policy_file are read now and stored inline. |
+| `--spawn-config` |  | string |  | lagotto spawn-config YAML (required; not spawn launch --config, see README for its keys — unknown keys are rejected): a local path, an s3://bucket/key URI, or '-' for stdin. Referenced user_data_file / iam_policy_file are read now and stored inline. |
 | `--stack-name` |  | string | `lagotto` | (deprecated, ignored — the poller has a fixed name) |
 
