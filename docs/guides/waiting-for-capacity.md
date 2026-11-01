@@ -100,8 +100,10 @@ the watch is marked `matched`.
 ## 3. Upgrade it to launch automatically
 
 Once you trust the watch, replace "notify me" with "launch it for me." Write a
-spawn config describing the instance you want, with a TTL so the launched instance
-still self-terminates:
+spawn-config file describing the instance you want, with a TTL so the launched
+instance still self-terminates. This is lagotto's own format, not the file
+`spawn launch --config` reads; [Launch config files](/reference/launch-config-files#lagotto-spawn-config)
+lists every key and the `spawn launch` flag each one matches:
 
 ```yaml
 # gpu-job.yaml
@@ -126,6 +128,10 @@ lagotto watch "p5.48xlarge" \
 Now when capacity appears, Lagotto launches the instance with a 6-hour TTL, runs
 your job, and the instance terminates on completion — the whole chain fires with
 no one awake to run it.
+
+The watch, not the file, decides the instance type, region, zone and Spot: the
+matched values replace `instance_type`, `region` and `spot`. To restrict zones,
+pass `--azs` to `lagotto watch`; there is no `az:` key.
 
 ::: tip The launch attempt *is* the capacity test
 There's no AWS API that reports "capacity is available now." For a `spawn` watch,

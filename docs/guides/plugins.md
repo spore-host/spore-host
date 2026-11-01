@@ -182,8 +182,10 @@ spawn launch analysis --instance-type r6i.4xlarge --ttl 8h --config launch.yaml
 ```
 
 `spawn launch --config` reads only the `plugins:` list. Set the instance type,
-TTL and everything else with flags; other keys in the file are ignored. An entry
-written as `name:` instead of `ref:` is ignored too, so nothing installs.
+TTL and everything else with flags. Since spawn v0.137.0 any other key in the
+file is an error, and so is an entry written as `name:` instead of `ref:`. This
+file is not the same as lagotto's `--spawn-config` or a sweep's `--param-file`:
+see [Launch config files](/reference/launch-config-files).
 
 ## Writing a plugin
 

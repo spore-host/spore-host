@@ -35,6 +35,8 @@ spawn launch hp-search --param-file sweep.yaml
 
 This launches one instance per `params` entry (4 here). Each runs `command` with its combination in environment variables: every key that isn't a spawn setting becomes `PARAM_<key>` (`$PARAM_learning_rate`, `$PARAM_batch_size`), and `$SWEEP_INDEX` is the entry's 0-based position. Each instance has its own TTL and terminates independently when done.
 
+The keys that *are* spawn settings are listed in [Launch config files](/reference/launch-config-files#sweep-param-file). A param file is its own format: it isn't the file `spawn launch --config` reads, nor lagotto's `--spawn-config`.
+
 ::: warning `{...}` is not substituted
 spawn runs `command` exactly as written. `{learning_rate}` would reach your program
 as literal text; use `$PARAM_learning_rate`.
