@@ -254,10 +254,11 @@ The reservation is targeted, so you need its id (`cr-…`) and AZ to use it.
 
 ### Launching into it
 
-Name the reservation, its AZ and the matched instance type:
+Give the instance a name, and name the reservation, its AZ and the matched
+instance type (spawn doesn't read the type or AZ from the reservation):
 
 ```sh
-spawn launch --region us-west-2 --az us-west-2b \
+spawn launch held-job --region us-west-2 --az us-west-2b \
   --instance-type g6e.12xlarge \
   --reservation-id cr-0123456789abcdef0 \
   --ttl 8h

@@ -166,7 +166,7 @@ Get the id and AZ from the notification or `lagotto status <watch-id>`, then
 launch into it within the 30 minutes:
 
 ```sh
-spawn launch --region us-west-2 --az us-west-2b \
+spawn launch held-job --region us-west-2 --az us-west-2b \
   --instance-type p5.48xlarge \
   --reservation-id cr-0123456789abcdef0 \
   --ttl 6h
