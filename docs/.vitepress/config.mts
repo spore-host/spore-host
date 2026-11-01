@@ -161,6 +161,7 @@ const sidebar = {
       items: [
         { text: 'Maturity & support policy', link: '/reference/maturity' },
         { text: 'Configuration', link: '/reference/configuration' },
+        { text: 'Launch config files', link: '/reference/launch-config-files' },
         { text: 'EC2 Tags', link: '/reference/ec2-tags' },
         { text: 'Environment Variables', link: '/reference/environment-variables' },
         { text: 'Lifecycle Events', link: '/reference/lifecycle-events' },

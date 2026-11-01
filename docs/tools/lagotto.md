@@ -67,6 +67,12 @@ lagotto watch "ml.g5.2xlarge" --service sagemaker --action spawn \
   --notify email:you@example.com
 ```
 
+The `--spawn-config` file uses lagotto's own schema. It is not the file
+`spawn launch --config` reads (that holds only a `plugins:` list), and not a sweep
+`--param-file`. See [Launch config files](/reference/launch-config-files#lagotto-spawn-config)
+for every key, and for which `spawn launch` flags have no key (`--az` is
+`lagotto watch --azs`, for example).
+
 #### Watching SageMaker capacity (`--service sagemaker`)
 
 SageMaker Training/Processing jobs can fail with `CapacityError` even when your

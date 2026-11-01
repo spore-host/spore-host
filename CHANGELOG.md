@@ -31,6 +31,11 @@ own changelogs for CLI releases.
 
 ### Documentation
 
+- **New reference page: Launch config files** (#621).
+  Three commands read a launch YAML, and they are three different formats: `spawn launch --config` (only a `plugins:` list), lagotto's `--spawn-config`, and a sweep's `--param-file`.
+  The page lists every lagotto `--spawn-config` key with its type, meaning, default and matching `spawn launch` flag, the param-file row keys, and a table of common `spawn launch` flags showing where each can be written (`--az` is `lagotto watch --azs`, not a key).
+  The waiting-for-capacity guide, the lagotto page and the sweep guide link to it. The plugins guide no longer says `spawn launch --config` ignores unknown keys: since spawn v0.137.0 they are an error.
+
 - **How long after a command exits the instance terminates** ([spawn#1456](https://github.com/spore-host/spawn/issues/1456)).
   The spored page has a breakdown from the completion file to the terminate call: the one-minute poll, `--completion-delay`, the pre-stop hook, cleanup and the 5 s warning, about 35–95 s with the defaults.
   It notes that before spored v0.153.0 the last instance in a region waited another 60 s for the `region_vacated` check, and that a background process holding the command's output delays the completion file ([spawn#1459](https://github.com/spore-host/spawn/issues/1459)).
