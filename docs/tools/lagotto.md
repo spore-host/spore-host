@@ -272,7 +272,8 @@ lagotto doesn't skip Local Zones. If your account has opted in to one, a hold ca
 be created there (for example `us-west-2-lax-1b`), even when the watch names only
 regions. A default VPC has no subnet in a Local Zone, so the `spawn launch` above
 fails until you create one. To keep holds in ordinary zones, pass
-`--azs` to `lagotto watch`.
+`--azs` to `lagotto watch`
+([lagotto#209](https://github.com/spore-host/lagotto/issues/209)).
 :::
 
 ### Releasing a hold early
