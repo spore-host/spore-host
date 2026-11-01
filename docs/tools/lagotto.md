@@ -116,6 +116,10 @@ lagotto status <watch-id>
 lagotto cancel <watch-id>
 ```
 
+Cancels an active watch. From lagotto v0.65.0 it also releases the capacity
+reservation of a `--action hold` watch that already fired; see
+[Releasing a hold early](#releasing-a-hold-early).
+
 ### `lagotto extend`
 
 ```sh
@@ -173,12 +177,136 @@ When a watch matches, Lagotto can:
 |--------|-------------|
 | `notify` | Sends a notification via `--notify` channels (email, webhook, SNS) |
 | `spawn` | Launches an instance using the config file given in `--spawn-config` |
-| `hold` | Creates a short-lived On-Demand Capacity Reservation to hold the capacity |
+| `hold` | Creates a 30-minute, targeted On-Demand Capacity Reservation for one instance in the matched AZ. It bills from creation; see [Holding capacity](#holding-capacity-action-hold) |
 
 SageMaker watches (`--service sagemaker`) support `notify` (alert only) or `spawn`
 — for SageMaker, `spawn` **submits your training job** via
 `--sagemaker-config` rather than launching an EC2 instance. `hold` is not
 supported (no capacity-reservation equivalent).
+
+## Holding capacity (`--action hold`)
+
+A `hold` watch doesn't launch anything. When it matches, it reserves the capacity
+for you to launch into yourself.
+
+```sh
+lagotto watch "g6e.12xlarge" --regions us-east-1,us-west-2 \
+  --action hold --notify email:you@example.com --ttl 2d
+```
+
+**What it creates.** One EC2 On-Demand Capacity Reservation with:
+
+- instance count **1**, of the matched instance type;
+- platform **Linux/UNIX**;
+- the **matched availability zone**;
+- **targeted** matching: only a launch that names the reservation uses it;
+- an end date **30 minutes** after it was created. EC2 ends it then.
+
+The 30 minutes is fixed; there is no flag to change it. The reservation is tagged
+`lagotto:watch-id` and `lagotto:managed=true`.
+
+::: warning A hold bills from the moment it's created
+An unused reservation bills at the On-Demand rate. **The worst case is 30
+minutes of the On-Demand price for one instance of the matched type**, whether
+you launch into it or not. An instance you launch into the reservation is billed
+against it, not on top of it. When the 30 minutes end, an instance you launched
+keeps running as an ordinary On-Demand instance, under its own TTL.
+:::
+
+A hold is not a cheap "is capacity available?" probe. EC2 admits a reservation
+more strictly than a launch, so a hold can fail with
+`InsufficientInstanceCapacity` (and the watch keeps retrying) for a type that
+`--action spawn` would launch at once. Use `hold` only when you want the
+capacity reserved for you.
+
+### Getting the reservation id
+
+The reservation is targeted, so you need its id (`cr-…`) and AZ to use it.
+
+- **`lagotto status <watch-id>`.** From lagotto v0.65.0 the table shows it under
+  "Last match":
+
+  ```text
+  Last match:
+    Instance: g6e.12xlarge
+    Region:   us-west-2
+    AZ:       us-west-2b
+    ...
+    Action:   held
+    Reservation: cr-0123456789abcdef0 (us-west-2b)
+    Release it early with: lagotto cancel w-abc123
+  ```
+
+  `lagotto status <watch-id> -o json` has it as `last_match.reservation_id`,
+  with the AZ in `last_match.availability_zone`. This works in every version;
+  before v0.65.0 the JSON is the only place `status` shows it.
+- **Notifications.** A hold sends to the watch's `--notify` channels. From
+  lagotto v0.65.0:
+  - the **email** names the reservation and its AZ, and gives the
+    `spawn launch` and `lagotto cancel` commands;
+  - **SNS** and **webhook** payloads carry `reservation_id` and
+    `reservation_availability_zone`, next to `instance_type`, `region` and
+    `availability_zone`.
+
+  The hosted poller sends these fields once its Lambda is v0.65.0 or later:
+  re-run `lagotto deploy` with a v0.65.0 CLI, since `--version` defaults to the
+  CLI's own version.
+
+### Launching into it
+
+Give the instance a name, and name the reservation, its AZ and the matched
+instance type (spawn doesn't read the type or AZ from the reservation):
+
+```sh
+spawn launch held-job --region us-west-2 --az us-west-2b \
+  --instance-type g6e.12xlarge \
+  --reservation-id cr-0123456789abcdef0 \
+  --ttl 8h
+```
+
+The instance type and platform must match the reservation (Linux/UNIX, the type
+the watch matched). Launch within the 30 minutes.
+
+::: warning A hold can land in a Local Zone
+lagotto doesn't skip Local Zones. If your account has opted in to one, a hold can
+be created there (for example `us-west-2-lax-1b`), even when the watch names only
+regions. A default VPC has no subnet in a Local Zone, so the `spawn launch` above
+fails until you create one. To keep holds in ordinary zones, pass
+`--azs` to `lagotto watch`
+([lagotto#209](https://github.com/spore-host/lagotto/issues/209)).
+:::
+
+### Releasing a hold early
+
+If you won't use the reservation, release it so it stops billing:
+
+```sh
+lagotto cancel <watch-id>
+```
+
+From lagotto v0.65.0, `cancel` on a hold that already fired (status `matched`)
+releases the reservation. The watch stays `matched`. Releasing one that already
+expired or was already released reports that and succeeds, so running it twice
+is safe. On an `active` watch, `cancel` cancels the watch and releases any
+reservation it recorded.
+
+`cancel` runs with **your own** AWS credentials, not the poller's, so they need:
+
+- `ec2:CancelCapacityReservation`
+- `ec2:DescribeCapacityReservations` (used to tell whether a reservation that
+  can't be cancelled had already ended)
+
+Without `ec2:CancelCapacityReservation`, `cancel` says so and reports when the
+reservation will expire on its own. lagotto doesn't create this grant for you
+yet ([lagotto#206](https://github.com/spore-host/lagotto/issues/206)).
+
+lagotto v0.64.1 and earlier refuse to cancel a `matched` watch. There, release
+the reservation with the EC2 CLI, or let it expire at the end of its 30 minutes:
+
+```sh
+aws ec2 cancel-capacity-reservation --region us-west-2 \
+  --capacity-reservation-id cr-0123456789abcdef0
+```
 
 ## Watch lifecycle
 

@@ -37,6 +37,11 @@ own changelogs for CLI releases.
   The waiting-for-capacity guide, the lagotto page and the sweep guide link to it. The plugins guide no longer says `spawn launch --config` ignores unknown keys: since spawn v0.137.0 they are an error.
 - **`SPORE_NO_UPDATE_CHECK` is documented** ([libs#69](https://github.com/spore-host/libs/issues/69)).
   The environment-variables reference now says it turns off spawn's and truffle's update notice and the release check behind it, that `CI` does the same, and that from libs v0.51.4 runs with stderr not a terminal are suppressed automatically.
+- **lagotto `--action hold`: what it reserves, for how long, and what it costs** (#624).
+  The lagotto page has a new "Holding capacity" section, and the waiting-for-capacity guide a short version. A hold is a targeted On-Demand Capacity Reservation for one Linux/UNIX instance in the matched AZ, with a fixed 30-minute end date. The worst case is 30 minutes of the On-Demand rate, used or not.
+  The section gives the `spawn launch --reservation-id … --az …` command, and says where the reservation id appears: `lagotto status` (the table from lagotto v0.65.0, `-o json` always) and the email, SNS and webhook notifications (v0.65.0).
+  It covers releasing a hold early with `lagotto cancel` (v0.65.0, [lagotto#203](https://github.com/spore-host/lagotto/issues/203)), the `ec2:CancelCapacityReservation` and `ec2:DescribeCapacityReservations` it needs on your own credentials ([lagotto#206](https://github.com/spore-host/lagotto/issues/206)), the EC2 CLI fallback for older versions, and that a hold can land in an opted-in Local Zone.
+  The Go library guide described `ActionHold` as "record match, take no action"; it creates the reservation.
 
 - **How long after a command exits the instance terminates** ([spawn#1456](https://github.com/spore-host/spawn/issues/1456)).
   The spored page has a breakdown from the completion file to the terminate call: the one-minute poll, `--completion-delay`, the pre-stop hook, cleanup and the 5 s warning, about 35–95 s with the defaults.
