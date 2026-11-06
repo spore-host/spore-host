@@ -221,6 +221,15 @@ own changelogs for CLI releases.
   registry, and that the default alias `f8g1e7l5` is the beta account's.
 
 ### Security
+- **`golang.org/x/net` v0.60.0 → v0.62.0** for CVE-2026-78661 (HIGH,
+  GO-2026-6860 / GO-2026-6866) in `golang.org/x/net/html`: quadratic-time text
+  node coalescing and missing ancestor-namespace checks when rendering raw text.
+  Applies to `lambda/accountlifecycle` and `lambda/spore-bot` (and, through the
+  `accountlifecycle` replace, `portal-account-prober` and `portal-phone-home`).
+  Indirect in all; `govulncheck` reports it as required-but-not-called, so this
+  closes the Trivy finding rather than a reachable path. `x/sys`, `x/text` and
+  the other `golang.org/x` modules move to the versions x/net v0.62.0 requires.
+
 - **Built with Go 1.26.10** for GO-2026-6809 (disclosed 2026-10-21), which
   makes `crypto/x509` distrust compromised intermediate certificates. The CI
   Go pin moves 1.26.9 → 1.26.10.
