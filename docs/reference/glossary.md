@@ -48,6 +48,7 @@ throughout; avoid using "spore" as a noun for a machine.
 | **MPI cluster** | Multiple tightly-coupled nodes launched together for distributed workloads. See [MPI clusters](/guides/mpi). |
 | **Capacity Block for ML** | A pre-purchased, time-boxed reservation of scarce GPU capacity. Launch into it at its start time with `lagotto launch --at`. See [Lagotto](/tools/lagotto#capacity-blocks-for-ml). |
 | **watch** | A Lagotto request to wait for capacity for a given instance type and act (notify/spawn/hold) when it appears. |
+| **until-landed watch** | A Lagotto watch (`--until-landed`, v0.68.0+) with no TTL that hunts until its launch or hold lands. It pauses unless acknowledged with `lagotto ack` before a rolling deadline, and reminds you before it does. See [Lagotto](/tools/lagotto#hunting-until-it-lands-until-landed). |
 
 ## Common confusions
 
