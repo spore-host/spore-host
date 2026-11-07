@@ -335,6 +335,13 @@ own changelogs for CLI releases.
 
 ### Fixed
 
+- **New CLI commands' reference pages are rendered.** The per-CLI reference
+  page includes each vendored command page by hand, so new commands were
+  vendored but never shown: `spawn egress-proxy` (since v0.157.0) and
+  `lagotto ack`, `update` and `notify-gc`. They're now included, and a CI gate
+  (`scripts/check-cli-reference-includes.sh`) fails when a non-deprecated
+  vendored page isn't.
+
 - **The CLI reference docs no longer lose a release's update** (`sync-cli-docs`).
   Every sync run shares one PR branch, and a release dispatch synced only the
   CLI that dispatched it, so a later dispatch from another CLI rebuilt the
