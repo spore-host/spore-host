@@ -45,8 +45,17 @@ jobs:
           # the input; schedule syncs all.
           DISPATCH_CLI: ${{ github.event.client_payload.cli }}
           INPUT_CLI: ${{ github.event.inputs.cli }}
+        # A release dispatch (or a manual single-CLI run) still syncs EVERY CLI.
+        # All runs share one PR branch (sync/cli-docs), which create-pull-request
+        # rebuilds from main each time; syncing only the dispatching CLI wiped
+        # any other CLI's not-yet-merged update off that branch. On 2026-11-06
+        # spawn v0.161.0's sync was overwritten by lagotto v0.67.0's four hours
+        # later, leaving spawn at v0.152.0 and truffle at v0.62.1 in the docs.
+        # Each CLI is vendored from its latest release tag, so a full sync is
+        # idempotent and cheap. The input is kept to restrict a manual run.
         run: |
-          sel="${DISPATCH_CLI:-${INPUT_CLI:-all}}"
+          sel="${INPUT_CLI:-all}"
+          echo "dispatched by: ${DISPATCH_CLI:-<none>}; syncing: $sel"
           if [ "$sel" = "all" ] || [ -z "$sel" ]; then
             echo "clis=spawn truffle lagotto" >> "$GITHUB_OUTPUT"
           else
