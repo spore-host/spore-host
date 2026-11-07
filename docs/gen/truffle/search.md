@@ -30,7 +30,7 @@ truffle search [instance-type-pattern] [flags]
 | `--service` |  | string | `ec2` | Instance namespace to search: ec2 or sagemaker (ml.* types) |
 | `--show-gpu-ratios` |  | bool |  | Add vCPU/GPU and RAM/GPU columns for GPU instance types (decisive for CPU/IO-bound ML workloads) |
 | `--show-mem-per-cpu` |  | bool |  | Show memory per physical core alongside total memory |
-| `--show-price` |  | bool |  | Show on-demand pricing (uses static pricing data) |
+| `--show-price` |  | bool |  | Show on-demand pricing (live AWS Price List; a static fallback price is marked, with its collection date and why) |
 | `--show-quota` |  | bool |  | Show the per-type training-job quota (SageMaker only) |
 | `--show-real-cores` |  | bool |  | Show physical CPU core count alongside vCPUs (format: vCPU/CPU, e.g. 96/48) |
 | `--skip-azs` |  | bool |  | Skip availability zone lookup (faster but less detailed) |

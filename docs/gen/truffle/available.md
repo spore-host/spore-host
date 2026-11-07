@@ -1,7 +1,8 @@
 ## `truffle available`
 
-Report whether you can actually GET an instance type — as opposed to whether it
-exists and what it costs, which 'truffle find' already answers.
+Report what AWS can tell you about whether you can actually GET an instance
+type — as opposed to whether it exists and what it costs, which 'truffle find'
+already answers.
 
 For scarce accelerator types the price is often not the deciding number: a type can
 be listed, priced, and completely unobtainable. This gathers the four signals AWS
@@ -12,6 +13,11 @@ for different remedies:
   Offered AZs       where the type is offered at all, with the region's AZ count
   Quota headroom    vCPUs left under your On-Demand quota, and the quota to raise
   Capacity blocks   purchasable Capacity Block for ML offerings (24h window)
+
+None of these observes On-Demand capacity, and AWS has no API that does: an
+On-Demand launch can fail with InsufficientInstanceCapacity in every AZ while
+all four look fine. So a clean report means no checked signal blocks, not that
+an On-Demand launch will succeed. To wait for capacity, use 'lagotto watch'.
 
 Each signal is best-effort: one being unavailable (commonly GetSpotPlacementScores,
 which SCPs often deny) is reported as a warning, not a failure — an absent signal is

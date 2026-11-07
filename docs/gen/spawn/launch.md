@@ -35,11 +35,12 @@ spawn launch <name> [flags]
 | `--ami` |  | string |  | AMI ID (ami-...); omit or use 'auto' to auto-detect the latest AL2023 |
 | `--attach-volume` |  | stringArray |  | Attach an EBS volume from a snapshot, mounted at a path: snap-xxx:/mount/point[:ro]. Repeatable. Read-only is the common case for shared reference data. |
 | `--auto-placement-group` |  | bool | `true` | Automatically create placement group for MPI job arrays (default: true) |
-| `--az` |  | string |  | Availability zone |
+| `--az` |  | string |  | Availability zone. Pins the launch there; without it (and without --subnet-id), a single launch that hits a capacity error (InsufficientInstanceCapacity) tries the other zones that offer the instance type |
 | `--batch-queue` |  | string |  | Batch job queue file (JSON) for sequential execution |
+| `--bootstrap-egress` |  | string | `none` | With --no-public-ip: how the bootstrap reaches the few hosts outside AWS it fetches from (the EFA installer, and the AWS CLI on an image with none, such as stock Ubuntu) when the subnet has no NAT route. none (default): it does not, and such a launch is refused, naming what it needs. proxy: through a spawn egress proxy in the VPC, a t4g.micro in a public subnet that spawn finds or creates, which forwards only to spawn's own bootstrap hosts; members get its client security group, and their own groups must allow outbound tcp 3128 to it. Only spawn's own fetches use it (the EFA installer and the packages it installs, spawn's apt-get, the AWS CLI download); --command and --mpi-command never see it. The VPC needs a public subnet routed to an internet gateway. Also set by SPAWN_BOOTSTRAP_EGRESS, or once with spawn defaults set bootstrap-egress proxy. On a parameter sweep: the sweep finds or creates the proxy of each member's VPC before any member launches; a detached sweep does so at --detach, and the sweep orchestrator replaces a proxy that has gone before it launches a member (#1515) |
 | `--budget` |  | float64 |  | Budget limit in dollars for parameter sweeps (0 = no limit) |
 | `--capacity-block` |  | bool |  | The --reservation-id is a Capacity Block for ML (sets MarketType=capacity-block); mutually exclusive with --spot (#216) |
-| `--command` |  | string |  | Command to run on all instances. Runs on the BARE instance as the login user, not root (use sudo) — Docker and fuse are NOT installed, unlike 'spawn task run'. Its exit code is recorded to /tmp/SPAWN_EXITCODE and signals completion, so --on-complete fires when the command exits, pass or fail. The instance can only reach spawn's own S3 buckets unless you pass --s3-read/--s3-write, --iam-policy or --iam-policy-file. RUNS UNDER 'set -e': the shell has errexit enabled before your script starts, and 'set -uo pipefail' does NOT clear it — so '... \| head -n N' (SIGPIPE, rc 141) and 'wait $pid' on a failed job will end the run at that line instead of reporting. Start your script with 'set +e' to take over error handling. The effective options are printed to /var/log/spawn-command.log at start (#707). |
+| `--command` |  | string |  | Command to run on all instances. Runs on the BARE instance as the login user, not root (use sudo) — Docker and fuse are NOT installed, unlike 'spawn task run'. Its exit code is recorded to /tmp/SPAWN_EXITCODE and signals completion, so --on-complete fires when the command exits, pass or fail. Background jobs it leaves running are not waited for: completion is the command's own exit, after at most a 10 s drain of the output they hold, and they are killed when the instance terminates; 'wait' for any you need (#1459). The instance can only reach spawn's own S3 buckets unless you pass --s3-read/--s3-write, --iam-policy or --iam-policy-file. RUNS UNDER 'set -e': the shell has errexit enabled before your script starts, and 'set -uo pipefail' does NOT clear it — so '... \| head -n N' (SIGPIPE, rc 141) and 'wait $pid' on a failed job will end the run at that line instead of reporting. Start your script with 'set +e' to take over error handling. The effective options are printed to /var/log/spawn-command.log at start (#707). |
 | `--completion-delay` |  | string | `30s` | Grace period after completion signal |
 | `--completion-file` |  | string | `/tmp/SPAWN_COMPLETE` | File to watch for completion signal |
 | `--completion-webhook-url` |  | string |  | On workload completion (--completion-file detected), spored POSTs a fire-once, best-effort notice to this URL (spawn#497) — lets a caller wait on its own webhook/queue instead of polling an artifact against a pre-guessed deadline; empty = disabled |
@@ -47,7 +48,7 @@ spawn launch <name> [flags]
 | `--config` |  | string |  | Launch config YAML file (supports plugins: list) |
 | `--cost-limit` |  | float64 |  | Total spend ceiling in USD, covering compute AND storage (0 = disabled). spored terminates the instance when compute + EBS + public IPv4 reaches it; a launch whose storage alone exceeds it is refused up front, because storage outlives the instance and spored cannot reclaim it against the cap. |
 | `--count` |  | int | `1` | Number of instances to launch (job array) |
-| `--detach` |  | bool |  | Run sweep orchestration in Lambda (auto-enabled for parameter sweeps) |
+| `--detach` |  | bool |  | Run sweep orchestration in Lambda (the default for parameter sweeps; without --max-concurrent, min(rows, 10) at a time) |
 | `--dns-api-endpoint` |  | string |  | Lambda Function URL of a custom DNS updater (https://&lt;id&gt;.lambda-url.&lt;region&gt;.on.aws/). Also SPAWN_DNS_API_ENDPOINT, dns.api_endpoint in ~/.spawn/config.yaml, or SSM /spawn/dns/api_endpoint |
 | `--dns-domain` |  | string |  | Register DNS under this zone instead of spore.host (needs an updater serving it; see docs/custom-dns.md). Also SPAWN_DNS_DOMAIN, dns.domain in ~/.spawn/config.yaml, or SSM /spawn/dns/domain |
 | `--dns-function-arn` |  | string |  | ARN of the Lambda function behind --dns-api-endpoint; the instance role is granted lambda:InvokeFunctionUrl on it (required with a custom endpoint). Also SPAWN_DNS_FUNCTION_ARN, dns.function_arn in ~/.spawn/config.yaml, or SSM /spawn/dns/function_arn |
@@ -61,12 +62,13 @@ spawn launch <name> [flags]
 | `--efs-mount-options` |  | string |  | Custom EFS mount options (overrides profile) |
 | `--efs-mount-point` |  | string | `/efs` | EFS mount point (default: /efs) |
 | `--efs-profile` |  | string | `general` | EFS performance profile: general, max-io, max-throughput, burst |
+| `--egress-proxy-idle` |  | duration | `72h0m0s` | With --bootstrap-egress proxy: how long a proxy this launch creates may go with nothing proxied before it is retired. At most the proxy's life of 144h0m0s (the TTL reaper's ceiling less a day), which ends it regardless |
 | `--estimate-only` |  | bool |  | Show cost estimate and exit without launching |
 | `--fsx-create` |  | bool |  | Create new FSx Lustre filesystem with S3 backing (requires --fsx-lifecycle) |
 | `--fsx-export-path` |  | string |  | S3 path to export to (e.g., s3://bucket/prefix) |
 | `--fsx-id` |  | string |  | Existing FSx Lustre filesystem ID to mount (fs-xxx) |
 | `--fsx-import-path` |  | string |  | S3 path to import from (e.g., s3://bucket/prefix) |
-| `--fsx-lifecycle` |  | string |  | FSx lifetime (REQUIRED with --fsx-create): 'ephemeral' (reclaimed asynchronously once the instance is gone — by the out-of-band reaper, not by `spawn terminate`) or 'durable' (persists; requires --fsx-ttl) |
+| `--fsx-lifecycle` |  | string |  | FSx lifetime (REQUIRED with --fsx-create): 'ephemeral' (reclaimed asynchronously once the instance is gone — by the out-of-band reaper, not by 'spawn terminate') or 'durable' (persists; requires --fsx-ttl) |
 | `--fsx-mount-point` |  | string | `/fsx` | FSx mount point (default: /fsx) |
 | `--fsx-recall` |  | string |  | Recall FSx filesystem by stack name (recreate from S3) |
 | `--fsx-s3-bucket` |  | string |  | S3 bucket for FSx import/export (required with --fsx-create) |
@@ -94,32 +96,32 @@ spawn launch <name> [flags]
 | `--launch-delay` |  | string | `0s` | Delay between instance launches (e.g., 5s) |
 | `--max-concurrent-auto` |  | bool |  | Derive --max-concurrent from the account's real AWS quota headroom for the sweep's instance type(s)/region, instead of a user-supplied number (spawn#492) |
 | `--max-concurrent-per-region` |  | int |  | Max instances running simultaneously per region (0 = unlimited) |
-| `--max-concurrent` |  | int |  | Max instances running simultaneously (0 = unlimited) |
+| `--max-concurrent` |  | int |  | Max instances running simultaneously. 0 (the default): a detached sweep runs min(rows, 10) at a time, a --no-detach sweep all at once |
 | `--metrics-bind` |  | string |  | With --metrics: the address to listen on, an IP address or localhost (default localhost; 0.0.0.0 for a scraper on another host) |
 | `--metrics-path` |  | string |  | With --metrics: the HTTP path to serve metrics on (default /metrics) |
 | `--metrics-port` |  | int |  | With --metrics: the metrics server's port, 1024-65535 (default 9090) |
 | `--metrics` |  | bool |  | Start spored's Prometheus metrics server and tag the instance spawn:metrics-enabled=true, which deployment/prometheus's EC2 discovery matches. It listens on localhost unless --metrics-bind is set, and the security group must admit the scraper (see docs/self-hosted-monitoring.md) |
 | `--min-viable` |  | int | `1` | Job array: minimum members that must launch for success (default 1; ignored for --mpi) |
 | `--mode` |  | string | `balanced` | Distribution mode: balanced (fair share) or opportunistic (prioritize available regions) |
-| `--mpi-command` |  | string |  | Command to run via mpirun across the MPI cohort (alternative to --command). Rank 0 runs mpirun as root. Its output goes to /var/log/spawn-command.log on rank 0 (read it with 'spawn array logs &lt;name&gt; --index 0'), and its exit code is recorded to /tmp/SPAWN_EXITCODE there. When it exits, pass or fail, every member is signalled, so --on-complete fires across the whole cohort. |
+| `--mpi-command` |  | string |  | Command to run via mpirun across the MPI cohort (alternative to --command). Rank 0 runs mpirun as root. Its output goes to /var/log/spawn-command.log on rank 0 (read it with 'spawn array logs &lt;name&gt; --index 0'), and its exit code is recorded to /tmp/SPAWN_EXITCODE there. When it exits, pass or fail, every member is signalled, so --on-complete fires across the whole cohort. Background jobs a rank leaves running are not waited for: a rank ends at its command's own exit, after at most a 10 s drain of the output they hold, and they are killed when the instance terminates; 'wait' for any you need (#1479). |
 | `--mpi-processes-per-node` |  | int |  | MPI processes per node (default: vCPU count) |
 | `--mpi` |  | bool |  | Enable MPI cluster setup (requires --count &gt; 1) |
-| `--name` |  | string |  | Name your spore (sets Name tag, DNS, and hostname). Either this or the positional form `spawn launch <name>`; both are accepted (#499). |
+| `--name` |  | string |  | Name your spore (sets Name tag, DNS, and hostname). Either this or the positional form 'spawn launch &lt;name&gt;'; both are accepted (#499). |
 | `--nested-spawn` |  | bool |  | Give the instance an IAM role that lets a spawn CLI running on it launch, list, connect to, extend and terminate its own child instances (e.g. a workflow head node). Opt-in: the default spored-instance-role never gets these grants. Children are tagged spawn:managed=true and get their own TTL and spored; a nested spore cannot create IAM roles, so children use the default profile, an existing --instance-profile, or --nested-spawn. Requires --ttl. |
 | `--nested-virtualization` |  | bool |  | Enable nested virtualization (run KVM/Hyper-V inside the instance). Requires a C8i/M8i/R8i instance type. |
 | `--nist-800-171` |  | bool |  | Enable NIST 800-171 Rev 3 compliance mode |
 | `--nist-800-53` |  | string |  | Enable NIST 800-53 compliance (low, moderate, high) |
 | `--no-detach` |  | bool |  | Disable auto-detach for parameter sweeps (requires --ttl or --idle-timeout) |
 | `--no-dns` |  | bool |  | Do not register DNS for this instance (by default spored registers the --name/--dns name). Overrides dns.enabled in ~/.spawn/config.yaml for this launch (#549) |
-| `--no-public-ip` |  | bool |  | Launch with private IPs only: no public IP on any interface, and no Elastic IP for a multi-card --efa launch, so the region's Elastic IP quota does not limit the fleet. Needs --subnet-id, or --az to let spawn pick a subnet. Before anything is created spawn checks that the subnet can reach what spored and the SSM agent need: a NAT gateway route, or VPC endpoints for s3 (gateway), ec2, ssm, ssmmessages and ec2messages (interface, private DNS enabled), and refuses the launch if not. spawn connect uses SSM. Refused with --dns and --wait-for-ssh; the DNS record --name implies is skipped |
+| `--no-public-ip` |  | bool |  | Launch with private IPs only: no public IP on any interface, and no Elastic IP for a multi-card --efa launch, so the region's Elastic IP quota does not limit the fleet. Needs --subnet-id, or --az to let spawn pick a subnet. Before anything is created spawn checks that the subnet can reach what spored and the SSM agent need: a 0.0.0.0/0 route to a NAT gateway or to a working NAT instance (running, source/destination check off, a public IPv4 address, in a subnet routed to an internet gateway), or VPC endpoints for s3 (gateway), ec2, ssm, ssmmessages and ec2messages (interface, private DNS enabled), and refuses the launch if not. On an image other than Amazon's Amazon Linux or a spawn create-ami image built from it (stock Ubuntu, say), which may have no aws CLI, the bootstrap also downloads it from awscli.amazonaws.com, so without a NAT route that launch needs --bootstrap-egress proxy. A sweep checks each member's subnet, a detached one at --detach. spawn connect uses SSM. Refused with --dns and --wait-for-ssh; the DNS record --name implies is skipped |
 | `--no-timeout` |  | bool |  | Disable automatic timeout (NOT RECOMMENDED: creates zombie risk) |
 | `--notify-platform` |  | string |  | Chat platform for lifecycle notifications: slack (default), teams, or discord |
 | `--on-complete` |  | string |  | Action when workload signals completion: terminate, stop, hibernate. Use 'terminate' for batch/headless workloads — 'stop' leaves EBS (and any attached EIP) billing indefinitely, which is easy to forget in accounts without a hosted reaper |
 | `--on-idle` |  | string |  | Action when the instance goes idle: stop (default) or hibernate. Mirrors --on-complete. NOTE: a stopped/hibernated instance keeps billing for its EBS volumes (and any attached Elastic IP) — for batch/headless work prefer --on-complete terminate so cost is fully bounded |
 | `--os` |  | string |  | Target OS: windows or linux. Omit to auto-detect from the AMI. Use to force the OS for a custom AMI whose platform metadata is unset. |
 | `--output-id` |  | string |  | Write sweep/instance ID to file for scripting |
-| `--param-file` |  | string |  | Path to parameter sweep file (JSON/YAML/CSV) |
-| `--params` |  | string |  | Inline JSON parameters for sweep |
+| `--param-file` |  | string |  | Path to parameter sweep file (JSON/YAML/CSV). Not with --params |
+| `--params` |  | string |  | Inline JSON sweep parameters, in the schema of a JSON param file (defaults, params and/or grid), e.g. '{"defaults":{"instance_type":"t4g.small"},"params":[{"lr":0.1},{"lr":0.01}]}'. Not a path: for a file, use --param-file. Not with --param-file |
 | `--placement-group` |  | string |  | AWS Placement Group for MPI instances (auto-created if not specified) |
 | `--plugin` |  | stringArray |  | Plugin to install at launch (ref[@version], repeatable) |
 | `--pre-stop-timeout` |  | string |  | Max time to wait for --pre-stop command (default: 5m, spot: 90s; on spot never past the interruption) |
@@ -161,7 +163,7 @@ spawn launch <name> [flags]
 | `--wait-for-running` |  | bool | `true` | Wait until running |
 | `--wait-for-ssh` |  | bool |  | Linux: also wait (up to 2 min) for SSH on port 22; refused at once if no attached security group allows tcp/22. Off by default: spawn connect uses SSM, and spored is verified either way. --wait-for-ssh=false, given explicitly, skips the spored check too (Windows: skips the password wait) |
 | `--wait-timeout` |  | string |  | Timeout for --wait (e.g., 2h, 30m, 0=no timeout) |
-| `--wait` |  | bool |  | Wait for sweep/launch to complete (requires --detach) |
+| `--wait` |  | bool |  | Wait for a detached parameter sweep to complete (not with --no-detach) |
 | `--webhook-correlation` |  | string |  | Opaque blob echoed verbatim in the spot-webhook/completion-webhook payload so a consumer can correlate the event to its own record (never parsed by spawn) |
 | `--webhook-timeout` |  | string |  | Hard cap on the spot-webhook/completion-webhook POST so it can't eat the reclamation window or delay the completion action (default: 2s) |
 | `--yes` | `-y` | bool |  | Skip confirmation prompts: the launch summary and maximum-cost question on an interactive terminal, the cross-region data-locality warning, and launching without a TTL. Non-interactive runs never ask, but always print the maximum cost |
