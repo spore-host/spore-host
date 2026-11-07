@@ -33,7 +33,7 @@ lagotto deploy [flags]
 |------|-------|------|---------|-------------|
 | `--environment` |  | string | `production` | Environment tag (production, staging, development) |
 | `--lambda-bucket` |  | string |  | S3 bucket for the Lambda artifact (default: lagotto-lambda-&lt;account&gt;-&lt;region&gt;, created if absent) |
-| `--migrate-from-cloudformation` |  | bool |  | Detach the legacy --stack-name stack from the poller resources (retain-update, verify, delete) before deploying |
+| `--migrate-from-cloudformation` |  | bool |  | Detach the legacy --stack-name stack from every resource it owns (retain-only change set, verify, delete) before deploying |
 | `--region` |  | string |  | AWS region (default: from your AWS config) |
 | `--stack-name` |  | string | `lagotto` | Legacy CloudFormation stack to detect/migrate from (the poller's own resources have fixed names) |
 | `--teardown` |  | bool |  | Delete the poller, SNS topic and schedule instead of deploying them |

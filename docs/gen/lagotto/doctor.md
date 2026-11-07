@@ -17,6 +17,23 @@ poller/topic/schedule, a schedule that is switched off while watches are active
 (the silent-death case: nothing is polling them), and a leftover CloudFormation
 stack.
 
+It reports email delivery for --notify email: channels: an address on an active
+watch whose subscription is still pending confirmation (so receives nothing yet) or
+missing, a subscription no active watch needs, and any email subscription on the
+alerts topic with no filter policy, which receives every user's email events.
+'lagotto notify-gc' removes unused subscriptions, and with --resubscribe
+subscribes missing ones.
+
+It checks that the shared EventBridge Scheduler invoke role's policy allows
+invoking THIS region's poller (lagotto#218: the role is IAM-global, and a deploy
+by lagotto older than v0.65.1 scoped it to the deploying region alone, so every
+other region's schedule failed silently). The policy is evaluated locally.
+
+Best effort, it also reports EventBridge Scheduler target errors in the last 24h
+(CloudWatch AWS/Scheduler TargetErrorCount for the poller's schedule group). That
+needs cloudwatch:GetMetricStatistics on your credentials; without it the check
+is a warning, never a failure.
+
 Exit code is non-zero if any check FAILS, so it can gate CI. Warnings do not
 affect it. Use -o json for the machine-readable form, including the exact
 missing/extra IAM grants.

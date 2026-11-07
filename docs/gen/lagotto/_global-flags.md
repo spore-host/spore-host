@@ -9,7 +9,7 @@ These apply to every `lagotto` command.
 | `--history-table` |  | string | `lagotto-match-history` | DynamoDB table name for match history |
 | `--lang` |  | string |  | Language for output (en, es, fr, de, ja, pt) |
 | `--no-emoji` |  | bool |  | Disable emoji in output |
-| `--output` | `-o` | string | `table` | Output format (table, json) |
+| `--output` | `-o` | string | `table` | Output format (table, json; list also takes wide) |
 | `--profile` |  | string |  | AWS named profile (overrides SPORE_PROFILE/AWS_PROFILE and the shared config) |
 | `--region` |  | string |  | Default AWS region (overrides SPORE_REGION/AWS_REGION and the shared config) |
 | `--verbose` | `-v` | bool |  | Enable verbose output |
