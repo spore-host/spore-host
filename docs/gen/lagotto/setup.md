@@ -17,6 +17,19 @@ role (so the runtime Lambda can never self-escalate); 'setup', run by you, attac
 the spawn/hold/SageMaker/scheduler policy. Until then the poller can only notify.
 'lagotto teardown --iam-roles' deletes both roles once no region runs a poller.
 
+It also writes the customer-managed policy lagotto-cli-user (lagotto#232): the
+least-privilege permissions the everyday commands need with YOUR credentials
+(watch, update, ack, extend, cancel, list, status, history, launch, notify-gc,
+doctor), resource-scoped to lagotto's tables, schedules, topic, roles and poller.
+It is generated from the CLI's own AWS calls (docs/reference/cli-iam-actions.md).
+Attach it to the group, users or roles that run lagotto. A re-run that changes
+it writes a new default version (deleting the oldest when IAM's limit of five is
+reached); an unchanged one is left alone. 'poll', 'setup', 'deploy' and
+'teardown' are not covered: they need administrator permissions. s3:// spawn
+configs are readable only from the buckets you name with --config-bucket; those
+are carried forward on later runs. 'lagotto teardown --iam-roles' detaches and
+deletes the policy.
+
 ```
 lagotto setup [flags]
 ```
@@ -25,6 +38,8 @@ lagotto setup [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
+| `--config-bucket` |  | stringArray |  | Let the lagotto-cli-user policy read s3:// spawn configs from this bucket (repeatable; s3:GetObject on its objects). Kept on later runs until revoked. |
 | `--instance-role` |  | stringArray |  | Authorize the hosted poller to use this IAM instance role when a watch's spawn_config names it in iam_role (repeatable). Without this the watch waits for capacity, matches, then dies at launch with AccessDenied. NOTE: this lets the poller write an inline policy to and attach a managed policy to that role, not merely pass it — spawn adds its spored/SSM baseline to every role it launches with. |
+| `--revoke-config-bucket` |  | stringArray |  | Remove a bucket granted with --config-bucket (repeatable). Takes precedence over --config-bucket for the same name. |
 | `--revoke-instance-role` |  | stringArray |  | Remove a previously authorized instance role (repeatable). Takes precedence over --instance-role for the same name. |
 

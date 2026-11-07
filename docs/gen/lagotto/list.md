@@ -11,6 +11,13 @@ Besides each watch's definition, the table shows its heartbeat:
   LAST ERR   the class of its latest error: capacity, quota, terminal,
              unknown, or search (the capacity search itself failed).
 
+EXPOSURE is what the watch can cost if it lands: "≤$X/hr" for spawn (a
+fleet's total), "30m@$X/hr" for a hold's reservation (billed even if unused),
+"none" for notify, "unknown" when lagotto has no price. "cap" means it is your
+--max-price, "*" a rate from the static price list (the note under the table
+says when it was collected and why), "?" that some types or regions have no
+price. The CLI never calls the live Price List.
+
 Use -o wide for the full latest error, or -o json for every field.
 "lagotto status &lt;watch-id&gt;" shows the full errors and when they happened.
 
