@@ -320,6 +320,13 @@ own changelogs for CLI releases.
   `docs/reference/maturity.md` — shipped in spawn v0.107.0 (#546).
 
 ### Fixed
+
+- **The CLI reference docs no longer lose a release's update** (`sync-cli-docs`).
+  Every sync run shares one PR branch, and a release dispatch synced only the
+  CLI that dispatched it, so a later dispatch from another CLI rebuilt the
+  branch without the earlier update: spawn v0.161.0's reference was dropped
+  four hours after it was synced, and the vendored spawn/truffle pages sat at
+  v0.152.0/v0.62.1. Every run now syncs all three CLIs from their latest tags.
 - spore-bot in Teams now understands the documented `/spore list` form after
   an @mention. The mention was removed only up to the first `>`, so
   `@spore /spore list` ran as an unknown `/spore` command and only the bare
