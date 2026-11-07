@@ -267,30 +267,44 @@ store := watcher.NewStore(cfg, "lagotto-watches", "lagotto-match-history")
 
 ### Create a watch
 
+Build a new watch with `watcher.NewWatch` rather than filling in its timestamps
+by hand. It sets the ID, `CreatedAt`, `UpdatedAt`, `ExpiresAt` and
+`TTLTimestamp`, and keeps the last two apart: `TTLTimestamp` is when DynamoDB
+deletes the record, which must be later than the expiry. A record whose
+`TTLTimestamp` equals its `ExpiresAt` is deleted out from under its `expired`
+status. lagotto v0.68.0 and later.
+
 ```go
 import "time"
 
-now := time.Now().UTC()
-w := &watcher.Watch{
-    WatchID:             "w-mywatch01",
-    UserID:              "arn:aws:iam::123456789012:user/alice",
-    Status:              watcher.StatusActive,
-    InstanceTypePattern: "p5.*",
-    Regions:             []string{"us-east-1", "us-west-2"},
-    Spot:                false,
-    MaxPrice:            0, // no price ceiling
-    Action:              watcher.ActionNotify,
-    NotifyChannels: []watcher.NotifyChannel{
-        {Type: "email", Target: "alice@lab.edu"},
-    },
-    CreatedAt:    now,
-    UpdatedAt:    now,
-    ExpiresAt:    now.Add(7 * 24 * time.Hour),
-    TTLTimestamp: now.Add(7 * 24 * time.Hour).Unix(),
+w, err := watcher.NewWatch(time.Now(), watcher.Lifetime{TTL: 7 * 24 * time.Hour})
+// or, with no TTL, until the launch lands:
+//   watcher.Lifetime{UntilLanded: true,
+//       RemindEvery: watcher.DefaultRemindEvery, RemindPauseAfter: watcher.DefaultRemindPauseAfter}
+if err != nil {
+    return err
+}
+w.UserID = "arn:aws:iam::123456789012:user/alice"
+w.InstanceTypePattern = "p5.*"
+w.Regions = []string{"us-east-1", "us-west-2"}
+w.Action = watcher.ActionNotify
+w.NotifyChannels = []watcher.NotifyChannel{
+    {Type: "email", Target: "alice@lab.edu"},
 }
 
 err = store.PutWatch(ctx, w)
 ```
+
+Storing the watch is not all `lagotto watch` does. The hosted poller switches
+its own schedule off when no watch is active, so a new watch must switch it back
+on, and an `email:` channel must be subscribed to the alerts topic before
+anything is delivered. Package
+[`lagotto/pkg/arm`](https://pkg.go.dev/github.com/spore-host/lagotto/pkg/arm)
+exports those steps as the CLI runs them: `PreflightPollSchedule`, then
+`PutWatch`, then `EnablePollScheduleIfOff` (undoing the store and returning
+`PollScheduleUpdateRefusal` if that fails); `ResolveAlertsTopic` and
+`SubscribeWatchEmails` for email channels; and `CleanupWatchEmails` when a watch
+is cancelled. They return warnings and results rather than printing them.
 
 ### Poll manually
 
@@ -322,7 +336,9 @@ err = store.ExtendWatch(ctx, "w-mywatch01", newExpiry, false)
 // Cancel
 err = store.UpdateWatchStatus(ctx, "w-mywatch01", watcher.StatusCancelled)
 
-// Retrieve match history
+// Retrieve match history. Not every row is a match: check ActionTaken.
+// "updated" (an update's audit row), "landing_failed", "landing_timed_out",
+// "quota_infeasible", "spawn_failed" and "hold_failed" rows acquired nothing.
 matches, err := store.ListMatchHistory(ctx, "w-mywatch01")
 ```
 
@@ -342,7 +358,8 @@ Full API documentation is on pkg.go.dev:
 - [truffle/pkg/find](https://pkg.go.dev/github.com/spore-host/truffle/pkg/find) — `ParseQuery`, `ParsedQuery`, `SearchCriteria`, `FindResult`, `ExplainMatch`
 - [truffle/pkg/quotas](https://pkg.go.dev/github.com/spore-host/truffle/pkg/quotas) — `Client`, `QuotaInfo`, `CanLaunch`, `GetQuotaFamily`
 - [spawn/pkg/aws](https://pkg.go.dev/github.com/spore-host/spawn/pkg/aws) — `Client`, `LaunchConfig`, `LaunchResult`, `InstanceInfo`
-- [lagotto/pkg/watcher](https://pkg.go.dev/github.com/spore-host/lagotto/pkg/watcher) — `Store`, `Watch`, `MatchResult`, `NotifyChannel`, `Poller`, `ActionMode`, `WatchStatus`
+- [lagotto/pkg/watcher](https://pkg.go.dev/github.com/spore-host/lagotto/pkg/watcher) — `Store`, `Watch`, `NewWatch`, `Lifetime`, `MatchResult`, `NotifyChannel`, `Poller`, `ActionMode`, `WatchStatus`
+- [lagotto/pkg/arm](https://pkg.go.dev/github.com/spore-host/lagotto/pkg/arm) — the steps around storing a watch: `PreflightPollSchedule`, `EnablePollScheduleIfOff`, `ResolveAlertsTopic`, `SubscribeWatchEmails`, `CleanupWatchEmails`
 
 ## Real-world usage
 

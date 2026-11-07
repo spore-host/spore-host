@@ -113,6 +113,14 @@ lagotto cancel <watch-id>
 lagotto extend <watch-id> --ttl 7d
 lagotto history
 
+# Hunt with no TTL until the launch lands; ack before the deadline (v0.68.0+)
+lagotto watch "p5.48xlarge" --action spawn --spawn-config job.yaml \
+  --notify email:you@example.com --until-landed
+lagotto ack <watch-id>
+
+# Change a watch's search in place (v0.68.0+)
+lagotto update <watch-id> --add-region us-west-2 --dry-run
+
 # Schedule a launch by time (requires `lagotto deploy` first)
 lagotto launch --at 2026-07-01T08:00:00Z --az us-east-1a --spawn-config block.yaml
 lagotto launch --after 6h --spawn-config job.yaml
@@ -126,6 +134,8 @@ lagotto poll --daemon --mine
 # Deploy / remove the hosted poller stack in your account
 lagotto deploy
 lagotto deploy --teardown
+lagotto teardown                # tables and per-launch schedules
+lagotto teardown --iam-roles    # the IAM roles, once no region runs a poller
 ```
 
 ## Capacity Blocks for ML (truffle → spawn → lagotto)

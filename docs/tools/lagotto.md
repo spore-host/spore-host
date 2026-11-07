@@ -19,11 +19,12 @@ lagotto deploy                                   # stand up the watcher (once)
 lagotto watch "p5.48xlarge" --regions us-east-1,us-west-2 --action notify --ttl 7d
 lagotto list                                     # see active watches
 lagotto status <watch-id>
+lagotto ack <watch-id>                           # keep an --until-landed watch going
 ```
 
 New to it? Walk through [Waiting for scarce capacity](/guides/waiting-for-capacity).
 
-There is no AWS API that reports "capacity is available right now" — the only true test is an actual launch. So for `spawn` watches **the launch attempt is the capacity test**: Lagotto tries to launch, and if AWS returns `InsufficientInstanceCapacity` it simply keeps the watch active and tries again on the next poll. It does the tedious retrying for you instead of you sitting there re-running a launch by hand, until it succeeds or the watch's TTL expires.
+There is no AWS API that reports "capacity is available right now" — the only true test is an actual launch. So for `spawn` watches **the launch attempt is the capacity test**: Lagotto tries to launch, and if AWS returns `InsufficientInstanceCapacity` it simply keeps the watch active and tries again on the next poll. It does the tedious retrying for you instead of you sitting there re-running a launch by hand, until it succeeds or the watch's TTL expires. From lagotto v0.68.0 a watch can instead hunt with no TTL until the launch lands, checking in with you on a rolling deadline ([`--until-landed`](#hunting-until-it-lands-until-landed)).
 
 ## Install
 
@@ -126,6 +127,39 @@ reservation of a `--action hold` watch that already fired; see
 lagotto extend <watch-id> --ttl 48h
 ```
 
+### `lagotto ack`
+
+```sh
+lagotto ack <watch-id>
+```
+
+Acknowledges an [`--until-landed`](#hunting-until-it-lands-until-landed) watch:
+moves its acknowledgement deadline a full window ahead from now, and resumes it
+if it has paused. lagotto v0.68.0 and later. On such a watch,
+`lagotto extend` does the same (and refuses `--ttl`, since the watch has none).
+
+### `lagotto update`
+
+```sh
+lagotto update <watch-id> --add-region us-west-2 --add-type g6.xlarge --dry-run
+```
+
+Changes what a watch hunts for (instance types, regions, AZs, Spot,
+`--max-price`), its `--notify` channels, its spawn config or its project, without
+cancelling it. lagotto v0.68.0 and later. The watch keeps its ID, attempts, last
+error, match history and confirmed email subscriptions, and goes through every
+check `lagotto watch` makes, so an update can't produce a watch `watch` would
+refuse. `--dry-run` shows the before/after diff without writing anything.
+
+- The action, service, owner, ID and deadline can't be changed; use `extend` or
+  `ack` for the deadline, and a new watch for a different action.
+- It is refused while a poller is acting on the watch, while a launch or hold it
+  made is still landing, and while a SageMaker job it submitted is in flight. An
+  expired or failed watch needs `--reactivate`, and must still be before its
+  deadline.
+- Each update adds an `updated` row to `lagotto history` (`"event": "updated"`
+  in `-o json`) listing the changed fields. It is not a match.
+
 ### `lagotto history`
 
 ```sh
@@ -183,6 +217,104 @@ SageMaker watches (`--service sagemaker`) support `notify` (alert only) or `spaw
 — for SageMaker, `spawn` **submits your training job** via
 `--sagemaker-config` rather than launching an EC2 instance. `hold` is not
 supported (no capacity-reservation equivalent).
+
+::: warning `notify` fires on an offering, not on capacity
+A notify watch fires when the type is *offered* in a region or AZ, which doesn't
+mean a launch would succeed. A scarce type that is offered almost everywhere
+(`p5.48xlarge`, say) can fire on the first poll while a real launch still gets
+`InsufficientInstanceCapacity`. To wait for capacity you can use, use `spawn` or
+`hold`, whose attempt is the test.
+:::
+
+## Hunting until it lands (`--until-landed`)
+
+From lagotto v0.68.0, a `spawn` or `hold` watch can keep hunting with **no TTL**
+until its launch or hold actually lands:
+
+```sh
+lagotto watch "p5.48xlarge" --regions us-east-1,us-west-2 \
+  --action spawn --spawn-config gpu-job.yaml \
+  --notify email:you@example.com --until-landed
+```
+
+Instead of a TTL it has a rolling **acknowledgement deadline**, so a forgotten
+watch can't hunt forever:
+
+- The deadline is 3 × `--remind` after creation or the last `lagotto ack`.
+  `--remind` defaults to `7d` (so 21 days) and can be `1h` to `30d`.
+- The hosted poller **reminds** you on the watch's `--notify` channels after each
+  of the first two intervals (day 7 and day 14 by default), and warns you 24
+  hours before the pause. Each reminder says what the watch is hunting, how the
+  hunt is going (attempts, last error, last poll), when it pauses, what it can
+  cost, and the `lagotto ack` command. Webhook and SNS channels get it as JSON
+  with `"event": "reminder"`. Each reminder is sent at most once, even when
+  several pollers sweep the same watch.
+- Without an ack by the deadline the watch **pauses**: its status becomes
+  `expired` with `expired_reason: unacknowledged`, and you get a "paused"
+  notification. `lagotto ack` (or `extend`) resumes it. Only `ack` and `extend`
+  count as an acknowledgement; `list` and `status` don't.
+- It needs a `--notify` channel and asks for confirmation (pass `--yes` when not
+  in a terminal). It can't be combined with `--ttl`, `--maintain` or `--until`,
+  and `--action notify` is refused, since an offering isn't a landing.
+- `lagotto list` shows `EXPIRES` as `until landed (ack in 4d)` or
+  `paused (unacked)`.
+
+::: warning Reminders need the poller redeployed
+The poller sends the reminders, so they start only after `lagotto deploy` with
+lagotto v0.68.0 or later. Until then the watch still pauses safely at its
+deadline, without reminding you. `watch --until-landed`, `ack` and `status`
+warn when the poller in your region is older; the check reads the poller's
+`Version` tag with `lambda:GetFunction` and is skipped without that permission.
+:::
+
+## What a watch can cost
+
+From lagotto v0.68.0, `lagotto watch`, `lagotto status` and the until-landed
+confirmation show an `Exposure:` line, and `lagotto list` an `EXPOSURE` column
+(for example `≤$32.77/hr`, `30m@$32.77/hr`, `≤$5.00/hr cap`, `none` or
+`unknown`):
+
+| Action | Exposure |
+|--------|----------|
+| `spawn` | "if this lands: up to $X/hr (≈$Y/day)", × N for a `--maintain N` fleet |
+| `hold` | "30 min reserved at up to $Y/hr (≈$Z), billed even if unused" |
+| `notify` | launches and reserves nothing |
+| SageMaker | unknown |
+
+- The rate is your `--max-price` when you set one, labelled as your cap and not
+  a quote. Otherwise it is the on-demand rate, which is also the ceiling for
+  Spot.
+- The CLI reads the on-demand rate from spore.host's **static price list**, marks
+  it `*`, and says when the list was collected and why it was used. It makes no
+  Price List call, so it needs no extra permission. The static list has no GPU
+  or accelerator family newer than p4d, so a p5, g6e or g7e watch shows
+  `unknown`. Reminders use the live AWS Price List, falling back to the static
+  list, labelled the same way.
+- A wildcard pattern, or a watch on several types or regions, shows the highest
+  rate, labelled with the range.
+- `-o json` on `watch`, `list` and `status`, and the reminder's webhook/SNS JSON,
+  carry an `exposure` object.
+
+## Default subnets
+
+The poller launches into each region's **default VPC** without naming a subnet,
+so a `spawn` or `hold` watch can only land in an AZ that has a default subnet.
+From lagotto v0.68.0, `lagotto watch` and `lagotto update` compare the AZs that
+offer the type (narrowed by `--azs`) with the AZs that have a default subnet,
+for each region the watch names:
+
+- **None in common:** the watch is refused, with the
+  `aws ec2 create-default-subnet --region ... --availability-zone ...` command
+  that fixes it. A watch with no `--regions` is refused only if no enabled region
+  can serve it.
+- **Some offered AZs lack one:** a warning per AZ.
+- **The lookup fails** (for example a missing permission): a warning, never a
+  refusal. Notify and SageMaker watches aren't checked.
+
+These checks call `ec2:DescribeInstanceTypeOfferings`, `ec2:DescribeSubnets` and
+`ec2:DescribeRegions` with your credentials. `lagotto doctor`'s `subnet-coverage`
+check reports the same for every active watch, and a failed attempt that skipped
+AZs records `no-subnet: <azs>` at the start of its `last_error`.
 
 ## Holding capacity (`--action hold`)
 
@@ -316,12 +448,16 @@ A watch is `active` while it's being polled, and ends in one of:
 |--------|---------|
 | `matched` | The action succeeded (notified, launched, or held) |
 | `failed` | A launch hit a **terminal** error that retrying can't fix (bad AMI/IAM, exhausted quota) |
-| `expired` | The watch TTL elapsed before it could act |
+| `expired` | The watch TTL elapsed before it could act. For an `--until-landed` watch, `expired_reason: unacknowledged` means it **paused** at its acknowledgement deadline; `lagotto ack` resumes it |
 | `cancelled` | You cancelled it with `lagotto cancel` |
 
-The watch **TTL is the only time limit** — there is no max-retry count. A
-capacity failure (`InsufficientInstanceCapacity`) is *not* terminal: the watch
-stays `active` and retries on the next poll until it launches or the TTL runs out.
+There is no max-retry count: a watch's deadline is its time limit. That is its
+TTL (`--ttl`, which must be greater than zero), or for an `--until-landed` watch
+the rolling acknowledgement deadline. A capacity failure
+(`InsufficientInstanceCapacity`) is *not* terminal: the watch stays `active` and
+retries on the next poll until it launches or the deadline passes. Since lagotto
+v0.67.0 a `spawn` or `hold` watch is `matched` only once the instance is
+`running` (the reservation `active`); while it waits it shows as `landing`.
 
 ## How it works
 
@@ -354,7 +490,7 @@ Deploy the hosted poller stack **into your own account** with one command:
 
 ```sh
 lagotto deploy                 # stand up Lambda + EventBridge + DynamoDB + IAM
-lagotto deploy --teardown      # remove it
+lagotto deploy --teardown      # remove this region's poller
 ```
 
 `lagotto deploy` downloads the published poller Lambda artifact, uploads it to a bucket in your account, and creates the poller with direct AWS API calls: the SNS alerts topic, the Lambda and its EventBridge schedule. CloudFormation is no longer used. The schedule deploys disabled; the first `lagotto watch` enables it, and the poller disables its own schedule when no watches or pending scheduled launches remain. The Lambda and topic stay until `lagotto deploy --teardown`.
@@ -366,6 +502,26 @@ lagotto deploy
 lagotto setup
 lagotto doctor        # read-only check of the deployment
 ```
+
+**Upgrading.** Re-run `lagotto deploy` after upgrading the CLI: the poller, not
+the CLI, sends until-landed reminders and picks up poller fixes, so they reach
+you only once it runs the new version. `lagotto doctor` flags a poller older than
+your CLI.
+
+**Removing it.** To leave nothing behind:
+
+```sh
+lagotto deploy --teardown       # in each region: schedule, Lambda, topic, artifact bucket
+lagotto teardown                # the DynamoDB tables and the per-launch lagotto-launch-sl-* schedules
+lagotto teardown --iam-roles    # the two account-wide IAM roles, once no region runs a poller
+```
+
+From lagotto v0.68.0, `deploy --teardown` also deletes the artifact bucket
+(`lagotto-lambda-<account>-<region>`, when it carries lagotto's
+`lagotto:managed=cli` tag), and `lagotto teardown` also deletes the
+`lagotto-scheduled-launches` table and the per-launch schedules, which earlier
+versions left behind. `lagotto doctor` reports a leftover artifact bucket or
+per-launch schedule.
 
 See the [deployment guide](https://github.com/spore-host/lagotto/blob/main/DEPLOYMENT.md) for the details, and the optional CloudFormation template for infrastructure-as-code setups. Once deployed, the `lagotto` CLI manages watches and scheduled launches in that infrastructure.
 

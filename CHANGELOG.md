@@ -30,6 +30,20 @@ own changelogs for CLI releases.
   dev-account profile.
 
 ### Documentation
+- **The lagotto guides describe lagotto v0.68.0** (unreleased; lagotto#239).
+  `waiting-for-capacity.md` no longer says the TTL is the only stop: it adds a
+  step for `--until-landed` (the rolling acknowledgement deadline, reminders,
+  `lagotto ack`, the `unacknowledged` pause), `lagotto update`, the cost
+  exposure line, the default-subnet check, and the full teardown, and warns that
+  a notify watch fires when a type is offered, which does not mean a launch
+  would succeed. `tools/lagotto.md` gains `ack`, `update`, until-landed, cost
+  exposure, default subnets, the redeploy-after-upgrade note and the teardown
+  order. The Go library guide builds a watch with `watcher.NewWatch` and
+  `pkg/arm` instead of hand-set timestamps (the `TTLTimestamp = ExpiresAt` bug
+  it used to show), and notes which history rows are not matches. The cheatsheet
+  and glossary are updated to match. The generated CLI reference (`docs/gen/`)
+  is untouched; `sync-cli-docs` brings it up to date when lagotto v0.68.0 is
+  released.
 
 - **New reference page: Launch config files** (#621).
   Three commands read a launch YAML, and they are three different formats: `spawn launch --config` (only a `plugins:` list), lagotto's `--spawn-config`, and a sweep's `--param-file`.
