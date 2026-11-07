@@ -8,6 +8,8 @@ Each section below is generated from the `lagotto` CLI itself and synced from it
 
 <!-- @include: ../../gen/lagotto/_global-flags.md -->
 
+<!-- @include: ../../gen/lagotto/ack.md -->
+
 <!-- @include: ../../gen/lagotto/cancel.md -->
 
 <!-- @include: ../../gen/lagotto/deploy.md -->
@@ -22,6 +24,8 @@ Each section below is generated from the `lagotto` CLI itself and synced from it
 
 <!-- @include: ../../gen/lagotto/list.md -->
 
+<!-- @include: ../../gen/lagotto/notify-gc.md -->
+
 <!-- @include: ../../gen/lagotto/poll.md -->
 
 <!-- @include: ../../gen/lagotto/setup.md -->
@@ -29,6 +33,8 @@ Each section below is generated from the `lagotto` CLI itself and synced from it
 <!-- @include: ../../gen/lagotto/status.md -->
 
 <!-- @include: ../../gen/lagotto/teardown.md -->
+
+<!-- @include: ../../gen/lagotto/update.md -->
 
 <!-- @include: ../../gen/lagotto/version.md -->
 

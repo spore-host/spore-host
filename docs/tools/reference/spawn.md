@@ -32,6 +32,8 @@ Each section below is generated from the `spawn` CLI itself and synced on every 
 
 <!-- @include: ../../gen/spawn/doctor.md -->
 
+<!-- @include: ../../gen/spawn/egress-proxy.md -->
+
 <!-- @include: ../../gen/spawn/extend.md -->
 
 <!-- @include: ../../gen/spawn/footprint.md -->
