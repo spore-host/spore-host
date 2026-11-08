@@ -212,19 +212,25 @@ aws lambda create-function \
   --memory-size 128 \
   --region us-east-1
 
-# Create Function URL (public, PKCS#7 signature verified by Lambda itself)
+# Create the Function URL with AWS_IAM auth. NEVER --auth-type NONE (see
+# docs/guides/self-hosting.md): only the accounts whose spores may register
+# records get invoke permission. spawn's scripts/deploy-custom-dns.sh does
+# exactly this; prefer it over the manual steps below.
 aws lambda create-function-url-config \
   --function-name spore-dns-updater \
-  --auth-type NONE \
+  --auth-type AWS_IAM \
   --region us-east-1
 
-aws lambda add-permission \
-  --function-name spore-dns-updater \
-  --statement-id AllowPublicAccess \
-  --action lambda:InvokeFunctionUrl \
-  --principal '*' \
-  --function-url-auth-type NONE \
-  --region us-east-1
+# One statement per researcher account allowed to register DNS records.
+for ACCT in $ALLOWED_ACCOUNTS; do   # space-separated 12-digit account IDs
+  aws lambda add-permission \
+    --function-name spore-dns-updater \
+    --statement-id "AllowAccount-$ACCT" \
+    --action lambda:InvokeFunctionUrl \
+    --principal "$ACCT" \
+    --function-url-auth-type AWS_IAM \
+    --region us-east-1
+done
 
 # Capture the Function URL
 DNS_URL=$(aws lambda get-function-url-config \
