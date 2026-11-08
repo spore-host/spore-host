@@ -13,6 +13,18 @@ own changelogs for CLI releases.
 
 ## [Unreleased]
 
+### Fixed
+- **Instances launched with `--notify-platform teams` now send their Teams
+  users DMs, and spore-bot no longer calls Slack's API with a Teams
+  credential** (#596). `/notify` ran the Teams DM fan-out only for Slack
+  notifications, so a Teams notification reached Teams users only through a
+  channel webhook, if one was set. It also ran the Slack DM fan-out for every
+  platform: for a Teams tenant it posted to Slack's `chat.postMessage` with
+  the tenant's stored bot token, which for Teams is the Azure Bot client
+  secret. DMs are now dispatched per platform: a Slack notification sends
+  Slack DMs and, as before, Teams DMs to the instance's Teams users; a Teams
+  notification sends Teams DMs only. Slack DMs go only to Slack users.
+
 ### Changed
 - **OpenTofu state is remote and locked** (#580). Every `infra/tofu` root now
   keeps its state in `s3://spore-host-tofu-state-966362334030/<root>/terraform.tfstate`.
