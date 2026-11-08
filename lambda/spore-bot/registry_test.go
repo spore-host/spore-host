@@ -44,6 +44,7 @@ func setupRegistry(t *testing.T) *Registry {
 		client:          client,
 		registryTable:   testRegistryTable,
 		workspacesTable: testWorkspacesTable,
+		kms:             &fakeKMS{},
 	}
 }
 
@@ -125,11 +126,12 @@ func TestPutAndGetWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWorkspace: %v", err)
 	}
-	if got.SigningSecret != "test-signing-secret" {
-		t.Errorf("SigningSecret = %q, want test-signing-secret", got.SigningSecret)
+	// Credentials are stored sealed (credentials.go) and open to the values put.
+	if s, err := reg.openCredential(ctx, credSigningSecret, got.WorkspaceKey, got.SigningSecret); err != nil || s != "test-signing-secret" {
+		t.Errorf("SigningSecret = %q, %v; want test-signing-secret", s, err)
 	}
-	if got.BotToken != "xoxb-test-token" {
-		t.Errorf("BotToken = %q, want xoxb-test-token", got.BotToken)
+	if s, err := reg.openCredential(ctx, credBotToken, got.WorkspaceKey, got.BotToken); err != nil || s != "xoxb-test-token" {
+		t.Errorf("BotToken = %q, %v; want xoxb-test-token", s, err)
 	}
 	if got.WorkspaceName != "Test Workspace" {
 		t.Errorf("WorkspaceName = %q, want Test Workspace", got.WorkspaceName)

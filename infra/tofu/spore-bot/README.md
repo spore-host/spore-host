@@ -11,10 +11,16 @@ is still imperative `setup-*.sh`; this is the start of migrating off that.
   (Replaces the prior wrong setup where spore-bot ran under
   `prism-bot-PrismBotFunctionRole`.) DynamoDB RW on the three `spore-bot-*`
   tables, `PutItem` on `spore-sms-pending` (pending SMS replies, #576), Lambda
-  self-invoke, `SpawnBotCrossAccount` assume, and scoped logs.
+  self-invoke, `SpawnBotCrossAccount` assume, `kms:Encrypt`/`kms:Decrypt` on
+  the workspace-credentials key per field (#611), and scoped logs.
   `lambda/spore-bot/iam_gate_test.go` fails if the code makes a DynamoDB, Lambda
   or STS call this policy does not grant, or the policy grants a table the code
   never touches.
+- `aws_kms_key.spore_bot_secrets` — the key that seals workspace credentials
+  (#611), and, once `seal_workspace_credentials` is true, its alias
+  `alias/spore-bot-secrets` and the hourly migration sweep (EventBridge rule
+  `spore-bot-seal-legacy-credentials`, its target and invoke permission). See
+  [Workspace credentials](#workspace-credentials).
 - `aws_lambda_function.spore_bot` — the function's **shape** (role, runtime,
   arm64, memory, timeout).
 - `aws_lambda_function_url.spore_bot` + public invoke permission — the Function
@@ -61,11 +67,59 @@ upper-cased; `<PROJECT>` is the slash command without its `/`, upper-cased.
 | `BOT_REGISTRY_TABLE` | Registry table; default `spore-bot-registry`. |
 | `BOT_WORKSPACES_TABLE` | Workspaces table; default `spore-bot-workspaces`. |
 | `BOT_AUDIT_TABLE` | Audit table; default `spore-bot-audit`. |
+| `SPORE_BOT_SECRETS_KMS_KEY` | KMS key for workspace credentials; default `alias/spore-bot-secrets`. Leave unset: spore-bot-role is granted only this module's key, and a named key that does not exist fails every write. |
 
 The role grants DynamoDB only on the default table names (`local.tables`) and
 `PutItem` on `spore-sms-pending`. Overriding a `BOT_*_TABLE` variable to another
 name needs a matching change to `local.tables`, or every call on that table is
 AccessDenied.
+
+## Workspace credentials
+
+The `signing_secret`, `bot_token`, `refresh_token` and `incoming_webhook_url`
+attributes of `spore-bot-workspaces` are stored KMS-encrypted (#611,
+spore-host/spawn#868). Each value is sealed under `alias/spore-bot-secrets`
+with the encryption context `{purpose: spore-bot-<field>, workspace_key: <item
+key>}`, so it opens only as that field of that item. spawn's `pkg/botsecret`
+writes and reads the same format.
+
+**The alias is the switch.** Every writer (this bot, spawn's dashboard, the
+spawn CLI) seals once `alias/spore-bot-secrets` exists and stores plaintext,
+the old format, until then. Every reader accepts both. So the code of both
+repos can ship in either order, and the alias is created last, by setting
+`seal_workspace_credentials = true`, once every reader can decrypt:
+
+1. this bot's code deployed (`make deploy`);
+2. spawn's dashboard-api deployed, after re-running
+   `lambda/dashboard-api/scripts/setup-dashboard-lambda-role.sh`, which grants
+   `SpawnDashboardLambdaRole` the key (scoped to the alias);
+3. the owner's spawn CLI upgraded (an older CLI cannot use a sealed bot token
+   for `notify register --user <email>`).
+
+Then flip the default in `main.tf` in a PR and `tofu apply`. The apply creates
+the alias and the hourly sweep. The sweep re-seals every plaintext value in
+place, each with a conditional update on that one attribute, so it never
+overwrites a concurrent token refresh. It runs within the hour, and there is
+no manual migration step. Leave it running afterwards: it also re-seals values
+an older spawn CLI writes in plaintext.
+
+What spore-bot-role may do with the key (statements `SporeBotCredentialsEncrypt`
+and `SporeBotCredentialsDecrypt`, both on the key ARN and conditioned on
+`kms:EncryptionContext:purpose`):
+
+| | signing secret | bot token | refresh token | webhook URL |
+|---|---|---|---|---|
+| `kms:Encrypt` | ✓ | ✓ | ✓ | ✓ |
+| `kms:Decrypt` | ✓ | ✓ | — | ✓ |
+
+`lambda/spore-bot/credentials_gate_test.go` fails if that table and the code
+disagree.
+
+**Do not set `seal_workspace_credentials` back to false** once sealed values
+exist. Without the alias, every writer stores plaintext again, and
+`SpawnDashboardLambdaRole`, whose grant is scoped to the alias, can no longer
+decrypt the values already sealed. `prevent_destroy` guards the key itself;
+to retire it, the workspaces must first be re-written unsealed.
 
 ## State
 

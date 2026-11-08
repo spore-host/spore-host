@@ -348,7 +348,7 @@ func discoverAWSCalls(t *testing.T, src botSource) ([]tableUse, map[string]bool)
 			}
 			service := strings.TrimPrefix(p, svc)
 			switch service {
-			case "dynamodb", "lambda", "sts":
+			case "dynamodb", "lambda", "sts", "kms":
 			case "ec2":
 				// EC2 runs on credentials assumed into SpawnBotCrossAccount in the
 				// user's account (crossAccountEC2); spawn's
