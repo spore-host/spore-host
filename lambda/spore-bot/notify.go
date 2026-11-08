@@ -142,6 +142,7 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 	}
 
 	// The per-user fan-outs run concurrently; each one waits for its own sends.
+	senders := dmSendersFor(nr.Platform)
 	var wg sync.WaitGroup
 	for i := range workspaces {
 		ws := &workspaces[i]
@@ -150,15 +151,17 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		if ws.IncomingWebhookURL != "" {
 			postIncomingWebhook(ws.IncomingWebhookURL, msg)
 		}
-		// Pattern B: per-user DMs — only for a registered instance (C2).
-		if registered {
+		// Pattern B: per-user Slack DMs — only for a registered instance (C2),
+		// and only from a Slack workspace: they post to Slack's API with the
+		// record's bot token, which for a Teams tenant is its Azure Bot secret.
+		if registered && senders.slack {
 			wg.Go(func() { sendUserDMs(dctx, cfg, reg, ws, target, msg) })
 		}
 	}
 
 	// Per-user DM/SMS fan-out (Teams + SMS) — gated on registration like Slack DMs.
 	if registered {
-		if nr.Platform == "slack" || nr.Platform == "" {
+		if senders.teams {
 			wg.Go(func() { sendTeamsDMs(dctx, reg, nil, target, msg) })
 		}
 		wg.Go(func() { sendUserSMS(dctx, reg, nr, target) })
@@ -168,6 +171,35 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 	wg.Wait()
 
 	return jsonOK(), nil
+}
+
+// dmSenders says which per-user DM senders a notification runs.
+type dmSenders struct {
+	slack bool // sendUserDMs: Slack chat.postMessage with the workspace's bot token
+	teams bool // sendTeamsDMs: Bot Framework, with the app's own credentials
+}
+
+// dmSendersFor returns the DM senders for a notification's platform (#596).
+//
+// Slack DMs run only for a Slack notification: sendUserDMs posts to Slack's
+// API with the workspace record's bot token, and a Teams record's bot token is
+// the tenant's Azure Bot client secret (docs/guides/teams-setup.md), which must
+// not be sent to Slack.
+//
+// Teams DMs run for a Teams notification, which they never did before #596
+// (an instance launched with --notify-platform teams got only the channel
+// webhook), and, as before, for a Slack one: sendTeamsDMs sends with the Teams
+// app's own Bot Framework token, not a workspace's, to the Teams users
+// registered for the instance, so a Slack-launched instance keeps reaching
+// them. Discord is delivered by webhook only (handleNotify).
+func dmSendersFor(platform string) dmSenders {
+	switch platform {
+	case "slack", "": // "" is spored before the platform field existed
+		return dmSenders{slack: true, teams: true}
+	case "teams":
+		return dmSenders{teams: true}
+	}
+	return dmSenders{}
 }
 
 // notifyDeliveryBudget bounds a /notify fan-out (DynamoDB lookups plus every
@@ -235,9 +267,11 @@ func sendUserDMs(ctx context.Context, cfg aws.Config, reg *Registry, ws *Workspa
 		if !ok {
 			continue
 		}
-		// user_key = "{platform}#{workspace}#{user_id}"
+		// user_key = "{platform}#{workspace}#{user_id}". Only Slack users can be
+		// DMed through Slack's API; a Teams or Discord user id registered for
+		// the same instance must not be sent there (#596).
 		parts := strings.SplitN(userKey.Value, "#", 3)
-		if len(parts) != 3 {
+		if len(parts) != 3 || parts[0] != "slack" {
 			continue
 		}
 		userID := parts[2]
