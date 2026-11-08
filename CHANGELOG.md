@@ -235,6 +235,17 @@ own changelogs for CLI releases.
   registry, and that the default alias `f8g1e7l5` is the beta account's.
 
 ### Security
+
+- **Removed two trust/exposure footguns from the operator runbooks.**
+  `scripts/setup-dashboard-lambda-role.sh` hardcoded account 942542972736 as
+  the "account with EC2 instances" and granted the infra dashboard role
+  `sts:AssumeRole` into it. Running it would have opened a path from the
+  spore.host infra account into an account that must never be trusted. It is
+  deleted. (Checked read-only: no such role or trust exists today.)
+  `infra/DEPLOY.md` created the dns-updater Function URL with
+  `--auth-type NONE` and `--principal '*'`, which `self-hosting.md` forbids.
+  It now uses `AWS_IAM` with one invoke permission per allowed account, as
+  spawn's `scripts/deploy-custom-dns.sh` does.
 - **`golang.org/x/net` v0.60.0 → v0.62.0** for CVE-2026-78661 (HIGH,
   GO-2026-6860 / GO-2026-6866) in `golang.org/x/net/html`: quadratic-time text
   node coalescing and missing ancestor-namespace checks when rendering raw text.
