@@ -197,6 +197,12 @@ aws lambda create-function \
   --region us-east-1 --profile infra
 ```
 
+This manual setup creates no KMS key. Without one, workspace credentials are
+stored unencrypted, as they were before spore-host#611. The CloudFormation
+template in the [spore-bot self-hosting guide](/spore-bot-self-hosting) creates
+the key `alias/spore-bot-secrets`, the grants and the hourly re-encryption
+schedule. Use it if you want credentials encrypted at rest.
+
 Then create a Slack app pointing at your Lambda's Function URL (same process as the hosted version — see [Slack Setup](/guides/slack-setup)).
 
 ## Step 6: Cross-account access for the bot

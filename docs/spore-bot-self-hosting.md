@@ -10,6 +10,8 @@ This guide is for organizations deploying their own spore.host infrastructure (e
 - **Lambda function:** `spore-bot` — handles Slack/Teams/Discord webhooks, EC2 operations
 - **Lambda Function URL** — public HTTPS endpoint for Slack slash commands
 - **IAM roles** — Lambda execution role with DynamoDB and EC2 permissions
+- **KMS key** `alias/spore-bot-secrets` — encrypts each workspace's signing secret, bot token, refresh token and webhook URL at rest. The execution role may encrypt every field and decrypt only the ones the bot uses.
+- **Hourly schedule** — re-encrypts any credential still stored in plaintext: items written before the key existed, or by an older spawn CLI. You don't run a migration.
 
 ---
 

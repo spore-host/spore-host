@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 )
 
 // BotRegistration maps a chat user to an EC2 instance they can control.
@@ -47,6 +48,11 @@ type BotRegistration struct {
 }
 
 // WorkspaceConfig stores per-workspace OAuth tokens (bot token + signing secret).
+//
+// As read from the table, the credential fields (SigningSecret, BotToken,
+// RefreshToken, IncomingWebhookURL) hold the STORED value: KMS ciphertext, or
+// a legacy plaintext. Presence checks work on either; to use one, open it with
+// Registry.openCredential. PutWorkspace takes them as plaintext and seals them.
 type WorkspaceConfig struct {
 	// PK: {platform}#{workspace-id}#{app-id}  (preferred)
 	//  or {platform}#{workspace-id}            (legacy, single app per workspace)
@@ -164,6 +170,12 @@ type Registry struct {
 	client          *dynamodb.Client
 	registryTable   string
 	workspacesTable string
+	// kms seals and opens workspace credentials (credentials.go). Nil: a
+	// legacy plaintext credential still reads, and nothing can be written or
+	// decrypted.
+	kms kmsAPI
+	// kmsKeyID overrides defaultSecretsKeyAlias (SPORE_BOT_SECRETS_KMS_KEY).
+	kmsKeyID string
 }
 
 func newRegistry(cfg aws.Config) *Registry {
@@ -171,6 +183,8 @@ func newRegistry(cfg aws.Config) *Registry {
 		client:          dynamodb.NewFromConfig(cfg),
 		registryTable:   getEnv("BOT_REGISTRY_TABLE", "spore-bot-registry"),
 		workspacesTable: getEnv("BOT_WORKSPACES_TABLE", "spore-bot-workspaces"),
+		kms:             kms.NewFromConfig(cfg),
+		kmsKeyID:        getEnv("SPORE_BOT_SECRETS_KMS_KEY", ""),
 	}
 }
 
@@ -347,12 +361,18 @@ func (r *Registry) SetEnabled(ctx context.Context, platform, workspaceID, userID
 	return nil
 }
 
-// PutWorkspace stores workspace credentials (bot token + signing secret).
+// PutWorkspace stores a workspace record, its credentials sealed for
+// ws.WorkspaceKey (credentials.go). ws keeps its plaintext values, so the
+// caller may store the same credentials under another key.
 func (r *Registry) PutWorkspace(ctx context.Context, ws *WorkspaceConfig) error {
 	if ws.InstalledAt == "" {
 		ws.InstalledAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	item, err := attributevalue.MarshalMap(ws)
+	sealed, err := r.sealedWorkspace(ctx, ws)
+	if err != nil {
+		return err
+	}
+	item, err := attributevalue.MarshalMap(&sealed)
 	if err != nil {
 		return fmt.Errorf("marshal workspace: %w", err)
 	}

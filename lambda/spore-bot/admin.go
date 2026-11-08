@@ -340,9 +340,12 @@ func resolveSlackEmail(ctx context.Context, reg *Registry, platform, workspaceID
 	if err != nil {
 		return "", fmt.Errorf("workspace %s/%s not registered", platform, workspaceID)
 	}
-	botToken := ws.BotToken
-	if botToken == "" {
+	if ws.BotToken == "" {
 		return "", fmt.Errorf("no bot token for workspace — re-run workspace-add with --bot-token")
+	}
+	botToken, err := reg.openCredential(ctx, credBotToken, ws.WorkspaceKey, ws.BotToken)
+	if err != nil {
+		return "", fmt.Errorf("bot token for workspace %s/%s unavailable: %w", platform, workspaceID, err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,

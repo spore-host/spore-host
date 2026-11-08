@@ -25,6 +25,38 @@ own changelogs for CLI releases.
   Slack DMs and, as before, Teams DMs to the instance's Teams users; a Teams
   notification sends Teams DMs only. Slack DMs go only to Slack users.
 
+### Security
+- **spore-bot stores and reads chat-platform workspace credentials encrypted
+  at rest** (#611, spore-host/spawn#868). The signing secret, bot token,
+  refresh token and incoming webhook URL of each `spore-bot-workspaces` item
+  are sealed with the KMS key `alias/spore-bot-secrets`. Each is bound by
+  encryption context to its field and its item, in the format spawn's
+  `pkg/botsecret` writes.
+  - The OAuth install seals each of its two items under its own key, and the
+    admin API seals too.
+  - Request verification (Slack and Teams), DMs, channel webhooks and the
+    admin email lookup decrypt on use, and fail closed for a workspace whose
+    value cannot be decrypted.
+  - Values stored in plaintext still work, and spore-bot logs that once per
+    field.
+  - The key's alias is the switch. Until it exists, writes keep the
+    plaintext format every deployed reader handles (logged once), so this
+    and spawn's half deploy in either order.
+  - An hourly sweep re-encrypts every plaintext value in place, with a
+    conditional update per attribute that never overwrites a concurrent
+    token refresh. There is no manual migration.
+  - `infra/tofu/spore-bot` adds the key (rotation on, 7-day deletion window,
+    key policy delegating to this account's IAM only, `prevent_destroy`) and
+    `kms:Encrypt` for all four fields on `spore-bot-role`. It adds
+    `kms:Decrypt` for the signing secret, bot token and webhook URL only,
+    never the refresh token. Both grants are on the key ARN and conditioned
+    on `kms:EncryptionContext:purpose`.
+  - The alias, the sweep's EventBridge rule and its invoke permission are
+    created only once `seal_workspace_credentials` is set true. Set it after
+    both repos' readers are deployed (see the module README).
+  - A new gate (`credentials_gate_test.go`) fails if the KMS grants and the
+    fields the code seals and opens disagree.
+
 ### Changed
 - **OpenTofu state is remote and locked** (#580). Every `infra/tofu` root now
   keeps its state in `s3://spore-host-tofu-state-966362334030/<root>/terraform.tfstate`.

@@ -50,6 +50,21 @@ variable "region" {
   default = "us-east-1"
 }
 
+variable "seal_workspace_credentials" {
+  type = bool
+  # The switch for encrypting workspace credentials at rest (#611,
+  # spore-host/spawn#868). Every writer seals with alias/spore-bot-secrets once
+  # the alias exists, and stores plaintext (the old format) until then. So the
+  # alias, and the hourly sweep that re-seals existing plaintext, are created
+  # only when this is true, and it must become true only after EVERY reader can
+  # decrypt: this bot's code (make deploy) AND spawn's dashboard-api (with its
+  # role re-provisioned) AND the owner's spawn CLI. The key and the grants below
+  # exist either way; without the alias nothing uses them. See README.md
+  # "Workspace credentials". Never set it back to false once sealed values
+  # exist: the alias is what every reader and writer resolves.
+  default = false
+}
+
 variable "aws_profile" {
   type = string
   # Empty: use the ambient credentials (AWS_* from `aws configure
@@ -77,6 +92,19 @@ locals {
       "arn:aws:dynamodb:${var.region}:${local.account_id}:table/${t}/index/*",
     ]
   ])
+  # The encryption-context purposes of the workspace credential fields, as in
+  # lambda/spore-bot/credentials.go and spawn's pkg/botsecret.
+  credential_purposes_encrypt = [
+    "spore-bot-signing-secret",
+    "spore-bot-bot-token",
+    "spore-bot-refresh-token",
+    "spore-bot-incoming-webhook-url",
+  ]
+  credential_purposes_decrypt = [
+    "spore-bot-signing-secret",
+    "spore-bot-bot-token",
+    "spore-bot-incoming-webhook-url",
+  ]
   common_tags = {
     project   = "spore-host"
     component = "spore-bot"
@@ -141,6 +169,34 @@ resource "aws_iam_role_policy" "spore_bot" {
         Resource = "arn:aws:iam::*:role/SpawnBotCrossAccount"
       },
       {
+        # Workspace credentials (credentials.go): the OAuth install and the
+        # admin API write all four fields, and the sweep re-seals any of them,
+        # so the bot encrypts every purpose.
+        Sid      = "SporeBotCredentialsEncrypt"
+        Effect   = "Allow"
+        Action   = ["kms:Encrypt"]
+        Resource = aws_kms_key.spore_bot_secrets.arn
+        Condition = {
+          StringEquals = {
+            "kms:EncryptionContext:purpose" = local.credential_purposes_encrypt
+          }
+        }
+      },
+      {
+        # It decrypts only what it uses: the signing secret to verify requests,
+        # the bot token to DM, the webhook URL to post. It never refreshes
+        # tokens, so it cannot open a refresh token.
+        Sid      = "SporeBotCredentialsDecrypt"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = aws_kms_key.spore_bot_secrets.arn
+        Condition = {
+          StringEquals = {
+            "kms:EncryptionContext:purpose" = local.credential_purposes_decrypt
+          }
+        }
+      },
+      {
         Sid      = "SporeBotLogs"
         Effect   = "Allow"
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
@@ -154,6 +210,78 @@ resource "aws_iam_role_policy" "spore_bot" {
       }
     ]
   })
+}
+
+# ── Workspace credentials key (#611, spore-host/spawn#868) ───────────────────
+# Seals the signing_secret, bot_token, refresh_token and incoming_webhook_url of
+# every spore-bot-workspaces item. Users: this bot (spore-bot-role, above), and
+# spawn's dashboard Lambdas (SpawnDashboardLambdaRole, whose grant spawn's
+# lambda/dashboard-api/scripts/setup-dashboard-lambda-role.sh writes, scoped to
+# this alias), and an operator running `spawn notify workspace add` with admin
+# credentials in this account. The key policy delegates to IAM in this account
+# only; no other account is named anywhere.
+#
+# prevent_destroy: deleting the key makes every sealed credential unreadable.
+# To retire it, re-key the workspaces in plaintext first (remove the alias, run
+# the writers), then remove prevent_destroy and destroy, which schedules
+# deletion after the 7-day window.
+
+resource "aws_kms_key" "spore_bot_secrets" {
+  description             = "spore-bot workspace credentials (spore-bot-workspaces signing_secret, bot_token, refresh_token, incoming_webhook_url)"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "EnableIAMPoliciesInThisAccount"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${local.account_id}:root" }
+      Action    = "kms:*"
+      Resource  = "*"
+    }]
+  })
+  tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The switch (var.seal_workspace_credentials): writers seal once this exists.
+resource "aws_kms_alias" "spore_bot_secrets" {
+  count         = var.seal_workspace_credentials ? 1 : 0
+  name          = "alias/spore-bot-secrets"
+  target_key_id = aws_kms_key.spore_bot_secrets.key_id
+}
+
+# The migration: an hourly sweep that re-seals, in place, every credential still
+# stored in plaintext (items written before #611, and by an older spawn CLI
+# since). A no-op once nothing is plaintext. Created with the alias, so it never
+# runs before the key it seals with exists.
+resource "aws_cloudwatch_event_rule" "seal_legacy_credentials" {
+  count               = var.seal_workspace_credentials ? 1 : 0
+  name                = "spore-bot-seal-legacy-credentials"
+  description         = "spore-bot: re-seal workspace credentials still stored in plaintext (#611)"
+  schedule_expression = "rate(1 hour)"
+  tags                = local.common_tags
+}
+
+resource "aws_cloudwatch_event_target" "seal_legacy_credentials" {
+  count = var.seal_workspace_credentials ? 1 : 0
+  rule  = aws_cloudwatch_event_rule.seal_legacy_credentials[0].name
+  arn   = aws_lambda_function.spore_bot.arn
+  # lambda/spore-bot main.go routes on this (sealLegacyCredentialsTask).
+  input = jsonencode({ spore_bot_task = "seal-legacy-credentials" })
+}
+
+resource "aws_lambda_permission" "seal_legacy_credentials" {
+  count          = var.seal_workspace_credentials ? 1 : 0
+  statement_id   = "AllowSealLegacyCredentialsSchedule"
+  action         = "lambda:InvokeFunction"
+  function_name  = aws_lambda_function.spore_bot.function_name
+  principal      = "events.amazonaws.com"
+  source_arn     = aws_cloudwatch_event_rule.seal_legacy_credentials[0].arn
+  source_account = local.account_id
 }
 
 # ── Lambda function ──────────────────────────────────────────────────────────
@@ -223,4 +351,9 @@ output "function_url" {
 
 output "role_arn" {
   value = aws_iam_role.spore_bot.arn
+}
+
+output "secrets_key_arn" {
+  value       = aws_kms_key.spore_bot_secrets.arn
+  description = "KMS key for workspace credentials; alias/spore-bot-secrets points at it once var.seal_workspace_credentials is true."
 }

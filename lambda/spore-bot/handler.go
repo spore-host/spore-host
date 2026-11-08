@@ -240,7 +240,10 @@ func handleSlackWebhook(ctx context.Context, reg *Registry, request events.APIGa
 	// secret from the environment; the per-workspace value (admin-registered /
 	// self-hosted) takes precedence. verifySlackSignature fails closed if both
 	// are empty (spore-host#373).
-	signingSecret := ws.SigningSecret
+	signingSecret, err := reg.openCredential(ctx, credSigningSecret, ws.WorkspaceKey, ws.SigningSecret)
+	if err != nil {
+		return nil, fmt.Errorf("signing secret unavailable: %w", err)
+	}
 	if signingSecret == "" {
 		signingSecret = os.Getenv("SLACK_SIGNING_SECRET")
 	}
@@ -294,7 +297,11 @@ func handleTeamsWebhook(ctx context.Context, reg *Registry, request events.APIGa
 		if err != nil {
 			return nil, fmt.Errorf("workspace not found: %w", err)
 		}
-		if err := verifyTeamsSignature(ws.SigningSecret, request.Body, authHeader); err != nil {
+		sharedSecret, err := reg.openCredential(ctx, credSigningSecret, ws.WorkspaceKey, ws.SigningSecret)
+		if err != nil {
+			return nil, fmt.Errorf("signing secret unavailable: %w", err)
+		}
+		if err := verifyTeamsSignature(sharedSecret, request.Body, authHeader); err != nil {
 			return nil, fmt.Errorf("signature verification failed: %w", err)
 		}
 	}

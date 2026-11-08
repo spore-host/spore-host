@@ -91,8 +91,28 @@ func handler(ctx context.Context, rawEvent json.RawMessage) (interface{}, error)
 		return handleWebhook(ctx, cfg, reg, apiReq)
 	}
 
+	// A scheduled task (EventBridge, infra/tofu/spore-bot). Only an IAM
+	// principal allowed lambda:InvokeFunction can send a top-level event: a
+	// Function URL request arrives wrapped in its HTTP envelope, handled above.
+	var task struct {
+		Task string `json:"spore_bot_task"`
+	}
+	if err := json.Unmarshal(rawEvent, &task); err == nil && task.Task != "" {
+		return nil, handleTask(ctx, reg, task.Task)
+	}
+
 	// Otherwise it's a BotAction payload from async self-invocation (Phase 2).
 	return nil, handleAsyncAction(ctx, cfg, reg, rawEvent)
+}
+
+// handleTask runs a scheduled task.
+func handleTask(ctx context.Context, reg *Registry, task string) error {
+	switch task {
+	case sealLegacyCredentialsTask:
+		_, err := reg.sealLegacyCredentials(ctx)
+		return err
+	}
+	return fmt.Errorf("unknown spore_bot_task %q", task)
 }
 
 // funcURLToAPIGW adapts a Lambda Function URL request to the APIGatewayProxyRequest

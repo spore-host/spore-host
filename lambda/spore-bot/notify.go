@@ -134,8 +134,8 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 	if nr.Platform == "discord" {
 		embed := buildDiscordEmbed(nr)
 		for i := range workspaces {
-			if ws := &workspaces[i]; ws.IncomingWebhookURL != "" {
-				postDiscordWebhook(ws.IncomingWebhookURL, embed)
+			if url := webhookURL(dctx, reg, &workspaces[i]); url != "" {
+				postDiscordWebhook(url, embed)
 			}
 		}
 		return jsonOK(), nil
@@ -148,8 +148,8 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 		ws := &workspaces[i]
 		// Pattern A: channel webhook — ungated (workspace opted in; no per-user
 		// targeting or SMS cost).
-		if ws.IncomingWebhookURL != "" {
-			postIncomingWebhook(ws.IncomingWebhookURL, msg)
+		if url := webhookURL(dctx, reg, ws); url != "" {
+			postIncomingWebhook(url, msg)
 		}
 		// Pattern B: per-user Slack DMs — only for a registered instance (C2),
 		// and only from a Slack workspace: they post to Slack's API with the
@@ -200,6 +200,20 @@ func dmSendersFor(platform string) dmSenders {
 		return dmSenders{teams: true}
 	}
 	return dmSenders{}
+}
+
+// webhookURL returns ws's channel webhook URL opened for use, or "" when it
+// has none or it cannot be decrypted (logged; the other deliveries go ahead).
+func webhookURL(ctx context.Context, reg *Registry, ws *WorkspaceConfig) string {
+	if ws.IncomingWebhookURL == "" {
+		return ""
+	}
+	url, err := reg.openCredential(ctx, credIncomingWebhookURL, ws.WorkspaceKey, ws.IncomingWebhookURL)
+	if err != nil {
+		logf("notify: no channel webhook for %s: %v", ws.WorkspaceKey, err)
+		return ""
+	}
+	return url
 }
 
 // notifyDeliveryBudget bounds a /notify fan-out (DynamoDB lookups plus every
@@ -257,8 +271,13 @@ func sendUserDMs(ctx context.Context, cfg aws.Config, reg *Registry, ws *Workspa
 		return
 	}
 
-	// Get a fresh bot token (handles rotation if enabled)
-	botToken := ws.BotToken
+	// The stored token may be sealed (credentials.go). Rotation is the
+	// dashboard's job; spore-bot uses the token as stored.
+	botToken, err := reg.openCredential(ctx, credBotToken, ws.WorkspaceKey, ws.BotToken)
+	if err != nil {
+		logf("notify: no Slack DMs for %s: %v", ws.WorkspaceKey, err)
+		return
+	}
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
