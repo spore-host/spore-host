@@ -31,7 +31,7 @@ will ask before running it.
                                │  event callbacks (no credentials)
                                ▼
 ┌─ spore.host-infra account (optional) ──────────────────────┐
-│  Lambdas   route Slack/Teams messages, DNS, notifications    │
+│  Lambdas   DNS updates (chat routing: experimental, 1.0-off) │
 │            assume ONLY the narrow cross-account role you      │
 │            grant — never hold your keys                       │
 └─────────────────────────────────────────────────────────────┘
@@ -56,18 +56,21 @@ An out-of-band reaper is the backstop if spored can't; see
 [Costs & safety guarantees](/safety).
 
 **Is there a central control plane that runs my compute?**
-No. The only hosted components are optional Lambda functions (chat control, DNS,
-notifications) in the spore.host-infra account. They never run your workloads and
+No. The only hosted components are optional Lambda functions (DNS, and the
+experimental chat control and notifications, whose hosted deployment is
+decommissioned) in the spore.host-infra account. They never run your workloads and
 never hold your credentials — for chat control they **assume a narrow
 cross-account IAM role you explicitly create**, scoped to specific EC2 actions.
 You can run entirely without them (`lagotto poll --daemon`, no chat integration),
 in which case nothing leaves your account at all.
 
 **What metadata leaves my account?**
-Only what you opt into. If you enable Slack/Teams or hosted notifications, spored
-sends lifecycle *events* (instance nickname, state, TTL countdown — no
-credentials, no data from the instance) to the notification Lambda so it can DM
-you. With no integrations enabled, nothing leaves your account.
+Only what you opt into. If you enable chat notifications (experimental, not part
+of 1.0, and only with a [self-hosted spore-bot](/spore-bot-self-hosting) now that
+the hosted one is decommissioned), spored sends lifecycle *events* (instance
+nickname, state, TTL countdown — no credentials, no data from the instance) to
+that notification Lambda so it can DM you. With no integrations enabled, nothing
+leaves your account.
 
 **Does the HTTP API change this?**
 Yes. The [Python SDK](/guides/python-sdk) talks to a beta HTTP API that

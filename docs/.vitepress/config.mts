@@ -115,7 +115,6 @@ const sidebar = {
         { text: 'Spawn', link: '/tools/spawn' },
         { text: 'Spored', link: '/tools/spored' },
         { text: 'Lagotto', link: '/tools/lagotto' },
-        { text: 'Spore-bot', link: '/tools/spore-bot' },
         { text: 'MCP Server', link: '/tools/mcp-server' },
         { text: 'Command reference: truffle', link: '/tools/reference/truffle' },
         { text: 'Command reference: spawn', link: '/tools/reference/spawn' },
@@ -132,12 +131,9 @@ const sidebar = {
       ]
     },
     {
-      text: 'Chat & AI Control',
+      text: 'AI & notifications',
       collapsed: true,
       items: [
-        { text: 'Slack Setup', link: '/guides/slack-setup' },
-        { text: 'Teams Setup', link: '/guides/teams-setup' },
-        { text: 'Discord Setup', link: '/guides/discord-setup' },
         { text: 'AI Assistant (MCP)', link: '/guides/mcp-setup' },
         { text: 'Lifecycle Notifications', link: '/guides/notifications' },
       ]
@@ -152,8 +148,6 @@ const sidebar = {
         { text: 'The TTL reaper (backstop)', link: '/guides/reaper' },
         { text: 'Custom DNS', link: '/guides/custom-dns' },
         { text: 'Self-Hosting', link: '/guides/self-hosting' },
-        { text: 'Self-Hosting spore-bot', link: '/spore-bot-self-hosting' },
-        { text: 'Rotating bot credentials', link: '/guides/rotating-bot-credentials' },
       ]
     },
     {
@@ -171,6 +165,22 @@ const sidebar = {
         { text: 'Glossary', link: '/reference/glossary' },
         { text: 'FAQ', link: '/reference/faq' },
         { text: 'Cheat Sheet', link: '/reference/cheatsheet' },
+      ]
+    },
+    // Chat-platform integrations are walled off for 1.0 (spore-host#611): the
+    // hosted spore-bot is decommissioned and these pages describe self-hosting
+    // only. Kept last and collapsed so nothing above leads into them; the URLs
+    // are unchanged so existing links still resolve.
+    {
+      text: 'Experimental: not part of 1.0',
+      collapsed: true,
+      items: [
+        { text: 'Spore-bot', link: '/tools/spore-bot' },
+        { text: 'Slack Setup', link: '/guides/slack-setup' },
+        { text: 'Teams Setup', link: '/guides/teams-setup' },
+        { text: 'Discord Setup', link: '/guides/discord-setup' },
+        { text: 'Self-Hosting spore-bot', link: '/spore-bot-self-hosting' },
+        { text: 'Rotating bot credentials', link: '/guides/rotating-bot-credentials' },
       ]
     },
   ],

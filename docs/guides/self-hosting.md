@@ -18,10 +18,10 @@ A self-hosted spore.host deployment consists of:
 Your infrastructure account (e.g. 111122223333)
   ├── Route53 — your domain (compute.university.edu)
   ├── Lambda — dns-updater (registers instance DNS)
-  ├── Lambda — spore-bot (Slack/Teams bot + SMS)
+  ├── Lambda — spore-bot (Slack/Teams bot + SMS; experimental, not part of 1.0)
   ├── Lambda — rest-api (Python SDK + SMS backend)
   ├── Lambda — dashboard-api (web dashboard)
-  ├── DynamoDB — spore-bot-registry, spore-bot-workspaces
+  ├── DynamoDB — spore-bot-registry, spore-bot-workspaces (spore-bot only)
   ├── S3 + CloudFront — your portal (portal.university.edu)
   └── Cognito — dashboard authentication
 
@@ -146,7 +146,15 @@ them.
 
 ## Step 5: Deploy the Slack/Teams bot (optional)
 
-If you want `/spawn` slash commands in your Slack workspace, deploy the spore-bot Lambda:
+::: warning Experimental: not part of 1.0
+Chat-platform integrations (Slack, Microsoft Teams, Discord and spore-bot) are
+walled off for spore.host 1.0, and the hosted spore-bot is decommissioned. Steps 5
+and 6 still work for a self-hosted deployment, but they are experimental and
+unsupported. A 1.0 deployment can skip both. See
+[spore-host#611](https://github.com/spore-host/spore-host/issues/611).
+:::
+
+If you want `/spore` slash commands in your Slack workspace, deploy the spore-bot Lambda:
 
 ```sh
 git clone https://github.com/spore-host/spore-host.git
@@ -203,9 +211,9 @@ template in the [spore-bot self-hosting guide](/spore-bot-self-hosting) creates
 the key `alias/spore-bot-secrets`, the grants and the hourly re-encryption
 schedule. Use it if you want credentials encrypted at rest.
 
-Then create a Slack app pointing at your Lambda's Function URL (same process as the hosted version — see [Slack Setup](/guides/slack-setup)).
+Then create a Slack app pointing at your Lambda's Function URL (see [Slack Setup](/guides/slack-setup)).
 
-## Step 6: Cross-account access for the bot
+## Step 6: Cross-account access for the bot (experimental)
 
 The bot controls instances in your researchers' accounts by assuming a role in
 each one. Researchers don't create that role by hand: `spawn notify register`
@@ -213,8 +221,8 @@ creates `SpawnBotCrossAccount` in their account and stores it in the
 registration. The role trusts the bot's execution role under a **per-account
 ExternalId**. There is no shared ExternalId; the old fixed value was removed.
 
-Point researchers' CLIs at your bot's role, so the role they get trusts it rather
-than spore.host's:
+Point researchers' CLIs at your bot's role, so the role they get trusts it. The
+default is spore.host's hosted bot role, which is decommissioned:
 
 ```sh
 export SPORE_BOT_LAMBDA_ROLE_ARN=arn:aws:iam::YOUR_INFRA_ACCOUNT:role/spore-bot-role
@@ -259,9 +267,9 @@ All spore.host components read from environment variables and config file (`~/.s
 | `SPORE_ENV` | Deployment environment: `integ` or `prod` | `prod` |
 | `SPORE_API_URL` | HTTP API Lambda URL (beta; used by the Python SDK) | hosted spore.host |
 | `SPORE_API_KEY` | API key for the HTTP API | — |
-| `SPORE_NOTIFY_URL` | Notification Lambda callback URL | hosted spore.host |
+| `SPORE_NOTIFY_URL` | spore-bot notification URL (experimental) | hosted spore.host (decommissioned) |
 | `SPORE_DNS_URL` | DNS updater Lambda URL | hosted spore.host |
-| `SPORE_BOT_LAMBDA_ROLE_ARN` | Cross-account trust target for bot | hosted spore.host |
+| `SPORE_BOT_LAMBDA_ROLE_ARN` | Cross-account trust target for bot (experimental) | hosted spore.host (decommissioned) |
 | `SPORE_BOT_REGISTRY_TABLE` | DynamoDB table for bot registrations | `spore-bot-registry` |
 | `SPORE_BOT_WORKSPACES_TABLE` | DynamoDB table for bot workspaces | `spore-bot-workspaces` |
 | `SPAWN_INFRA_PROFILE` | AWS named profile for infra operations (Lambda, DynamoDB, S3) | `spore-host-infra` |
@@ -294,14 +302,8 @@ infrastructure:
 | `SPORED_DNS_DOMAIN` | Fallback DNS domain, used only when the instance has no `spawn:dns-domain` tag. Set the domain at launch instead (Step 3). | `spore.host` |
 | `SPORED_TAG_PREFIX` | Tag namespace prefix, for sister projects only. Don't set it for spawn launches; see Step 4. | `spawn` |
 
-A researcher at your institution configures their CLI once:
-
-```sh
-spawn defaults set slack-workspace T03NE3GTY
-```
-
-If you didn't set the DNS domain and endpoint in SSM (Step 3), they set them in
-`~/.spawn/config.yaml`:
+If you didn't set the DNS domain and endpoint in SSM (Step 3), a researcher at
+your institution sets them once in `~/.spawn/config.yaml`:
 
 ```yaml
 dns:
@@ -317,8 +319,8 @@ Launches then register under your zone.
 - [ ] dns-updater deployed with `scripts/deploy-custom-dns.sh` (`AWS_IAM` auth), every researcher account in `--allow-account`, and the Function URL noted
 - [ ] DNS domain and endpoint set in SSM (`/spawn/dns/*`) in each launch account, or in researchers' `~/.spawn/config.yaml`
 - [ ] TTL reaper deployed and armed in each launch account ([guide](/guides/reaper))
-- [ ] Spore-bot Lambda deployed (if using Slack/Teams)
-- [ ] Researchers' CLIs point `SPORE_BOT_LAMBDA_ROLE_ARN` at your bot's role before `spawn notify register` (if using the bot)
+- [ ] *(Experimental, not part of 1.0)* Spore-bot Lambda deployed, if you use Slack/Teams
+- [ ] *(Experimental, not part of 1.0)* Researchers' CLIs point `SPORE_BOT_LAMBDA_ROLE_ARN` at your bot's role before `spawn notify register`, if you use the bot
 - [ ] Portal deployed at `portal.university.edu` (optional)
 - [ ] Test: `spawn launch --name test --instance-type t3.micro --ttl 10m`
 - [ ] Test: the instance's record resolves. Records are `<name>.<base36-account>.compute.university.edu`, where the middle label is the instance's `spawn:account-base36` tag

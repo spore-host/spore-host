@@ -1,6 +1,16 @@
 # spore-bot Self-Hosting Guide
 
-This guide is for organizations deploying their own spore.host infrastructure (e.g., a university running a private instance). If you are using the hosted spore.host platform, this guide does not apply — the infrastructure is already deployed.
+::: warning Experimental: not part of 1.0
+Chat-platform integrations (Slack, Microsoft Teams, Discord and spore-bot) are
+walled off for spore.host 1.0. **The hosted spore-bot is decommissioned as of
+2026-11:** the spore.host Slack apps, the hosted Teams bot and its public
+endpoints are being retired, so there is nothing hosted to install or connect.
+The code is kept, and you can still self-host it, but it is experimental and
+unsupported, and it may change or be removed. See
+[spore-host#611](https://github.com/spore-host/spore-host/issues/611).
+:::
+
+This guide is for organizations deploying their own spore-bot (e.g., a university running a private instance). It is now the only way to run spore-bot: the hosted spore.host deployment is decommissioned.
 
 ---
 
@@ -137,9 +147,9 @@ the directory.
 The update-function-code call happens outside CloudFormation. The stack's code
 reference does not change, so a later stack update will not roll the code back.
 
-> **Note:** the hosted spore.host deployment does not use this CloudFormation
-> stack. There, OpenTofu (`infra/tofu/spore-bot`) owns the function's settings,
-> and `make deploy` with its defaults ships the code.
+> **Note:** the (now decommissioned) hosted spore.host deployment did not use
+> this CloudFormation stack. There, OpenTofu (`infra/tofu/spore-bot`) owns the
+> function's settings, and `make deploy` with its defaults ships the code.
 
 ---
 

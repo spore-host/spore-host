@@ -31,7 +31,6 @@ breaking changes.
 | **spawn** | <span class="doc-badge stable">Stable</span> | v0.136.0 | Launch + full lifecycle management. |
 | **spored** | <span class="doc-badge stable">Stable</span> | ships with spawn | In-instance lifecycle daemon; built and released with spawn. |
 | **lagotto** | <span class="doc-badge stable">Stable</span> | v0.64.0 | Capacity watcher. |
-| **spore-bot** | <span class="doc-badge stable">Stable</span> | continuous | Slack/Teams control. Deployed continuously (not tag-released). |
 | **MCP server** | <span class="doc-badge stable">Stable</span> | v0.41.0 | Tools for AI assistants: search, manage, task launch with a mandatory TTL — [see the safeguards](/tools/mcp-server). |
 | **Plugin registry** | <span class="doc-badge stable">Stable</span> | per-plugin | Each plugin is versioned independently in its `plugin.yaml`; official plugins are [signature-verified](/guides/plugins). |
 
@@ -46,6 +45,7 @@ out where they appear in the docs; the list below is the canonical index.
 | **HTTP API + Python SDK** | <span class="doc-badge beta">Beta</span> | The SDK is the supported entry point; the underlying HTTP API may change. See [Python SDK](/guides/python-sdk). |
 | **Workflow adapters** (Nextflow, WDL, CWL, Snakemake, Airflow, Pegasus) | <span class="doc-badge experimental">Experimental</span> | All six are early, pre-1.0 releases; nf-spawn and pegasus-spawn describe themselves as prototypes. Read the [status & compatibility matrix](/guides/workflow-engines) before relying on one. |
 | **Pipeline stage streaming** (tcp/grpc/zmq) | <span class="doc-badge experimental">Experimental</span> | Operationally involved; prefer the S3 handoff. See [Spawn pipelines](/guides/pipelines#streaming-between-stages-experimental). |
+| **Chat-platform integrations** (spore-bot: Slack, Microsoft Teams, Discord; `spawn notify`, `--slack-workspace`, `--notify-platform`) | <span class="doc-badge experimental">Experimental</span> | Walled off for 1.0 and excluded from the 1.0 bar. The hosted spore-bot is decommissioned (2026-11); self-hosting still works but is unsupported. See [Spore-bot](/tools/spore-bot) and [spore-host#611](https://github.com/spore-host/spore-host/issues/611). |
 | **Per-event notification filtering** | <span class="doc-badge planned">Planned</span> | See [Lifecycle Notifications](/guides/notifications). |
 
 If a page and this table ever disagree, the more conservative (less mature) label

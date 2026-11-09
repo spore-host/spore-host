@@ -168,5 +168,5 @@ spored was installed automatically on the instance. It runs in the background, e
 
 - **[Worked transcripts](/guides/transcripts)** — complete terminal output for this flow, including a blocked preflight
 - **[GPU Training Jobs](/guides/gpu-training)** — launch a GPU instance for a real workload
-- **[Slack Setup](/guides/slack-setup)** — get DM notifications when your instances change state
+- **[Lifecycle Notifications](/guides/notifications)** — see TTL, idle, completion and Spot events, and get completion/Spot notices on your own webhook
 - **[spawn launch reference](/tools/reference/spawn)** — every flag explained

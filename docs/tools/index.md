@@ -1,10 +1,10 @@
 ---
-description: "spore.host is six tools that work together."
+description: "spore.host is five tools that work together."
 ---
 
 # Tools
 
-spore.host is six tools that work together. Each has exactly one job.
+spore.host is five tools that work together. Each has exactly one job.
 
 | Tool | Role | Install |
 |------|------|---------|
@@ -12,7 +12,6 @@ spore.host is six tools that work together. Each has exactly one job.
 | [Spawn](/tools/spawn) | Launch and manage instances | `brew install spore-host/tap/spawn` |
 | [Spored](/tools/spored) | Lifecycle daemon — enforces TTL, idle, completion on each instance | provisioned automatically by spawn |
 | [Lagotto](/tools/lagotto) | Watch for capacity, act when it appears | `brew install spore-host/tap/lagotto` |
-| [Spore-bot](/tools/spore-bot) | Slack and Teams control | [Setup guide](/guides/slack-setup) |
 | [MCP Server](/tools/mcp-server) | AI assistant integration | `brew install spore-host/tap/spore-host-mcp` |
 
 ## How they connect
@@ -27,16 +26,13 @@ spawn launch --instance-type p4d.24xlarge --ttl 12h
     └─ spored daemon starts on instance
          │
          ├─ enforces TTL, detects idle
-         ├─ sends lifecycle events → spore-bot Lambda → Slack DMs
+         ├─ logs lifecycle events (optional completion/Spot webhooks)
          └─ registers DNS name
 
 lagotto watch --instance-type p5.48xlarge
     │
     └─ when capacity appears: notify or auto-launch
     
-spore-bot (/spore status, /spore extend)
-    └─ calls EC2 via cross-account IAM role
-
 spore-host-mcp
     └─ wraps truffle, spawn and lagotto as MCP tools for AI assistants
 ```

@@ -101,7 +101,7 @@ Three distinct things, easy to conflate:
 
 1. **Authentication** — *who you are.* `aws login` (or a profile/keys) proves your identity to AWS.
 2. **Permissions** — *what you're allowed to do.* Your IAM role/user must allow the EC2/IAM actions spawn makes. That's the [minimal IAM policy](/reference/iam-permissions) — attach it to the identity you authenticate as. If a launch fails with `AccessDenied` / `UnauthorizedOperation`, this is what to check.
-3. **What acts on your behalf** — spore.host's hosted services (DNS subdomains, Slack/Teams notifications) run in spore.host's own AWS account and are reached over an HTTPS API; the **launched EC2 instances run in *your* account** under *your* credentials. So: you authenticate as you → your IAM policy grants the launch → spawn runs `RunInstances` in your account → the in-instance `spored` daemon manages lifecycle → optional hosted features (DNS/notify) are called out to spore.host's API. (Running everything in your *own* account instead — including the hosted pieces — is [self-hosting](/guides/self-hosting).)
+3. **What acts on your behalf** — spore.host's hosted services (DNS subdomains) run in spore.host's own AWS account and are reached over an HTTPS API; the **launched EC2 instances run in *your* account** under *your* credentials. So: you authenticate as you → your IAM policy grants the launch → spawn runs `RunInstances` in your account → the in-instance `spored` daemon manages lifecycle → optional hosted features (DNS) are called out to spore.host's API. (Running everything in your *own* account instead — including the hosted pieces — is [self-hosting](/guides/self-hosting).)
 
 ## SSH keys and the instance login user
 

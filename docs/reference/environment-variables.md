@@ -42,13 +42,17 @@ AWS_REGION=eu-west-1 spawn launch --name eu-test
 |----------|-------------|
 | `SPORE_NO_UPDATE_CHECK` | Set to any value to turn off the "A newer version … is available" notice that spawn and truffle print to stderr after a command, and the background release check behind it. `CI` (any value) does the same. From libs v0.51.4 (the spawn and truffle releases that include it), the notice and check are also skipped automatically when stderr is not a terminal, for example when a script or batch harness captures it. Explicit checks (`spawn version`, `truffle version`) ignore all three. |
 
-## Slack and Teams integration
+## Slack and Teams integration (experimental)
+
+Chat-platform integrations are experimental and not part of 1.0; the hosted
+spore-bot is decommissioned. These apply only to a
+[self-hosted spore-bot](/spore-bot-self-hosting).
 
 | Variable | Description |
 |----------|-------------|
 | `SLACK_CLIENT_ID` | OAuth client ID for spore-bot Slack app |
 | `SLACK_CLIENT_SECRET` | OAuth client secret for spore-bot Slack app |
-| `SPORE_NOTIFY_URL` | Notification Lambda URL for lifecycle notifications (overrides config) |
+| `SPORE_NOTIFY_URL` | Your spore-bot's URL for chat lifecycle notifications (overrides config) |
 
 ## Configuration file location
 

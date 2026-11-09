@@ -81,7 +81,9 @@ spore.host's own AWS account over HTTPS:
   spore.host's DNS updater. Use `--no-dns` per launch, set `dns.enabled: false`,
   or point launches at [your own updater](/guides/self-hosting).
 - **Chat notifications (Slack/Teams/Discord), only if the researcher enables
-  them.** They send selected metadata: instance ID, state and tags.
+  them.** They send selected metadata: instance ID, state and tags. Chat
+  integrations are experimental and not part of 1.0, and the hosted spore-bot
+  is decommissioned, so this applies only to a self-hosted spore-bot.
 
 Both can be [self-hosted](/guides/self-hosting) so nothing leaves the account at all. See the
 ["guarantee by deployment mode" table](https://github.com/spore-host/spore-host/blob/main/SECURITY.md#lifecycle-guarantee-by-deployment-mode).

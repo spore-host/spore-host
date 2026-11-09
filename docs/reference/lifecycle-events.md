@@ -4,7 +4,7 @@ description: "Spored emits lifecycle events when significant things happen to a 
 
 # Lifecycle Events
 
-Spored emits lifecycle events when significant things happen to a running instance. Events are routed through the spore-bot Lambda to Slack DMs, Teams messages, or a Discord channel webhook, depending on `--notify-platform` at launch.
+Spored emits lifecycle events when significant things happen to a running instance. spored logs each event. Completion and Spot interruption can also be posted to a webhook you run; routing events to chat (Slack, Teams, Discord) through spore-bot is experimental and not part of 1.0.
 
 ## Event types
 
@@ -39,12 +39,17 @@ logged-in users with `wall` and writes `/tmp/SPAWN_WARNING`.
 
 ## Receiving events
 
-Events reach you as Slack DMs or Teams messages. To enable:
+- **spored log:** every event is reflected in `/var/log/spored.log`
+  (`spawn logs <name> --which spored`).
+- **Your own webhook:** `--completion-webhook-url` and `--spot-webhook-url`
+  `POST` a fire-once notice for `completion` and `spot_interrupt`.
+- **Chat (experimental, not part of 1.0):** with a
+  [self-hosted spore-bot](/spore-bot-self-hosting), set `--slack-workspace` at
+  launch (plus `--notify-platform teams` or `discord`) and subscribe with
+  `/spore notify <nickname>`. Without a subscription, events go to the channel
+  webhook (if configured) but not as DMs. The hosted spore-bot is decommissioned.
 
-1. Set `--slack-workspace` when launching (or `spawn defaults set slack-workspace <ID>`), plus `--notify-platform teams` or `--notify-platform discord` if you're not on Slack
-2. Run `/spore notify <nickname>` in Slack to subscribe your user
-
-Without a subscription, events are posted to the channel webhook (if configured) but not sent as DMs.
+See [Lifecycle Notifications](/guides/notifications).
 
 ## Warning thresholds
 

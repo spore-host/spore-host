@@ -23,7 +23,7 @@ throughout; avoid using "spore" as a noun for a machine.
 | **truffle** | The discovery CLI: find instance types, compare prices, check quotas. Read-only. |
 | **spawn** | The launcher CLI: launches instances and provisions spored onto them; manages their lifecycle from your laptop. |
 | **spored** | The lifecycle *daemon* that runs on each launched instance and enforces its rules from the inside. You never install it — spawn provisions it. |
-| **spore-bot** | The Slack/Teams/Discord integration for controlling instances from chat. |
+| **spore-bot** | The Slack/Teams/Discord integration for controlling instances from chat. Experimental, not part of 1.0; self-hosted only. |
 | **lagotto** | The capacity watcher: waits for scarce capacity and notifies or launches when it appears. |
 | **spore-host-mcp** | The MCP server exposing truffle and spawn to AI assistants. |
 

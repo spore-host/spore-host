@@ -2,7 +2,17 @@
 description: "Spore-bot connects your Slack, Microsoft Teams or Discord workspace to your running instances."
 ---
 
-# Spore-bot <span class="doc-badge automation">Automation</span> <span class="doc-badge stable">Stable</span>
+# Spore-bot <span class="doc-badge automation">Automation</span> <span class="doc-badge experimental">Experimental</span>
+
+::: warning Experimental: not part of 1.0
+Chat-platform integrations (Slack, Microsoft Teams, Discord and spore-bot) are
+walled off for spore.host 1.0. **The hosted spore-bot is decommissioned as of
+2026-11:** the spore.host Slack apps, the hosted Teams bot and its public
+endpoints are being retired, so there is nothing hosted to install or connect.
+The code is kept, and you can still self-host it, but it is experimental and
+unsupported, and it may change or be removed. See
+[spore-host#611](https://github.com/spore-host/spore-host/issues/611).
+:::
 
 **What it is.** Spore-bot connects your Slack, Microsoft Teams or Discord workspace
 to your running instances.
@@ -55,11 +65,11 @@ Your AWS credentials never leave your account — the Lambda only assumes the na
 
 ## Setup
 
-See the full [Slack Setup guide](/guides/slack-setup) for step-by-step instructions. The short version:
+Spore-bot is self-hosted only: first deploy it in your own account ([Self-Hosting spore-bot](/spore-bot-self-hosting)). Then see the full [Slack Setup guide](/guides/slack-setup) for step-by-step instructions. The short version:
 
 1. Create a Slack app at api.slack.com/apps
 2. Add the OAuth redirect URL and configure the `/spore` slash command
-3. Connect your workspace: click "Add to Slack" or run `spawn notify workspace add`
+3. Connect your workspace: open your self-hosted spore-bot's "Add to Slack" URL or run `spawn notify workspace add`
 4. Register instances: `spawn notify register --platform slack --workspace-id T0... --user you@lab.edu --instance i-0abc123 --nickname rstudio` (it prints the Slack user ID the email resolved to)
 5. Enable access: `spawn notify enable --platform slack --workspace-id T0... --user-id U04KZABCD --nickname rstudio` (`--user-id` is required)
 6. Launch with notifications: `spawn launch --slack-workspace T0... ...`

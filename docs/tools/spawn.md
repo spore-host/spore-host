@@ -205,7 +205,6 @@ When multiple instances share a name, `spawn connect` prefers the running one. S
 Manage default launch settings:
 
 ```sh
-spawn defaults set slack-workspace T03NE3GTY
 spawn defaults set idle-timeout 1h
 spawn defaults set active-processes rsession
 spawn defaults list
@@ -214,9 +213,12 @@ spawn defaults unset active-processes
 
 Defaults are stored in `~/.spawn/config.yaml` and apply to every launch unless overridden. See [Configuration](/reference/configuration).
 
-### `spawn notify`
+### `spawn notify` (experimental)
 
-Register instances and users for Slack, Teams, or Discord control:
+Register instances and users for Slack, Teams, or Discord control. Chat-platform
+integrations are experimental and not part of 1.0, and the hosted spore-bot is
+decommissioned, so these commands need a
+[self-hosted spore-bot](/spore-bot-self-hosting):
 
 ```sh
 spawn notify workspace add ...
@@ -319,8 +321,7 @@ Full list: [Troubleshooting & common mistakes](/reference/troubleshooting).
 
 [Truffle](/tools/truffle) tells spawn *what* to launch; spawn launches it and
 provisions [spored](/tools/spored), which enforces the lifecycle from the instance.
-[Lagotto](/tools/lagotto) can drive `spawn` when it's waiting on capacity, and
-[spore-bot](/tools/spore-bot) lets you control spawn-launched instances from chat.
+[Lagotto](/tools/lagotto) can drive `spawn` when it's waiting on capacity.
 
 ## Full command reference
 

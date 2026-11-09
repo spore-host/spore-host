@@ -4,6 +4,16 @@ description: "Connecting spore.host to Slack gives you /spore commands in any ch
 
 # Slack Setup
 
+::: warning Experimental: not part of 1.0
+Chat-platform integrations (Slack, Microsoft Teams, Discord and spore-bot) are
+walled off for spore.host 1.0. **The hosted spore-bot is decommissioned as of
+2026-11:** the spore.host Slack apps, the hosted Teams bot and its public
+endpoints are being retired, so there is nothing hosted to install or connect.
+The code is kept, and you can still self-host it, but it is experimental and
+unsupported, and it may change or be removed. See
+[spore-host#611](https://github.com/spore-host/spore-host/issues/611).
+:::
+
 Connecting spore.host to Slack gives you `/spore` commands in any channel and direct message notifications when your instances change state — useful whenever you're away from the terminal.
 
 ## What you'll get
@@ -39,7 +49,9 @@ Connecting spore.host to Slack gives you `/spore` commands in any channel and di
    - `incoming-webhook`
 4. Under **Slash Commands**, create a new command:
    - Command: `/spore`
-   - Request URL: `https://awdzf7fbbsvqcrnrzusqjsuybm0iiyvf.lambda-url.us-east-1.on.aws/slack`
+   - Request URL: `https://<your-spore-bot-function-url>/slack` — the Function URL of
+     your own [self-hosted spore-bot](/spore-bot-self-hosting). The hosted
+     spore.host endpoint is decommissioned.
    - Short Description: `Control your spore.host instances`
 5. Under **Settings → Basic Information**, enable **Token Rotation** under App Credentials
 6. Install the app to your workspace — Slack will ask which channel to post notifications to
@@ -53,10 +65,11 @@ After installing the app, you can either use the OAuth flow (recommended) or reg
 Click **Add to Slack** and authorize the app. The Lambda automatically stores your bot token and signing secret.
 
 ::: tip
-Your "Add to Slack" URL is:
+Your "Add to Slack" URL is your self-hosted spore-bot's OAuth path:
 ```
-https://awdzf7fbbsvqcrnrzusqjsuybm0iiyvf.lambda-url.us-east-1.on.aws/spore/oauth
+https://<your-spore-bot-function-url>/<platform>/oauth
 ```
+There is no hosted spore.host "Add to Slack" URL any more.
 :::
 
 ### Manual registration

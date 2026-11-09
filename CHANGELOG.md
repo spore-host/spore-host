@@ -68,6 +68,18 @@ own changelogs for CLI releases.
   which has nothing left to seal once the stored credentials are deleted. The
   function, its role, the tables, the KMS key and `alias/spore-bot-secrets`
   are kept, so the bot can return after 1.0 by setting it back to `true`.
+- **The docs no longer present chat integrations as part of spore.host**
+  (#611, #644). Slack, Microsoft Teams, Discord and spore-bot are walled off
+  for 1.0, and the hosted spore-bot is being decommissioned. The Slack, Teams
+  and Discord setup guides, the spore-bot tool page, Self-Hosting spore-bot and
+  Rotating bot credentials now sit in a collapsed **Experimental: not part of
+  1.0** sidebar section, each with a banner, and no longer point at the hosted
+  endpoints. Their URLs are unchanged. The landing page, How it works, the
+  Tools and Workflows overviews, the cheat sheet, the FAQ and the guides no
+  longer recommend chat. Lifecycle Notifications now leads with what works
+  without it: the spored log, and the `--completion-webhook-url` and
+  `--spot-webhook-url` launch flags. The maturity page lists chat integrations
+  as Experimental instead of spore-bot as Stable.
 - **OpenTofu state is remote and locked** (#580). Every `infra/tofu` root now
   keeps its state in `s3://spore-host-tofu-state-966362334030/<root>/terraform.tfstate`.
   The bucket is versioned, encrypted, private and TLS-only, and is created by

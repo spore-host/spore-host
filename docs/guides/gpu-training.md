@@ -42,8 +42,7 @@ spawn launch \
   --spot \
   --ttl 24h \
   --on-complete terminate \
-  --completion-file /tmp/SPAWN_COMPLETE \
-  --slack-workspace T03NE3GTY
+  --completion-file /tmp/SPAWN_COMPLETE
 ```
 
 In your training script, add this at the end:
@@ -55,7 +54,7 @@ In your training script, add this at the end:
 touch /tmp/SPAWN_COMPLETE
 ```
 
-When spored sees that file appear, it sends a completion notification to Slack and terminates the instance. The TTL (`--ttl 24h`) acts as a hard upper bound in case something goes wrong — you'll never pay for more than 24 hours even if the job hangs.
+When spored sees that file appear, it terminates the instance (after the completion delay). The TTL (`--ttl 24h`) acts as a hard upper bound in case something goes wrong — you'll never pay for more than 24 hours even if the job hangs.
 
 ## Use Spot with graceful interruption handling
 
@@ -68,21 +67,20 @@ spawn launch \
   --spot \
   --ttl 24h \
   --pre-stop "python /home/ubuntu/training/save_checkpoint.py" \
-  --on-complete terminate \
-  --slack-workspace T03NE3GTY
+  --on-complete terminate
 ```
 
 The `--pre-stop` command runs before any lifecycle-triggered shutdown — whether that's Spot interruption, TTL expiry, or idle timeout. spored waits up to `--pre-stop-timeout` for it to complete: 90 seconds by default on Spot (so it fits inside the two-minute notice), 5 minutes otherwise. Keep a Spot checkpoint well under 90 seconds.
 
-## Monitor from Slack
+## Monitor the run
 
-With `--slack-workspace` set, you'll receive DMs for:
+Check on it any time with `spawn status llm-training`, and read spored's
+lifecycle log with `spawn logs llm-training --which spored`. To be told when it
+finishes or is interrupted, add `--completion-webhook-url` and
+`--spot-webhook-url` with a URL you run; spored `POST`s a notice to each (see
+[Lifecycle Notifications](/guides/notifications)).
 
-- **⏱️ llm-training terminates in 5 minutes** — with time to extend if you need more
-- **✅ llm-training has completed** — job done, instance terminating
-- **⚠️ llm-training received a Spot interruption notice** — 2 minutes until shutdown
-
-Extend runtime directly from Slack: `/spore extend llm-training 4h`
+Extend runtime if you need more: `spawn extend llm-training 4h`
 
 ## Manage cost with hibernation
 
@@ -97,7 +95,7 @@ spawn launch \
   --idle-timeout 30m
 ```
 
-When the instance has been idle for 30 minutes, it hibernates — saving RAM state to the root volume and stopping the clock on compute billing. EBS keeps billing while it's hibernated, and the TTL keeps counting. Resume it with `/spore start llm-training` or `spawn start llm-training`.
+When the instance has been idle for 30 minutes, it hibernates — saving RAM state to the root volume and stopping the clock on compute billing. EBS keeps billing while it's hibernated, and the TTL keeps counting. Resume it with `spawn start llm-training`.
 
 ::: warning Hibernation requirements
 Hibernation needs an encrypted root volume large enough for RAM; `--on-idle hibernate` implies `--hibernate`, which configures that. The AMI and instance type must also support hibernation, and not all do, so check AWS's hibernation prerequisites for your type.
@@ -119,10 +117,9 @@ spawn launch \
   --ttl 12h \
   --pre-stop "python /home/ubuntu/bert/save_checkpoint.py --emergency" \
   --on-complete terminate \
-  --completion-file /tmp/SPAWN_COMPLETE \
-  --slack-workspace T03NE3GTY
+  --completion-file /tmp/SPAWN_COMPLETE
 
-# 3. Watch for it in Slack, or check status any time
+# 3. Check status any time
 spawn status bert-finetune
 ```
 
@@ -136,4 +133,4 @@ instance isn't stopped while the training process runs. Names are matched exactl
 
 - [Spot Instances](/guides/spot-instances) — deeper coverage of Spot strategies and interruption handling
 - [Parameter Sweeps](/guides/parameter-sweeps) — run the same training job across many hyperparameter combinations in parallel
-- [Slack Setup](/guides/slack-setup) — configure the `/spore` Slack commands
+- [Lifecycle Notifications](/guides/notifications) — the events spored records and how to receive them

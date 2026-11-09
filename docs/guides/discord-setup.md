@@ -4,6 +4,16 @@ description: "Connecting spore.host to Discord posts instance lifecycle notifica
 
 # Discord Setup
 
+::: warning Experimental: not part of 1.0
+Chat-platform integrations (Slack, Microsoft Teams, Discord and spore-bot) are
+walled off for spore.host 1.0. **The hosted spore-bot is decommissioned as of
+2026-11:** the spore.host Slack apps, the hosted Teams bot and its public
+endpoints are being retired, so there is nothing hosted to install or connect.
+The code is kept, and you can still self-host it, but it is experimental and
+unsupported, and it may change or be removed. See
+[spore-host#611](https://github.com/spore-host/spore-host/issues/611).
+:::
+
 Connecting spore.host to Discord posts instance lifecycle notifications —
 TTL warnings, idle stops, spot interruptions, completion — to a channel of your
 choice, as color-coded embeds.

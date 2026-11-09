@@ -121,8 +121,6 @@ spawn sweep status <sweep-id>         # summary: running, completed, failed
 spawn sweep cancel <sweep-id>         # terminate all remaining instances
 ```
 
-With Slack connected, you'll get a DM when the sweep finishes (all instances have terminated).
-
 ## Controlling concurrency and cost
 
 A large sweep does not have to launch every instance at once. Two launch flags cap

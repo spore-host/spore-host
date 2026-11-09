@@ -6,7 +6,7 @@ description: "spore.host reads configuration from three sources, in order of pre
 
 spore.host reads configuration from three sources, in order of precedence (highest first):
 
-1. **CLI flags** — `--ttl 8h`, `--slack-workspace T03NE3GTY`
+1. **CLI flags** — `--ttl 8h`, `--idle-timeout 1h`
 2. **Defaults file** — `~/.spawn/config.yaml`
 3. **EC2 tags** — set on the instance at launch, read by spored at startup
 
@@ -24,7 +24,7 @@ spawn defaults list
 
 | Key | CLI flag | Description |
 |-----|----------|-------------|
-| `slack-workspace` | `--slack-workspace` | Slack workspace ID for lifecycle notifications |
+| `slack-workspace` | `--slack-workspace` | Slack workspace ID for chat notifications (experimental, not part of 1.0; needs a [self-hosted spore-bot](/spore-bot-self-hosting)) |
 | `active-processes` | `--active-processes` | Process names that keep an instance alive (comma-separated) |
 | `active-ports` | `--active-ports` | TCP ports whose connections are counted and reported (comma-separated). They don't prevent idle |
 | `idle-timeout` | `--idle-timeout` | Default idle timeout duration — stops the instance when idle |
@@ -40,7 +40,6 @@ dns:
   domain: spore.host
 
 defaults:
-  slack_workspace: T03NE3GTY
   idle_timeout: 1h
   active_processes: rsession
   hibernate_on_idle: false
@@ -74,9 +73,9 @@ Spored reads its configuration from EC2 tags on the instance at startup. These a
 | `spawn:pre-stop` | `--pre-stop` | Shell command to run before shutdown |
 | `spawn:pre-stop-timeout` | `--pre-stop-timeout` | Max wait time for pre-stop (default: `5m`, Spot: `90s`) |
 | `spawn:dns-name` | `--name` / `--dns` | DNS label for this instance (not written with `--no-dns`) |
-| `spawn:slack-workspace-id` | `--slack-workspace` | Slack workspace ID |
-| `spawn:notify-url` | (automatic) | Lambda URL for lifecycle notifications |
-| `spawn:notify-command` | (automatic) | Slash command for workspace routing |
+| `spawn:slack-workspace-id` | `--slack-workspace` | Chat workspace ID (experimental) |
+| `spawn:notify-url` | (automatic) | spore-bot URL for chat notifications (experimental) |
+| `spawn:notify-command` | (automatic) | Slash command for workspace routing (experimental) |
 | `spawn:idle-cpu` | (no flag; set the tag) | CPU percentage below which instance is considered idle (default `5`) |
 | `spawn:ttl-deadline` | (automatic) | Absolute RFC3339 termination deadline, set at launch |
 | `spawn:managed` | (automatic) | Set to `true` on all spawn-managed instances |
