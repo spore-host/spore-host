@@ -26,6 +26,6 @@ export default defineConfig({
     // and it's what the three -ts libraries already use, so one DOM shim across
     // the whole stack.
     environment: "happy-dom",
-    include: ["app/**/*.test.ts"],
+    include: ["app/**/*.test.ts", "scripts/**/*.test.mjs"],
   },
 });

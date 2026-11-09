@@ -80,6 +80,15 @@ own changelogs for CLI releases.
   without it: the spored log, and the `--completion-webhook-url` and
   `--spot-webhook-url` launch flags. The maturity page lists chat integrations
   as Experimental instead of spore-bot as Stable.
+- **The portal and homepage no longer offer chat integrations** (#611, #644).
+  Slack, Teams and spore-bot are walled off for 1.0. The portal's Slack
+  surface ("Add to Slack") is gone from spore.host/app. The homepage drops the
+  Spore-bot tool card, the "Slack & Teams control" highlight and lagotto's
+  Slack bullet, and now reads "Five tools". The code is kept behind a
+  build-time flag, `VITE_EXPERIMENTAL_CHAT=true`, which is off by default. A
+  default build does not emit the Slack surface at all. The portal's Teams
+  surface manages spore.host team sharing, not Microsoft Teams, and is
+  unchanged.
 - **OpenTofu state is remote and locked** (#580). Every `infra/tofu` root now
   keeps its state in `s3://spore-host-tofu-state-966362334030/<root>/terraform.tfstate`.
   The bucket is versioned, encrypted, private and TLS-only, and is created by
