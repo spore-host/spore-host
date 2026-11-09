@@ -25,14 +25,14 @@ maintain them actively. They are all still **pre-1.0** (`v0.x`) — see
 [Versioning](#versioning-—-what-you-can-rely-on) for exactly what that means for
 breaking changes.
 
-| Component | Status | Latest | Notes |
+| Component | Status | Latest release | Notes |
 |-----------|--------|--------|-------|
-| **truffle** | <span class="doc-badge stable">Stable</span> | v0.61.0 | Instance discovery, quotas, spot/capacity search (read-only). |
-| **spawn** | <span class="doc-badge stable">Stable</span> | v0.136.0 | Launch + full lifecycle management. |
+| **truffle** | <span class="doc-badge stable">Stable</span> | [Latest release](https://github.com/spore-host/truffle/releases/latest) | Instance discovery, quotas, spot/capacity search (read-only). |
+| **spawn** | <span class="doc-badge stable">Stable</span> | [Latest release](https://github.com/spore-host/spawn/releases/latest) | Launch + full lifecycle management. |
 | **spored** | <span class="doc-badge stable">Stable</span> | ships with spawn | In-instance lifecycle daemon; built and released with spawn. |
-| **lagotto** | <span class="doc-badge stable">Stable</span> | v0.64.0 | Capacity watcher. |
+| **lagotto** | <span class="doc-badge stable">Stable</span> | [Latest release](https://github.com/spore-host/lagotto/releases/latest) | Capacity watcher. |
 | **spore-bot** | <span class="doc-badge stable">Stable</span> | continuous | Slack/Teams control. Deployed continuously (not tag-released). |
-| **MCP server** | <span class="doc-badge stable">Stable</span> | v0.41.0 | Tools for AI assistants: search, manage, task launch with a mandatory TTL — [see the safeguards](/tools/mcp-server). |
+| **MCP server** | <span class="doc-badge stable">Stable</span> | [Latest release](https://github.com/spore-host/spore-host-mcp/releases/latest) | Tools for AI assistants: search, manage, task launch with a mandatory TTL — [see the safeguards](/tools/mcp-server). |
 | **Plugin registry** | <span class="doc-badge stable">Stable</span> | per-plugin | Each plugin is versioned independently in its `plugin.yaml`; official plugins are [signature-verified](/guides/plugins). |
 
 ### Beta and experimental surfaces
