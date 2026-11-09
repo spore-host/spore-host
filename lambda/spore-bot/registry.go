@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -365,6 +366,9 @@ func (r *Registry) SetEnabled(ctx context.Context, platform, workspaceID, userID
 // ws.WorkspaceKey (credentials.go). ws keeps its plaintext values, so the
 // caller may store the same credentials under another key.
 func (r *Registry) PutWorkspace(ctx context.Context, ws *WorkspaceConfig) error {
+	if ws.Platform == "teams" && ws.SigningSecret != "" {
+		return errTeamsSigningSecret
+	}
 	if ws.InstalledAt == "" {
 		ws.InstalledAt = time.Now().UTC().Format(time.RFC3339)
 	}
@@ -385,6 +389,12 @@ func (r *Registry) PutWorkspace(ctx context.Context, ws *WorkspaceConfig) error 
 	}
 	return nil
 }
+
+// errTeamsSigningSecret refuses a Teams workspace with a signing secret.
+// Teams requests are authenticated only with Bot Framework tokens
+// (verifyTeamsJWT), so a Teams signing secret is never read, and the value
+// operators were once told to store there, the bot's App ID, is public.
+var errTeamsSigningSecret = errors.New("a teams workspace takes no signing secret: Teams requests are verified with Bot Framework tokens")
 
 // DeleteWorkspace removes a workspace record.
 func (r *Registry) DeleteWorkspace(ctx context.Context, platform, workspaceID string) error {

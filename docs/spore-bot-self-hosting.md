@@ -172,6 +172,6 @@ If you are running a custom domain (e.g., `compute.youruniversity.edu`), configu
 
 ## Teams support
 
-The same Lambda handles Teams outgoing webhooks at `/teams`. Workspace setup for Teams uses `spawn notify workspace add --platform teams` with the Teams HMAC secret instead of a Slack signing secret. Instances notify Teams only when launched with `--notify-platform teams`; the default platform is `slack`. The slash command equivalent in Teams is an outgoing webhook configured to POST to the Function URL.
+The same Lambda handles Teams Bot Framework activities at `/teams`: set your Azure Bot's messaging endpoint to the Function URL with the `/teams` suffix. spore-bot accepts a Teams request only with a valid Bot Framework token for the bot's App ID (`TEAMS_APP_ID`); Teams outgoing webhooks (HMAC) are not supported. Workspace setup for Teams uses `spawn notify workspace add --platform teams` with no signing secret. Instances notify Teams only when launched with `--notify-platform teams`; the default platform is `slack`. See [Teams Setup](/guides/teams-setup).
 
 Discord is handled at `/discord`: register a guild with `spawn notify workspace add --platform discord --public-key <key> --webhook-url <channel-webhook>`, and launch with `--notify-platform discord`. See [Discord Setup](/guides/discord-setup).

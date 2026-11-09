@@ -3,9 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -65,31 +62,6 @@ type TeamsConversationRef struct {
 	TenantID       string `dynamodbav:"tenant_id"`
 	BotID          string `dynamodbav:"bot_id"`
 	UserID         string `dynamodbav:"user_id"`
-}
-
-// ── Signature Verification ────────────────────────────────────────────────────
-
-// verifyTeamsSignature validates Teams outgoing webhook HMAC-SHA256 signature.
-func verifyTeamsSignature(sharedSecret, body, authHeader string) error {
-	// Reject an empty shared secret outright — HMAC with an empty key is
-	// forgeable (spore-host#373). Fail closed.
-	if sharedSecret == "" {
-		return fmt.Errorf("no shared secret configured for this workspace")
-	}
-	if !strings.HasPrefix(authHeader, "HMAC ") {
-		return fmt.Errorf("missing HMAC authorization")
-	}
-	sigB64 := strings.TrimPrefix(authHeader, "HMAC ")
-	sigBytes, err := base64.StdEncoding.DecodeString(sigB64)
-	if err != nil {
-		return fmt.Errorf("decode signature: %w", err)
-	}
-	mac := hmac.New(sha256.New, []byte(sharedSecret))
-	mac.Write([]byte(body))
-	if !hmac.Equal(mac.Sum(nil), sigBytes) {
-		return fmt.Errorf("signature mismatch")
-	}
-	return nil
 }
 
 // ── Activity Parsing ──────────────────────────────────────────────────────────
@@ -242,7 +214,17 @@ func getTeamsBotToken(ctx context.Context) (string, error) {
 
 // postTeamsProactive sends a proactive message to a Teams conversation.
 // Requires a stored conversation reference.
+//
+// The request carries a Bot Framework bearer token, so serviceURL must be one
+// a validated Bot Framework token vouched for (verifyTeamsJWT checks the
+// serviceurl claim before a reference is stored), and must be https.
 func postTeamsProactive(ctx context.Context, serviceURL, conversationID, text string) error {
+	if u, err := url.Parse(serviceURL); err != nil || u.Scheme != "https" || u.Host == "" {
+		return fmt.Errorf("refusing to send to service URL %q: not an https URL", serviceURL)
+	}
+	if conversationID == "" {
+		return fmt.Errorf("no conversation ID")
+	}
 	token, err := getTeamsBotToken(ctx)
 	if err != nil {
 		return fmt.Errorf("get bot token: %w", err)
@@ -298,14 +280,7 @@ func postTeamsResponse(responseURL, text string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	if conversationID != "" {
-		return postTeamsProactive(ctx, serviceURL, conversationID, text)
-	}
-
-	// Fallback: direct POST to serviceURL (outgoing webhook style)
-	msg := map[string]interface{}{"type": "message", "text": text}
-	data, _ := json.Marshal(msg)
-	return httpPost(serviceURL, "application/json", data)
+	return postTeamsProactive(ctx, serviceURL, conversationID, text)
 }
 
 // sendTeamsDMs sends a DM notification to each registered Teams user for an

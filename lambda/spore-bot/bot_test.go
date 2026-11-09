@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,8 +11,6 @@ import (
 	"testing"
 	"time"
 )
-
-func encodeBase64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 
 // ── Slack signature verification ──────────────────────────────────────────────
 
@@ -111,44 +108,6 @@ func TestVerifySlackSignature_EmptySecret(t *testing.T) {
 	forged := "v0=" + hex.EncodeToString(mac.Sum(nil))
 	if err := verifySlackSignature("", ts, body, forged); err == nil {
 		t.Error("expected empty signing secret to fail closed even with a matching forged HMAC")
-	}
-}
-
-// ── Teams signature verification ──────────────────────────────────────────────
-
-func TestVerifyTeamsSignature_Valid(t *testing.T) {
-	secret := "teams-bot-secret"
-	body := `{"type":"message","text":"prism stop rstudio"}`
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(body))
-	sig := "HMAC " + encodeBase64(mac.Sum(nil))
-
-	if err := verifyTeamsSignature(secret, body, sig); err != nil {
-		t.Errorf("expected valid Teams signature to pass, got: %v", err)
-	}
-}
-
-func TestVerifyTeamsSignature_Wrong(t *testing.T) {
-	err := verifyTeamsSignature("secret", "body", "HMAC AAAA")
-	if err == nil {
-		t.Error("expected wrong Teams signature to fail")
-	}
-}
-
-func TestVerifyTeamsSignature_MissingPrefix(t *testing.T) {
-	err := verifyTeamsSignature("secret", "body", "Bearer sometoken")
-	if err == nil {
-		t.Error("expected non-HMAC auth header to fail")
-	}
-}
-
-func TestVerifyTeamsSignature_EmptySecret(t *testing.T) {
-	body := "body"
-	mac := hmac.New(sha256.New, []byte("")) // forged with empty key
-	mac.Write([]byte(body))
-	forged := "HMAC " + encodeBase64(mac.Sum(nil))
-	if err := verifyTeamsSignature("", body, forged); err == nil {
-		t.Error("expected empty shared secret to fail closed even with a matching forged HMAC")
 	}
 }
 

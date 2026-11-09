@@ -117,13 +117,28 @@ func handleAdmin(ctx context.Context, reg *Registry, path, method, body string, 
 }
 
 func adminWorkspaceAdd(ctx context.Context, reg *Registry, r adminRequest, callerARN string) (events.APIGatewayProxyResponse, error) {
-	if r.Platform == "" || r.WorkspaceID == "" || r.BotToken == "" || r.SigningSecret == "" {
+	// Teams requests are authenticated only with Bot Framework tokens
+	// (verifyTeamsJWT); there is no Teams signing secret. Refuse one rather
+	// than store it: the value people have been told to put here (the bot's
+	// App ID) is public.
+	if r.Platform == "teams" {
+		if r.SigningSecret != "" {
+			return adminError(400, "a teams workspace takes no signing_secret: Teams requests are verified with Bot Framework tokens"), nil
+		}
+		if r.WorkspaceID == "" || r.BotToken == "" {
+			return adminError(400, "platform, workspace_id and bot_token are required"), nil
+		}
+	} else if r.Platform == "" || r.WorkspaceID == "" || r.BotToken == "" || r.SigningSecret == "" {
 		return adminError(400, "platform, workspace_id, bot_token, and signing_secret are required"), nil
 	}
 
 	// Resolve App ID from Slack so workspaces are scoped per-app, allowing
 	// multiple Slack apps (e.g. spore-bot + prism-bot) in the same workspace.
-	appID := resolveSlackAppID(ctx, r.BotToken)
+	// Only a Slack bot token is ever sent to Slack.
+	appID := ""
+	if r.Platform == "slack" {
+		appID = resolveSlackAppID(ctx, r.BotToken)
+	}
 
 	ws := &WorkspaceConfig{
 		WorkspaceKey:        workspaceKey(r.Platform, r.WorkspaceID, appID),
@@ -336,6 +351,11 @@ func resolveSlackAppID(ctx context.Context, botToken string) string {
 // resolveSlackEmail resolves an email address to a Slack user ID using the
 // workspace's stored bot token and Slack's users.lookupByEmail API.
 func resolveSlackEmail(ctx context.Context, reg *Registry, platform, workspaceID, email string) (string, error) {
+	// The lookup sends the workspace's bot token to Slack, so only a Slack
+	// workspace's token may be used (a Teams tenant's is its Azure Bot secret).
+	if platform != "slack" {
+		return "", fmt.Errorf("email lookup is supported only for slack workspaces; pass user_id")
+	}
 	ws, err := reg.GetWorkspace(ctx, platform, workspaceID)
 	if err != nil {
 		return "", fmt.Errorf("workspace %s/%s not registered", platform, workspaceID)

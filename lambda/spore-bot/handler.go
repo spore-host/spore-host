@@ -259,62 +259,52 @@ func handleSlackWebhook(ctx context.Context, reg *Registry, request events.APIGa
 	return sc, nil
 }
 
-// handleTeamsWebhook handles Bot Framework activities and outgoing webhooks.
-// Bot Framework (Azure Bot / Test in Web Chat): Authorization: Bearer <jwt>
-// Outgoing webhooks (direct Teams config):      Authorization: HMAC <base64>
+// handleTeamsWebhook handles Bot Framework activities. A request is accepted
+// only with a valid Bot Framework token (Authorization: Bearer <jwt>) issued
+// for this bot and for the activity's serviceUrl. There is no other way in:
+// the Teams outgoing-webhook (HMAC) scheme is not supported, and a Teams
+// workspace's signing_secret, if one is stored, is never read.
 func handleTeamsWebhook(ctx context.Context, reg *Registry, request events.APIGatewayProxyRequest) (*SlashCommand, error) {
 	authHeader := request.Headers["Authorization"]
 	if authHeader == "" {
 		authHeader = request.Headers["authorization"]
 	}
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		//lint:ignore ST1005 "Bot Framework" is a proper noun; lowercasing would misspell it
+		return nil, fmt.Errorf("Bot Framework authentication required")
+	}
+	appID := os.Getenv("TEAMS_APP_ID")
+	if appID == "" {
+		return nil, fmt.Errorf("TEAMS_APP_ID not configured")
+	}
 
-	// Parse activity to get workspace (tenant) ID
+	var activity TeamsActivity
+	if err := json.Unmarshal([]byte(request.Body), &activity); err != nil {
+		return nil, fmt.Errorf("parse Teams activity: %w", err)
+	}
+
+	// Fully validate the token (RS256 signature against Microsoft's JWKS,
+	// issuer, audience==App ID, expiry, serviceurl==activity serviceUrl, key
+	// endorsed for the channel) before trusting anything in the activity. The
+	// public Function URL means an unverified token is a forge-an-activity hole
+	// (spore-host#372), and the serviceUrl is where replies, which carry a Bot
+	// Framework token, are sent.
+	if err := verifyTeamsJWT(ctx, authHeader, appID, activity.ServiceURL, activity.ChannelID); err != nil {
+		//lint:ignore ST1005 "Bot Framework" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
+		return nil, fmt.Errorf("Bot Framework token verification failed: %w", err)
+	}
+
 	sc, _, err := parseTeamsActivity(request.Body)
 	if err != nil {
 		return nil, fmt.Errorf("parse Teams activity: %w", err)
 	}
 
-	isBotFramework := strings.HasPrefix(authHeader, "Bearer ")
-
-	if isBotFramework {
-		// Bot Framework JWT — issued by Microsoft for our bot. Fully validate the
-		// token (RS256 signature against Microsoft's JWKS, issuer, audience==App ID,
-		// expiry) before trusting the activity. The public Function URL means an
-		// unverified Bearer token is a forge-an-activity hole (spore-host#372).
-		appID := os.Getenv("TEAMS_APP_ID")
-		if appID == "" {
-			return nil, fmt.Errorf("TEAMS_APP_ID not configured")
-		}
-		if err := verifyTeamsJWT(ctx, authHeader, appID); err != nil {
-			//lint:ignore ST1005 "Bot Framework" is a proper noun; lowercasing would misspell it, and rewording would change error text callers see (#562)
-			return nil, fmt.Errorf("Bot Framework token verification failed: %w", err)
-		}
-		// Workspace lookup is optional for Bot Framework — tenant may not have signing secret
-		_, _ = reg.GetWorkspace(ctx, "teams", sc.WorkspaceID) // best-effort
-	} else {
-		// Outgoing webhook — verify HMAC signature
-		ws, err := reg.GetWorkspace(ctx, "teams", sc.WorkspaceID)
-		if err != nil {
-			return nil, fmt.Errorf("workspace not found: %w", err)
-		}
-		sharedSecret, err := reg.openCredential(ctx, credSigningSecret, ws.WorkspaceKey, ws.SigningSecret)
-		if err != nil {
-			return nil, fmt.Errorf("signing secret unavailable: %w", err)
-		}
-		if err := verifyTeamsSignature(sharedSecret, request.Body, authHeader); err != nil {
-			return nil, fmt.Errorf("signature verification failed: %w", err)
-		}
-	}
-
 	// Store conversation reference for proactive messaging
-	var activity TeamsActivity
-	if jsonErr := json.Unmarshal([]byte(request.Body), &activity); jsonErr == nil {
-		userKey := "teams#" + sc.WorkspaceID + "#" + sc.UserID
-		// Stored before returning, not from a goroutine (#572).
-		rctx, cancel := withinDeadline(ctx, teamsRefWriteBudget)
-		storeTeamsConversationRef(rctx, reg, userKey, activity)
-		cancel()
-	}
+	userKey := "teams#" + sc.WorkspaceID + "#" + sc.UserID
+	// Stored before returning, not from a goroutine (#572).
+	rctx, cancel := withinDeadline(ctx, teamsRefWriteBudget)
+	storeTeamsConversationRef(rctx, reg, userKey, activity)
+	cancel()
 
 	return sc, nil
 }
