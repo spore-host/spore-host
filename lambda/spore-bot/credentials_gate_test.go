@@ -198,20 +198,56 @@ func TestTofuAliasAndSweepMatchTheCode(t *testing.T) {
 	if !strings.Contains(tf, `input = jsonencode({ spore_bot_task = "`+sealLegacyCredentialsTask+`" })`) {
 		t.Errorf("the sweep's event target does not send spore_bot_task = %s", sealLegacyCredentialsTask)
 	}
+	// The alias follows seal_workspace_credentials alone. The sweep follows
+	// local.seal_sweep_enabled, which must include seal_workspace_credentials
+	// so the sweep never runs before the key it seals with is the alias target.
+	gates := []struct{ resource, gate string }{
+		{`resource "aws_kms_alias" "spore_bot_secrets"`, "var.seal_workspace_credentials ? 1 : 0"},
+		{`resource "aws_cloudwatch_event_rule" "seal_legacy_credentials"`, "local.seal_sweep_enabled ? 1 : 0"},
+		{`resource "aws_cloudwatch_event_target" "seal_legacy_credentials"`, "local.seal_sweep_enabled ? 1 : 0"},
+		{`resource "aws_lambda_permission" "seal_legacy_credentials"`, "local.seal_sweep_enabled ? 1 : 0"},
+	}
+	for _, g := range gates {
+		i := strings.Index(tf, g.resource)
+		if i < 0 {
+			t.Errorf("main.tf has no %s", g.resource)
+			continue
+		}
+		if !regexp.MustCompile(`count\s*=\s*` + regexp.QuoteMeta(g.gate)).MatchString(block(t, tf, i+strings.Index(tf[i:], "{"))) {
+			t.Errorf("%s is not gated on %s", g.resource, g.gate)
+		}
+	}
+	if !regexp.MustCompile(`(?m)^\s*seal_sweep_enabled\s*=\s*var\.seal_workspace_credentials\s*&&`).MatchString(tf) {
+		t.Error("local.seal_sweep_enabled does not require var.seal_workspace_credentials")
+	}
+}
+
+// The decommission switch (#611): the public Function URL and its public invoke
+// permission exist only while public_endpoint_enabled is true, and it defaults
+// to false, so the hosted bot stays off the internet unless someone opts in.
+func TestTofuPublicEndpointIsOptIn(t *testing.T) {
+	tf := readTofu(t)
+	v := regexp.MustCompile(`variable\s+"public_endpoint_enabled"\s*\{`).FindStringIndex(tf)
+	if v == nil {
+		t.Fatal("main.tf has no variable public_endpoint_enabled")
+	}
+	if !regexp.MustCompile(`(?m)^\s*default\s*=\s*false\s*$`).MatchString(block(t, tf, v[1]-1)) {
+		t.Error("public_endpoint_enabled does not default to false")
+	}
 	for _, r := range []string{
-		`resource "aws_kms_alias" "spore_bot_secrets"`,
-		`resource "aws_cloudwatch_event_rule" "seal_legacy_credentials"`,
-		`resource "aws_cloudwatch_event_target" "seal_legacy_credentials"`,
-		`resource "aws_lambda_permission" "seal_legacy_credentials"`,
+		`resource "aws_lambda_function_url" "spore_bot"`,
+		`resource "aws_lambda_permission" "url_public"`,
 	} {
 		i := strings.Index(tf, r)
 		if i < 0 {
 			t.Errorf("main.tf has no %s", r)
 			continue
 		}
-		if !strings.Contains(block(t, tf, i+strings.Index(tf[i:], "{")), "count") ||
-			!strings.Contains(block(t, tf, i+strings.Index(tf[i:], "{")), "var.seal_workspace_credentials ? 1 : 0") {
-			t.Errorf("%s is not gated on var.seal_workspace_credentials", r)
+		if !regexp.MustCompile(`count\s*=\s*var\.public_endpoint_enabled \? 1 : 0`).MatchString(block(t, tf, i+strings.Index(tf[i:], "{"))) {
+			t.Errorf("%s is not gated on var.public_endpoint_enabled", r)
 		}
+	}
+	if !regexp.MustCompile(`(?m)^\s*seal_sweep_enabled\s*=.*&&\s*var\.public_endpoint_enabled\s*$`).MatchString(tf) {
+		t.Error("the sealing sweep is not removed with the public endpoint")
 	}
 }
