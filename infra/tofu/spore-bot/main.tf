@@ -62,7 +62,7 @@ variable "seal_workspace_credentials" {
   # exist either way; without the alias nothing uses them. See README.md
   # "Workspace credentials". Never set it back to false once sealed values
   # exist: the alias is what every reader and writer resolves.
-  default = false
+  default = true
 }
 
 variable "aws_profile" {

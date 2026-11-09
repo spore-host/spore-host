@@ -26,6 +26,8 @@ own changelogs for CLI releases.
   notification sends Teams DMs only. Slack DMs go only to Slack users.
 
 ### Security
+
+- **spore-bot workspace credentials are now sealed at rest** (#611, spore-host/spawn#868, Phase B): `seal_workspace_credentials` defaults to `true`, which creates `alias/spore-bot-secrets` and the hourly `spore-bot-seal-legacy-credentials` sweep. Every writer now seals, and existing plaintext is sealed within the hour. Never set it back to false.
 - **spore-bot stores and reads chat-platform workspace credentials encrypted
   at rest** (#611, spore-host/spawn#868). The signing secret, bot token,
   refresh token and incoming webhook URL of each `spore-bot-workspaces` item
