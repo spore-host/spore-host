@@ -1,5 +1,5 @@
 ---
-description: "spore.host is a collection of six tools that cover the full lifecycle of ephemeral compute — from finding the right instance to cleaning it up when the work…"
+description: "spore.host is a collection of five tools that cover the full lifecycle of ephemeral compute — from finding the right instance to cleaning it up when the work…"
 ---
 
 # How It Works
@@ -8,7 +8,7 @@ spore.host is an open-source toolkit for temporary AWS compute. Use **truffle** 
 
 The tools use your existing AWS account and credentials. There's no new compute provider to sign up for, and you pay AWS only for the resources you use. spore.host is not itself the host — despite the name, it never holds your credentials or runs your compute for you. See [Security, credentials & data flow](/architecture) for exactly what runs where.
 
-This page explains how the six tools fit together.
+This page explains how the five tools fit together.
 
 ## The core idea
 
@@ -16,7 +16,7 @@ The biggest problem with cloud compute isn't launching instances — it's managi
 
 spore.host solves this with a simple contract: **every instance has a lifecycle that manages itself**. When you launch with spore.host, the instance knows when it should stop. You don't have to remember.
 
-## The six tools
+## The five tools
 
 ### <span class="tool-badge truffle">Truffle</span> — Find
 
@@ -32,7 +32,7 @@ Truffle doesn't launch anything — it's read-only. Think of it as the search an
 
 ### <span class="tool-badge spawn">Spawn</span> — Launch and manage
 
-Spawn is the launcher. It takes truffle's output (or your own flags) and provisions an EC2 instance with everything spore.host needs to manage its lifecycle: the spored daemon, TTL tags, idle detection configuration, and notification hooks.
+Spawn is the launcher. It takes truffle's output (or your own flags) and provisions an EC2 instance with everything spore.host needs to manage its lifecycle: the spored daemon, TTL tags, idle detection configuration, and optional completion/Spot webhooks.
 
 ```sh
 truffle find "t3.medium" | spawn --ttl 8h
@@ -43,7 +43,7 @@ spawn launch --name training --instance-type g5.2xlarge --ttl 24h
 
 - **TTL enforcement** — the instance terminates at the configured deadline
 - **Idle detection** — CPU, network, process names, and SSH sessions are all monitored; if the instance has been idle too long, it stops or hibernates
-- **Lifecycle notifications** — sends events (TTL warning, idle warning, completion) to the spore-bot Lambda so you get Slack/Teams messages
+- **Lifecycle events** — logs each one (TTL warning, idle warning, completion), and can `POST` completion and Spot-interruption notices to a webhook you run ([Lifecycle Notifications](/guides/notifications))
 - **DNS registration** — registers a DNS name at launch and cleans it up on termination
 - **Pre-stop hooks** — runs a shell command before any shutdown to save work, sync files, or send a completion signal
 
@@ -59,16 +59,6 @@ lagotto list   # see active watches
 Lagotto is useful when you have a job queued but can't launch it yet — you want to be notified the moment capacity opens up, or you want the launch to happen automatically.
 
 It triggers on two things: **capacity** (`lagotto watch`) and **time** (`lagotto launch --at/--after/--cron`). The time-based mode exists so you can launch into an EC2 Capacity Block for ML at its reserved start time — the block becomes usable at a fixed hour, and the launch fires automatically with no one awake to run it.
-
-### <span class="tool-badge bot">Spore-bot</span> — Control from anywhere
-
-Once an instance is running, you might not want to open a terminal to manage it. Spore-bot connects your Slack or Teams workspace to your running instances. Any team member you've authorized can type `/spore status`, `/spore stop`, or `/spore extend 4h` and it just works — from any device, any location.
-
-Lifecycle events from spored are routed through spore-bot to your Slack DMs:
-
-- *⏱️ training will terminate in 5 minutes* — with time to extend if you need more
-- *✅ training has completed* — your job finished and the instance is terminating
-- *⏹️ training has stopped — idle timeout reached — nothing was happening, so compute was paused
 
 ### <span class="tool-badge mcp">MCP Server</span> — Control from AI assistants
 
@@ -86,12 +76,9 @@ truffle find "nvidia a100"          # 1. Find the right instance type
 spawn launch                        # 2. Launch with TTL and idle config
     ↓
 spored (on instance)                # 3. Daemon monitors, enforces TTL,
-    │                                     detects idle, fires notifications
+    │                                     detects idle, logs lifecycle events
     ↓
-spore-bot → Slack DM               # 4. You hear about events without
-                                         polling or checking terminals
-    ↓
-Instance terminates automatically   # 5. No forgotten instances
+Instance terminates automatically   # 4. No forgotten instances
 ```
 
 ## Configuration layers

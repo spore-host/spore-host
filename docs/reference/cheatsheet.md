@@ -35,7 +35,7 @@ spawn launch --name my-job --instance-type g5.xlarge --ttl 8h
 spawn launch --spot --ttl 12h --on-complete terminate
 spawn launch --count 8 --mpi --job-array-name sim --mpi-command './sim' --ttl 6h  # MPI cluster
 spawn launch --active-processes rsession --idle-timeout 2h --ttl 8h  # RStudio
-spawn launch --slack-workspace T03NE3GTY --ttl 4h       # with notifications
+spawn launch --ttl 4h --completion-webhook-url https://hooks.example.org/done  # POST on completion
 spawn launch --name big-disk --instance-type m7i.large --volume-size 200  # 200 GiB root
 spawn launch my-job --instance-type c6a.large -o json | jq -r '.[0].instance_id'  # scriptable
 ```
@@ -58,44 +58,10 @@ spawn connect my-instance           # SSH in
 ## spawn — defaults
 
 ```sh
-spawn defaults set slack-workspace T03NE3GTY
 spawn defaults set idle-timeout 1h
 spawn defaults set active-processes rsession
 spawn defaults list
 spawn defaults unset active-processes
-```
-
-## spawn — notify
-
-```sh
-spawn notify workspace add --platform slack --workspace-id T0... \
-  --bot-token xoxb-... --signing-secret abc...
-spawn notify workspace list
-spawn notify register --platform slack --user you@lab.edu \
-  --workspace-id T0... --instance i-0abc123 --nickname rstudio
-spawn notify enable  --platform slack --user-id U04KZABCD \
-  --workspace-id T0... --nickname rstudio
-spawn notify disable --platform slack --user-id U04KZABCD \
-  --workspace-id T0... --nickname rstudio
-spawn notify list --platform slack --workspace-id T0...
-spawn launch --slack-workspace <tenant-id> --notify-platform teams --ttl 4h
-spawn launch --slack-workspace <guild-id> --notify-platform discord --ttl 4h
-```
-
-## Slack commands
-
-```
-/spore list
-/spore status rstudio
-/spore start rstudio
-/spore stop rstudio
-/spore hibernate rstudio
-/spore extend rstudio 4h
-/spore url rstudio
-/spore notify rstudio
-/spore unnotify rstudio
-/spore connect
-/spore help
 ```
 
 ## lagotto
@@ -155,7 +121,6 @@ lagotto launch --at <block-start> --az <block-az> --spawn-config block.yaml
 ```sh
 AWS_PROFILE=my-profile spawn launch ...    # use specific AWS profile
 AWS_REGION=us-west-2 spawn launch ...      # override region
-SPORE_NOTIFY_URL=https://...               # custom notification Lambda URL
 SPORED_TAG_PREFIX=prism                    # use custom EC2 tag prefix
 ```
 
@@ -167,8 +132,7 @@ spawn launch --name training \
   --instance-type p4d.24xlarge --spot \
   --ttl 24h \
   --pre-stop "python save_checkpoint.py" \
-  --on-complete terminate \
-  --slack-workspace T03NE3GTY
+  --on-complete terminate
 
 # Interactive RStudio session
 spawn launch --name rstudio \

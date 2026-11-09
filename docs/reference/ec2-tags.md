@@ -60,6 +60,10 @@ it's ignored apart from a notice on `spawn start`.
 
 ## Notification tags
 
+These tags configure chat delivery through spore-bot, which is experimental and
+not part of 1.0 (the hosted spore-bot is decommissioned; see
+[Lifecycle Notifications](/guides/notifications)).
+
 | Tag | Example | Description |
 |-----|---------|-------------|
 | `spawn:slack-workspace-id` | `T03NE3GTY` | Workspace to notify (`--slack-workspace`). Also used for Teams and Discord workspace IDs. |

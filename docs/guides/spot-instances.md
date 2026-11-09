@@ -54,9 +54,10 @@ spore.host picks whichever type has available capacity first, using the lowest c
 
 When AWS reclaims a Spot instance, spored receives a two-minute warning via the instance metadata service. It immediately:
 
-1. Sends a `spot_interrupt` notification to Slack/Teams (if configured)
+1. Warns logged-in users (`wall`)
 2. Runs your `--pre-stop` hook (if set) — use this to save a checkpoint
-3. Terminates gracefully
+3. Posts a time-boxed notice to your `--spot-webhook-url` (if set)
+4. Terminates gracefully
 
 Configure a checkpoint save:
 
@@ -65,8 +66,7 @@ spawn launch \
   --spot \
   --instance-type p4d.24xlarge \
   --ttl 12h \
-  --pre-stop "python /home/ubuntu/save_checkpoint.py" \
-  --slack-workspace T03NE3GTY
+  --pre-stop "python /home/ubuntu/save_checkpoint.py"
 ```
 
 The `--pre-stop` command has up to **90 seconds** to complete on Spot instances — AWS provides only a 2-minute interruption notice and spored needs the remainder for DNS cleanup and shutdown. On non-Spot instances the default is 5 minutes. Override with `--pre-stop-timeout`. For most checkpoint saves, 60–90 seconds is sufficient.

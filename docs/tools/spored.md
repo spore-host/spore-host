@@ -200,9 +200,9 @@ All spored configuration is stored as EC2 tags. Spawn writes them at launch; you
 
 | Tag | Type | Description |
 |-----|------|-------------|
-| `spawn:notify-url` | URL | spore-bot Lambda endpoint spored posts lifecycle events to (Slack, Teams or Discord). |
-| `spawn:slack-workspace-id` | string | Workspace ID for routing notifications. |
-| `spawn:notify-platform` | string | `slack` (default when absent), `teams` or `discord`, from `--notify-platform`. |
+| `spawn:notify-url` | URL | spore-bot Lambda endpoint spored posts lifecycle events to (Slack, Teams or Discord; experimental, not part of 1.0). |
+| `spawn:slack-workspace-id` | string | Workspace ID for routing chat notifications (experimental). |
+| `spawn:notify-platform` | string | `slack` (default when absent), `teams` or `discord`, from `--notify-platform` (experimental). |
 | `spawn:dns-name` | string | DNS label (not a full hostname). spored registers `<label>.<account-base36>.<domain>` on start and removes it on shutdown. |
 | `spawn:dns-domain` | string | Zone to register under, when not `spore.host` (`--dns-domain`). |
 | `spawn:dns-endpoint` | URL | Custom DNS updater endpoint (`--dns-api-endpoint`). |
@@ -265,7 +265,7 @@ spored complete --file /var/run/myapp/done
 
 **Sequence after file appears:**
 1. spored notices the file at its next check (it checks once a minute)
-2. `completion` notification sent (Slack, Teams or Discord)
+2. `completion` event sent to spore-bot, if chat notifications are configured (experimental), and to `--completion-webhook-url`, if set
 3. Users warned via `wall`
 4. `spawn:completion-delay` grace period (default 30s)
 5. `spawn:pre-stop` command runs (if set), then DNS and plugin cleanup
@@ -307,10 +307,14 @@ launched by an older CLI keeps its old spored until `spawn upgrade-spored`.
 
 ## Lifecycle events and notifications
 
-When `--slack-workspace` is set at launch, spored posts each event to the
-spore-bot Lambda (`spawn:notify-url`), which sends it to the users registered for
-the instance on Slack, Teams or Discord (`--notify-platform`). The event names
-are:
+spored logs each lifecycle event. When `--slack-workspace` is set at launch, it
+also posts each one to the spore-bot Lambda (`spawn:notify-url`), which sends it
+to the users registered for the instance on Slack, Teams or Discord
+(`--notify-platform`). That chat delivery is experimental and not part of 1.0,
+and the hosted spore-bot is decommissioned, so it needs a
+[self-hosted spore-bot](/spore-bot-self-hosting). Completion and Spot
+interruption can also go to a webhook you run (`--completion-webhook-url`,
+`--spot-webhook-url`). The event names are:
 
 | Event | Trigger |
 |-------|---------|

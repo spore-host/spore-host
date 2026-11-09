@@ -114,7 +114,6 @@ capacity](/guides/waiting-for-capacity).
 | Run tightly-coupled multi-node jobs | [MPI clusters](/guides/mpi) |
 | Chain jobs so each stage launches the next | [Pipelines](/guides/pipelines) |
 | Wait for a hard-to-find GPU | [Waiting for scarce capacity](/guides/waiting-for-capacity) |
-| Control instances from Slack/Teams/Discord | [Slack Setup](/guides/slack-setup) |
 | Drive compute from an AI assistant | [AI Assistant (MCP)](/guides/mcp-setup) |
 | Automate from Python | [Python SDK](/guides/python-sdk) |
 | Run Nextflow / WDL / CWL / Snakemake / Airflow | [Workflow engines](/guides/workflow-engines) |

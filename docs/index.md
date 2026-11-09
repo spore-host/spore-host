@@ -35,12 +35,6 @@ features:
     link: /tools/lagotto
     linkText: Learn more
 
-  - icon: 💬
-    title: Spore-bot
-    details: Control instances from Slack or Teams without opening a terminal. Start, stop, extend, and get lifecycle notifications as direct messages.
-    link: /tools/spore-bot
-    linkText: Learn more
-
   - icon: ⚙️
     title: Spored
     details: The lifecycle daemon that runs on every instance. Watches TTL, idle timeout, Spot interruption notices, and completion signals — terminating cleanly so nothing leaks.

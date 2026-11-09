@@ -22,8 +22,7 @@ spawn launch \
   --instance-type r6i.2xlarge \
   --ttl 8h \
   --active-processes rsession \
-  --idle-timeout 2h \
-  --slack-workspace T03NE3GTY
+  --idle-timeout 2h
 ```
 
 With `--active-processes rsession`, the instance is considered active whenever an R session is open. The idle timeout (`--idle-timeout 2h`) only fires if *both* conditions are true: no active R sessions AND low CPU/network activity for 2 hours.
@@ -45,7 +44,6 @@ If you always launch RStudio environments, save this once:
 ```sh
 spawn defaults set active-processes rsession
 spawn defaults set idle-timeout 2h
-spawn defaults set slack-workspace T03NE3GTY
 ```
 
 Then just launch with:
@@ -79,19 +77,13 @@ spawn launch \
   --active-processes "rsession,jupyter-lab"
 ```
 
-## Notifications for interactive sessions
+## Warnings for interactive sessions
 
-For interactive sessions, the most useful notifications are TTL warnings — you want to know before the instance terminates so you can extend it or save your work:
+For interactive sessions, the warning that matters most is the TTL warning: you want to know before the instance terminates so you can extend it or save your work. Five minutes before the TTL expires, spored broadcasts it to every logged-in terminal session with `wall` and writes it to `/tmp/SPAWN_WARNING` (see [spored](/tools/spored)). Check the time left from your laptop with `spawn status rstudio`, and extend it with:
 
-With `--slack-workspace` set, you'll receive a DM 5 minutes before the TTL expires:
-
-> *⏱️ rstudio terminates in 5 minutes*
-
-Respond directly in Slack: `/spore extend rstudio 4h`
-
-## Collaborative sessions
-
-If multiple researchers share an RStudio or Jupyter instance, anyone who has been registered with spore-bot can extend the TTL from Slack without needing SSH access. See [Slack Setup](/guides/slack-setup) for how to register users.
+```sh
+spawn extend rstudio 4h
+```
 
 ## Hibernation for cost savings
 
@@ -107,4 +99,4 @@ spawn launch \
   --active-processes rsession
 ```
 
-When idle for 3 hours with no active R sessions, the instance hibernates. Resume it with `/spore start rstudio` and pick up exactly where you left off. Hibernation stops compute billing, but the EBS volumes (including the RAM image on the root volume) keep billing, and the TTL keeps counting.
+When idle for 3 hours with no active R sessions, the instance hibernates. Resume it with `spawn start rstudio` and pick up exactly where you left off. Hibernation stops compute billing, but the EBS volumes (including the RAM image on the root volume) keep billing, and the TTL keeps counting.

@@ -4,6 +4,16 @@ description: "How to replace every credential spore-bot holds (Slack signing sec
 
 # Rotating bot credentials
 
+::: warning Experimental: not part of 1.0
+Chat-platform integrations (Slack, Microsoft Teams, Discord and spore-bot) are
+walled off for spore.host 1.0. **The hosted spore-bot is decommissioned as of
+2026-11:** the spore.host Slack apps, the hosted Teams bot and its public
+endpoints are being retired, so there is nothing hosted to install or connect.
+The code is kept, and you can still self-host it, but it is experimental and
+unsupported, and it may change or be removed. See
+[spore-host#611](https://github.com/spore-host/spore-host/issues/611).
+:::
+
 This guide replaces the credentials spore-bot uses for Slack, Microsoft Teams
 and Discord. For each one it covers:
 
@@ -13,16 +23,15 @@ and Discord. For each one it covers:
 - how to check the result without printing a secret;
 - how to make sure the old value no longer works.
 
-It is written for operators: whoever runs the hosted spore.host deployment, or a
+It is written for operators of a
 [self-hosted spore-bot](/spore-bot-self-hosting).
 
-::: tip If you only use the hosted spore.host Slack or Teams app
-The app and its signing secret belong to spore.host, so you cannot rotate those
-yourself. What your workspace holds is its installation. Removing the app from
-your workspace and adding it again (Step 2 under
-[Slack: bot token, refresh token and webhook URL](#slack-bot-token-refresh-token-and-webhook-url))
-revokes the tokens and the channel webhook spore.host stored for you, and
-stores new ones.
+::: tip If your workspace had the hosted spore.host Slack or Teams app
+The hosted apps are being removed as part of the decommission, which revokes
+the tokens and the channel webhooks spore.host stored for your workspace. If the
+app is still listed in your workspace, remove it (in Slack: **Tools & settings →
+Manage apps → Installed Apps** → the app → **Remove App**). There is nothing to
+reinstall.
 :::
 
 ## When to rotate

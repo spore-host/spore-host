@@ -158,10 +158,9 @@ If your AWS account is managed by your institution, you may need to ask your clo
 
 ## Save your defaults
 
-If you always launch with the same Slack workspace ID, idle timeout, or active processes, save them so you don't have to type them every time:
+If you always launch with the same idle timeout or active processes, save them so you don't have to type them every time:
 
 ```sh
-spawn defaults set slack-workspace T03NE3GTY
 spawn defaults set idle-timeout 1h
 spawn defaults set active-processes rsession   # for RStudio users
 spawn defaults list

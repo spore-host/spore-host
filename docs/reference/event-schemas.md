@@ -5,14 +5,16 @@ description: "The payload shape of spored's lifecycle events — for building we
 # Event schemas
 
 spored emits a lifecycle event when something significant happens to an instance
-(TTL warning, completion, Spot interruption, …). Events are delivered as an HTTP
-`POST` to the notification endpoint (`spawn:notify-url`), which routes them to
-Slack, Teams or Discord. This page documents the payload shape so you can build automation on
-top of it.
+(TTL warning, completion, Spot interruption, …). With chat notifications
+configured, events are delivered as an HTTP `POST` to the notification endpoint
+(`spawn:notify-url`), which routes them to Slack, Teams or Discord. That chat
+delivery is experimental and not part of 1.0, and the hosted spore-bot is
+decommissioned, so it needs a [self-hosted spore-bot](/spore-bot-self-hosting).
+This page documents the payload shape so you can build automation on top of it.
 
 For *when* each event fires and its human-readable message, see
-[Lifecycle Events](/reference/lifecycle-events). For enabling delivery to Slack or
-a channel webhook, see [Lifecycle Notifications](/guides/notifications).
+[Lifecycle Events](/reference/lifecycle-events). For how to receive events, see
+[Lifecycle Notifications](/guides/notifications).
 
 ## Notification payload
 
@@ -52,7 +54,7 @@ delays or cancels the underlying lifecycle action. Don't rely on a notification
 being received as a precondition for a stop/terminate having happened.
 :::
 
-## Channel webhooks
+## Channel webhooks (experimental)
 
 Beyond the routed Slack/Teams DMs, you can post events to a shared Slack channel
 webhook. Set it with `spawn notify workspace add --webhook-url https://hooks.slack.com/...`
@@ -67,7 +69,7 @@ all events route to all subscribers. See
 
 When present, the `pkcs7` field carries AWS's signed EC2 instance identity, which
 a receiver of your own can verify to confirm the event came from the instance it
-names. The hosted spore-bot Lambda does **not** verify it. Its control is
+names. spore-bot does **not** verify it. Its control is
 registration: it sends DMs (and SMS) only for an instance registered in the target
 workspace, and otherwise posts to the workspace's channel webhook only.
 

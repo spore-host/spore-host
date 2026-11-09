@@ -1,12 +1,44 @@
 ---
-description: "spore.host sends notifications when significant things happen to your instances — so you don't have to watch a terminal or poll for status."
+description: "The lifecycle events spored records (TTL, idle, completion, Spot interruption), how to see them in 1.0, and the experimental chat delivery."
 ---
 
 # Lifecycle Notifications
 
-spore.host sends notifications when significant things happen to your instances — so you don't have to watch a terminal or poll for status. This guide explains how notifications work and how to configure them.
+spored records a lifecycle event when something significant happens to your instance: a TTL warning, an idle stop, a completion, a Spot interruption. This page lists those events and how to see them.
 
-## What triggers a notification
+## Seeing lifecycle events (1.0)
+
+- **The spored log.** spored logs its lifecycle decisions (TTL, idle
+  detection, completion) whether or not any notification is configured:
+
+  ```sh
+  spawn logs training --which spored
+  ```
+
+  [Logs and debugging](/guides/logs) covers the log files, and the
+  serial-console failure log spored leaves after a termination.
+- **Your own webhook, for completion and Spot interruption.** At launch,
+  `--completion-webhook-url` and `--spot-webhook-url` make spored `POST` a
+  fire-once, best-effort notice to a URL you run (a queue, a CI hook, your own
+  service). `--webhook-correlation` echoes an opaque value of yours in the
+  payload, and `--webhook-timeout` caps the request. See the
+  [`spawn launch` reference](/tools/reference/spawn).
+
+The lifecycle actions themselves (stop, hibernate, terminate) never depend on a
+notification being delivered.
+
+::: warning Chat delivery is experimental and not part of 1.0
+Pushing events to people (Slack DMs, Teams messages, Discord channels) goes
+through spore-bot, and chat-platform integrations are walled off for 1.0. **The
+hosted spore-bot is decommissioned as of 2026-11**, so `--slack-workspace` and
+`--notify-platform` deliver nothing unless you run your own
+[self-hosted spore-bot](/spore-bot-self-hosting) and point `SPORE_NOTIFY_URL` at
+it. Everything from [Slack DMs](#slack-dms) down describes that experimental,
+unsupported path. See
+[spore-host#611](https://github.com/spore-host/spore-host/issues/611).
+:::
+
+## What triggers an event
 
 | Event | When | Message |
 |-------|------|---------|
@@ -31,7 +63,7 @@ Events without a dedicated message are delivered with the generic ℹ️ form sh
 
 ## Slack DMs
 
-The most useful notification channel for individuals. You receive a direct message in Slack for each event on instances you subscribe to.
+*Experimental, self-hosted spore-bot only.* You receive a direct message in Slack for each event on instances you subscribe to.
 
 **Enable at launch:**
 ```sh
@@ -51,7 +83,7 @@ spawn notify register --platform slack --user you@lab.edu --workspace-id T03NE3G
 
 ## Channel webhook
 
-Posts lifecycle events to a shared Slack channel — useful for team visibility. The webhook URL is captured automatically during the OAuth flow (Add to Slack), or set manually:
+*Experimental, self-hosted spore-bot only.* Posts lifecycle events to a shared Slack channel. The webhook URL is captured automatically during your spore-bot's OAuth flow (Add to Slack), or set manually:
 
 ```sh
 spawn notify workspace add --platform slack --workspace-id T03NE3GTY \
@@ -76,16 +108,13 @@ Unsubscribe: `/spore unnotify rstudio`
 
 ## Responding to warnings
 
-When you receive a TTL warning, you have 5 minutes to extend if you need more time:
+A TTL warning comes 5 minutes before the deadline. To get more time, extend it:
 
-```
-/spore extend training 4h
-```
-
-From the CLI:
 ```sh
 spawn extend training 4h
 ```
+
+With a self-hosted spore-bot, `/spore extend training 4h` does the same from chat.
 
 ## Disabling specific events
 
@@ -93,7 +122,7 @@ If you want completion and Spot notifications but not TTL/idle warnings, there i
 
 ## Teams and Discord
 
-The platform is chosen at launch with `--notify-platform` (`slack` is the default):
+*Experimental, self-hosted spore-bot only.* The platform is chosen at launch with `--notify-platform` (`slack` is the default):
 
 ```sh
 spawn launch --name training --slack-workspace <TENANT_ID> --notify-platform teams --ttl 8h

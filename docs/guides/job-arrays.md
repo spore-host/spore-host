@@ -38,7 +38,7 @@ data-proc-1
 data-proc-7
 ```
 
-Use these names directly in `spawn status` and Slack commands.
+Use these names directly in `spawn status`.
 
 ## Managing the array
 

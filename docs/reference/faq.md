@@ -18,7 +18,7 @@ spore.host is a set of free, open-source tools for launching ephemeral EC2 insta
 
 ### What is spored?
 
-Spored is a small daemon that runs on each spawned instance. It enforces the TTL, detects idle conditions, handles Spot interruptions, registers a DNS name, and sends lifecycle notifications to Slack or Teams. It runs independently of your laptop — you can close your terminal and spored keeps working.
+Spored is a small daemon that runs on each spawned instance. It enforces the TTL, detects idle conditions, handles Spot interruptions, registers a DNS name, and records lifecycle events. It runs independently of your laptop — you can close your terminal and spored keeps working.
 
 ### Is spore.host free?
 
@@ -61,7 +61,7 @@ Yes: `spawn launch --ami ami-XXXXXXXXX`. Spored is installed via user-data at la
 
 ### Can I extend the TTL after launch?
 
-Yes, at any time: `spawn extend my-instance 4h` — or from Slack: `/spore extend my-instance 4h`.
+Yes, at any time: `spawn extend my-instance 4h`.
 
 ### What's the maximum TTL?
 
@@ -80,7 +80,7 @@ development environments.
 
 ### What happens to a Spot instance when AWS interrupts it?
 
-Spored receives the two-minute warning via the EC2 metadata service. It runs your `--pre-stop` hook if configured (for saving checkpoints), sends a Slack notification, and terminates gracefully.
+Spored receives the two-minute warning via the EC2 metadata service. It warns logged-in users, runs your `--pre-stop` hook if configured (for saving checkpoints), posts to your `--spot-webhook-url` if set, and terminates gracefully.
 
 ---
 
@@ -145,16 +145,8 @@ Yes: `spawn launch --idle-timeout 0`. The TTL still applies as the hard outer bo
 
 ---
 
-## Slack / Teams
+## Slack / Teams / Discord
 
 ### Do I need to set up Slack to use spore.host?
 
-No. Slack, Teams and Discord integration is optional. spore.host works fully without it — you just won't get DM notifications or slash command control.
-
-### Can multiple people control the same instance from Slack?
-
-Yes. Register each user separately with `spawn notify register`, granting them the actions they need. Each person can then use `/spore status`, `/spore stop`, etc. on that instance.
-
-### Something stopped working after I updated the Slack app scopes.
-
-Updating app scopes regenerates the signing secret. Re-register with the new secret: `spawn notify workspace add --platform slack --workspace-id T0... --bot-token xoxb-... --signing-secret <new-secret>`. `workspace add` replaces the whole workspace record, so pass the bot token again too.
+No. Chat-platform integrations (Slack, Teams, Discord and spore-bot) are not part of spore.host 1.0, and the hosted spore-bot is decommissioned. spore.host works fully without them. The code is kept, and you can self-host it as an [experimental, unsupported option](/tools/spore-bot).
