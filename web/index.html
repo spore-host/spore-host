@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>spore.host — Ephemeral compute for researchers</title>
-  <meta name="description" content="Find the right EC2 instance, launch it in minutes, and let it manage itself. Auto-termination, idle detection, Slack control, and AI-assistant integration for researchers and data scientists.">
+  <meta name="description" content="Find the right EC2 instance, launch it in minutes, and let it manage itself. Auto-termination, idle detection, and AI-assistant integration for researchers and data scientists.">
   <script>(function(){var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}());</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -74,7 +74,7 @@
         <div class="hero-props">
           <span>Avoid surprise bills</span>
           <span>GPU-aware</span>
-          <span>Slack &amp; Teams control</span>
+          <!-- experimental:chat --><span>Slack &amp; Teams control</span><!-- /experimental:chat -->
           <span>AI assistant integration</span>
           <span>macOS, Linux, Windows</span>
         </div>
@@ -113,7 +113,7 @@
     <section id="tools">
       <div class="container">
         <p class="section-label">The tool suite</p>
-        <h2 class="section-title">Six tools. One workflow.</h2>
+        <h2 class="section-title">Five tools. One workflow.</h2>
         <p class="section-sub">Each tool has exactly one job. Together they cover the full lifecycle of ephemeral compute.</p>
 
         <div class="tool-grid">
@@ -165,11 +165,12 @@
               <li>Polls across regions on configurable schedule</li>
               <li>Triggers launch, notification, or webhook</li>
               <li>Serverless — runs as a Lambda function</li>
-              <li>Slack notifications when capacity appears</li>
+              <!-- experimental:chat --><li>Slack notifications when capacity appears</li><!-- /experimental:chat -->
             </ul>
             <p class="tool-links"><a href="https://docs.spore.host/tools/lagotto" class="tool-link">Docs</a> · <a href="https://github.com/spore-host/lagotto" target="_blank" rel="noopener">Source</a> · <a href="https://github.com/spore-host/lagotto/releases" target="_blank" rel="noopener">Releases</a></p>
           </div>
 
+          <!-- experimental:chat -->
           <div class="tool-card tool-bot">
             <span class="tool-tag">Chat control</span>
             <h3>Spore-bot</h3>
@@ -182,6 +183,7 @@
             </ul>
             <p class="tool-links"><a href="https://docs.spore.host/tools/spore-bot" class="tool-link">Docs</a> · <a href="https://github.com/spore-host/spawn" target="_blank" rel="noopener">Source</a> · <a href="https://docs.spore.host/guides/slack-setup" target="_blank" rel="noopener">Setup</a></p>
           </div>
+          <!-- /experimental:chat -->
 
           <div class="tool-card tool-mcp">
             <span class="tool-tag">AI assistant</span>

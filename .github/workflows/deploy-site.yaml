@@ -168,7 +168,7 @@ jobs:
           }
           ok=0
           for attempt in 1 2 3 4 5 6 7 8; do
-            if check "/" "Six tools" && portal_ok; then
+            if check "/" "Five tools" && portal_ok; then
               ok=1
               echo "✅ Live spore.host serves the current homepage + portal bundle."
               break
