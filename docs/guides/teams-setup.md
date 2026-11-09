@@ -232,6 +232,11 @@ spawn notify deregister \
   --nickname rstudio
 ```
 
+## Rotating credentials
+
+To replace the Azure Bot client secret (or an outgoing-webhook secret) without downtime, and store the new value encrypted, see
+[Rotating bot credentials](/guides/rotating-bot-credentials).
+
 ## Troubleshooting
 
 **Commands return "workspace not found"** — verify that `--workspace-id` matches the tenant ID used in `spawn notify workspace add`. Tenant IDs are UUIDs like `72f988bf-86f1-41af-91ab-2d7cd011db47`.

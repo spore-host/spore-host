@@ -164,6 +164,11 @@ This subscribes them to all lifecycle notifications for `rstudio` without granti
 
 To unsubscribe: `/spore unnotify rstudio`
 
+## Rotating credentials
+
+To replace the signing secret, bot token, refresh token or channel webhook without downtime, and store the new value encrypted, see
+[Rotating bot credentials](/guides/rotating-bot-credentials).
+
 ## Troubleshooting
 
 **Commands return "workspace not found"** — check that the signing secret in your Slack app matches what was registered. Signing secrets are regenerated if you change your app's scopes. Re-register with the new secret:

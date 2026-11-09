@@ -153,6 +153,7 @@ const sidebar = {
         { text: 'Custom DNS', link: '/guides/custom-dns' },
         { text: 'Self-Hosting', link: '/guides/self-hosting' },
         { text: 'Self-Hosting spore-bot', link: '/spore-bot-self-hosting' },
+        { text: 'Rotating bot credentials', link: '/guides/rotating-bot-credentials' },
       ]
     },
     {

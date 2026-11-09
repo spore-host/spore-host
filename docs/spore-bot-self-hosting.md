@@ -99,6 +99,18 @@ AWS_PROFILE=<infra-account> aws lambda update-function-configuration \
 
 Workspace administrators can set a shorter TTL per workspace using `spawn notify workspace add --connect-ttl <hours>` but cannot exceed the platform default.
 
+### Rotating secrets
+
+The bot's secrets live in two places: the workspace items (sealed with
+`alias/spore-bot-secrets`) and the function's environment (`TEAMS_APP_SECRET`,
+`SLACK_SIGNING_SECRET`, the OAuth client secrets, `BOT_OAUTH_SECRET`). On this
+CloudFormation stack the environment comes from NoEcho stack parameters, so
+change a secret with a stack update, not `update-function-configuration`: the
+next stack update would revert that. [Rotating bot
+credentials](/guides/rotating-bot-credentials) has the procedure for each
+credential, including a stack update that changes one parameter and keeps the
+rest.
+
 ### Updating the Lambda code
 
 After code changes, from this repo:
