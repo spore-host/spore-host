@@ -14,6 +14,8 @@ own changelogs for CLI releases.
 ## [Unreleased]
 
 ### Fixed
+- The Maturity & Support Policy now links to each tool's latest published
+  release instead of duplicating version numbers that drift (#466).
 - **Instances launched with `--notify-platform teams` now send their Teams
   users DMs, and spore-bot no longer calls Slack's API with a Teams
   credential** (#596). `/notify` ran the Teams DM fan-out only for Slack
