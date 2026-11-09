@@ -131,3 +131,8 @@ Now `/spore status rstudio` in your server returns your instance's state, TTL,
 and URL; `/spore extend rstudio 4h` extends its deadline — all verified against
 your application's Ed25519 key. The bot replies "thinking…" and edits in the
 result (Discord's 3-second deadline is met by a deferred response).
+
+## Rotating credentials
+
+To replace the channel webhook URL or bot token without downtime, and store the new value encrypted, see
+[Rotating bot credentials](/guides/rotating-bot-credentials).

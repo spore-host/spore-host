@@ -76,6 +76,13 @@ own changelogs for CLI releases.
   dev-account profile.
 
 ### Documentation
+- **New guide: [Rotating bot credentials](docs/guides/rotating-bot-credentials.md)**
+  (#611, spore-host/spawn#868). It covers Slack signing secrets, bot and
+  refresh tokens, and webhook URLs; the Teams Azure Bot secret; and Discord
+  webhooks: where each is stored, how to store a new value sealed, the order
+  that avoids downtime, how to check the result without printing a secret, and
+  how to revoke the old one. It applies to hosted and self-hosted deployments,
+  and the Slack, Teams, Discord and spore-bot self-hosting pages link to it.
 - **The lagotto guides describe lagotto v0.68.0** (unreleased; lagotto#239).
   `waiting-for-capacity.md` no longer says the TTL is the only stop: it adds a
   step for `--until-landed` (the rolling acknowledgement deadline, reminders,
