@@ -152,6 +152,29 @@ Two invoke permissions on the function are not managed here either:
 `spore-bot-rest-admin-api` (for a REST API that no longer exists). The #611
 runbook removes both.
 
+**Secret-bearing environment variables are not removed by `tofu apply`.**
+Tofu ignores `environment` (secrets stay out of source and state), so the
+decommission removes `TEAMS_APP_SECRET`, `PRISM_SLACK_CLIENT_SECRET` and
+`BOT_OAUTH_SECRET` by hand, keeping every other variable. The command pipes the
+current environment through `jq` and prints only the status and the remaining
+variable names, never a value:
+
+```sh
+export AWS_PROFILE=spore-host-infra
+aws lambda get-function-configuration --region us-east-1 --function-name spore-bot \
+    --query Environment --output json \
+  | jq -c '{FunctionName: "spore-bot",
+            Environment: {Variables: (.Variables | del(.TEAMS_APP_SECRET, .PRISM_SLACK_CLIENT_SECRET, .BOT_OAUTH_SECRET))}}' \
+  | aws lambda update-function-configuration --region us-east-1 --cli-input-json file:///dev/stdin \
+      --query '{Status: LastUpdateStatus, Keys: keys(Environment.Variables)}' --output json
+```
+
+The function has no published versions (only `$LATEST`), so no older
+snapshot of the environment survives. The identifiers (`TEAMS_APP_ID`,
+`TEAMS_TENANT_ID`, `PRISM_SLACK_CLIENT_ID`), the public `DISCORD_PUBLIC_KEY`
+and the table names stay. Without `BOT_OAUTH_SECRET` every OAuth route fails
+closed.
+
 **To bring the bot back after 1.0:** redeploy its credentials (env vars, a
 Slack app install), set `public_endpoint_enabled = true`, `tofu apply`, and
 point each platform at the URL the apply outputs (`function_url`). It may
