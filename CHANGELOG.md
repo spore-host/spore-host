@@ -60,6 +60,14 @@ own changelogs for CLI releases.
     fields the code seals and opens disagree.
 
 ### Changed
+- **The hosted spore-bot is off the internet by default** (#611, #644). Chat
+  integrations are walled off for 1.0 and the hosted bot is being
+  decommissioned. `infra/tofu/spore-bot` has a new `public_endpoint_enabled`
+  variable, default `false`: it removes spore-bot's public Function URL and its
+  public invoke permission, and with them the hourly credential-sealing sweep,
+  which has nothing left to seal once the stored credentials are deleted. The
+  function, its role, the tables, the KMS key and `alias/spore-bot-secrets`
+  are kept, so the bot can return after 1.0 by setting it back to `true`.
 - **OpenTofu state is remote and locked** (#580). Every `infra/tofu` root now
   keeps its state in `s3://spore-host-tofu-state-966362334030/<root>/terraform.tfstate`.
   The bucket is versioned, encrypted, private and TLS-only, and is created by

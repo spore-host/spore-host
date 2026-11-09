@@ -65,6 +65,20 @@ variable "seal_workspace_credentials" {
   default = true
 }
 
+variable "public_endpoint_enabled" {
+  type = bool
+  # Whether spore-bot is in service: its public Function URL (and the public
+  # invoke permission on it) exist only when this is true, and so does the
+  # hourly sealing sweep below. false since the hosted spore-bot was
+  # decommissioned for 1.0 (#611): chat integrations are walled off, the Slack
+  # apps are uninstalled, the Teams secret is revoked and the stored
+  # credentials are deleted. With it false, nothing outside this account can
+  # reach the function. The function, its role, the tables and the KMS key are
+  # kept, so setting it back to true (with redeployed credentials) restores the
+  # bot after 1.0. See README.md "Decommissioned for 1.0".
+  default = false
+}
+
 variable "aws_profile" {
   type = string
   # Empty: use the ambient credentials (AWS_* from `aws configure
@@ -105,6 +119,14 @@ locals {
     "spore-bot-bot-token",
     "spore-bot-incoming-webhook-url",
   ]
+  # The sealing sweep runs only while the bot is in service. Decommissioned,
+  # the table holds no credentials, so the sweep has nothing to seal, and it is
+  # the only thing left that would invoke the function: with it off, any
+  # spore-bot invocation or spore-bot-role KMS call is an anomaly worth a look.
+  # The alias stays (it follows seal_workspace_credentials alone), so every
+  # current writer still seals.
+  seal_sweep_enabled = var.seal_workspace_credentials && var.public_endpoint_enabled
+
   common_tags = {
     project   = "spore-host"
     component = "spore-bot"
@@ -256,10 +278,11 @@ resource "aws_kms_alias" "spore_bot_secrets" {
 
 # The migration: an hourly sweep that re-seals, in place, every credential still
 # stored in plaintext (items written before #611, and by an older spawn CLI
-# since). A no-op once nothing is plaintext. Created with the alias, so it never
-# runs before the key it seals with exists.
+# since). A no-op once nothing is plaintext. Created only with the alias, so it
+# never runs before the key it seals with exists, and only while the bot is in
+# service (local.seal_sweep_enabled).
 resource "aws_cloudwatch_event_rule" "seal_legacy_credentials" {
-  count               = var.seal_workspace_credentials ? 1 : 0
+  count               = local.seal_sweep_enabled ? 1 : 0
   name                = "spore-bot-seal-legacy-credentials"
   description         = "spore-bot: re-seal workspace credentials still stored in plaintext (#611)"
   schedule_expression = "rate(1 hour)"
@@ -267,7 +290,7 @@ resource "aws_cloudwatch_event_rule" "seal_legacy_credentials" {
 }
 
 resource "aws_cloudwatch_event_target" "seal_legacy_credentials" {
-  count = var.seal_workspace_credentials ? 1 : 0
+  count = local.seal_sweep_enabled ? 1 : 0
   rule  = aws_cloudwatch_event_rule.seal_legacy_credentials[0].name
   arn   = aws_lambda_function.spore_bot.arn
   # lambda/spore-bot main.go routes on this (sealLegacyCredentialsTask).
@@ -275,7 +298,7 @@ resource "aws_cloudwatch_event_target" "seal_legacy_credentials" {
 }
 
 resource "aws_lambda_permission" "seal_legacy_credentials" {
-  count          = var.seal_workspace_credentials ? 1 : 0
+  count          = local.seal_sweep_enabled ? 1 : 0
   statement_id   = "AllowSealLegacyCredentialsSchedule"
   action         = "lambda:InvokeFunction"
   function_name  = aws_lambda_function.spore_bot.function_name
@@ -323,10 +346,14 @@ resource "aws_lambda_function" "spore_bot" {
 }
 
 # ── Function URL (public; the value Discord + instance notify-URLs depend on) ─
-# The URL is deterministic from function name + account + region, so as long as
-# the function keeps its name, the URL is preserved across this import.
+# Exists only while var.public_endpoint_enabled is true. Removing it is what
+# takes the decommissioned bot off the internet (#611): Slack, Teams, Discord
+# and instances' spawn:notify-url all reach the function only through it.
+# Re-enabling creates a new URL config; check the URL it returns before
+# pointing any platform at it.
 
 resource "aws_lambda_function_url" "spore_bot" {
+  count              = var.public_endpoint_enabled ? 1 : 0
   function_name      = aws_lambda_function.spore_bot.function_name
   authorization_type = "NONE"
   cors {
@@ -335,8 +362,9 @@ resource "aws_lambda_function_url" "spore_bot" {
   }
 }
 
-# Public invoke permission for the Function URL (NONE auth).
+# Public invoke permission for the Function URL (NONE auth). Goes with the URL.
 resource "aws_lambda_permission" "url_public" {
+  count                  = var.public_endpoint_enabled ? 1 : 0
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.spore_bot.function_name
@@ -344,9 +372,21 @@ resource "aws_lambda_permission" "url_public" {
   function_url_auth_type = "NONE"
 }
 
+# Both were single resources before public_endpoint_enabled; keep their state
+# addresses stable.
+moved {
+  from = aws_lambda_function_url.spore_bot
+  to   = aws_lambda_function_url.spore_bot[0]
+}
+
+moved {
+  from = aws_lambda_permission.url_public
+  to   = aws_lambda_permission.url_public[0]
+}
+
 output "function_url" {
-  value       = aws_lambda_function_url.spore_bot.function_url
-  description = "spore-bot Function URL (interactions endpoint base; append /discord, /slack, /teams, /notify)."
+  value       = one(aws_lambda_function_url.spore_bot[*].function_url)
+  description = "spore-bot Function URL (interactions endpoint base; append /discord, /slack, /teams, /notify). null while var.public_endpoint_enabled is false."
 }
 
 output "role_arn" {

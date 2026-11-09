@@ -18,15 +18,17 @@ is still imperative `setup-*.sh`; this is the start of migrating off that.
   never touches.
 - `aws_kms_key.spore_bot_secrets` — the key that seals workspace credentials
   (#611), and, once `seal_workspace_credentials` is true, its alias
-  `alias/spore-bot-secrets` and the hourly migration sweep (EventBridge rule
+  `alias/spore-bot-secrets` and, while the bot is in service
+  (`public_endpoint_enabled`), the hourly migration sweep (EventBridge rule
   `spore-bot-seal-legacy-credentials`, its target and invoke permission). See
   [Workspace credentials](#workspace-credentials).
 - `aws_lambda_function.spore_bot` — the function's **shape** (role, runtime,
   arm64, memory, timeout).
 - `aws_lambda_function_url.spore_bot` + public invoke permission — the Function
-  URL that Discord's interactions endpoint and instances' `spawn:notify-url`
-  depend on. It is deterministic from function name + account + region, so it is
-  preserved as long as the function keeps its name.
+  URL that Slack, Teams, Discord's interactions endpoint and instances'
+  `spawn:notify-url` depend on. **Only while `public_endpoint_enabled` is
+  true**, which it is not by default: see
+  [Decommissioned for 1.0](#decommissioned-for-10).
 
 ## What it deliberately does NOT manage
 
@@ -100,8 +102,9 @@ Then flip the default in `main.tf` in a PR and `tofu apply`. The apply creates
 the alias and the hourly sweep. The sweep re-seals every plaintext value in
 place, each with a conditional update on that one attribute, so it never
 overwrites a concurrent token refresh. It runs within the hour, and there is
-no manual migration step. Leave it running afterwards: it also re-seals values
-an older spawn CLI writes in plaintext.
+no manual migration step. Leave it running while the bot is in service: it
+also re-seals values an older spawn CLI writes in plaintext. It is removed
+with the public endpoint ([Decommissioned for 1.0](#decommissioned-for-10)).
 
 What spore-bot-role may do with the key (statements `SporeBotCredentialsEncrypt`
 and `SporeBotCredentialsDecrypt`, both on the key ARN and conditioned on
@@ -120,6 +123,39 @@ exist. Without the alias, every writer stores plaintext again, and
 `SpawnDashboardLambdaRole`, whose grant is scoped to the alias, can no longer
 decrypt the values already sealed. `prevent_destroy` guards the key itself;
 to retire it, the workspaces must first be re-written unsealed.
+
+## Decommissioned for 1.0
+
+Chat integrations (Slack, Teams, Discord, spore-bot) are walled off for 1.0,
+and the hosted spore-bot is decommissioned (#611). The runbook is on #611.
+`public_endpoint_enabled` (default `false`) is the switch in this module:
+
+| | `false` (decommissioned) | `true` (in service) |
+|---|---|---|
+| Function URL + `FunctionURLAllowPublicAccess` | removed | present |
+| hourly sweep (rule, target, `AllowSealLegacyCredentialsSchedule`) | removed | present if `seal_workspace_credentials` |
+| function, role, policy, KMS key, `alias/spore-bot-secrets` | kept | kept |
+
+The sweep goes with the endpoint because, decommissioned, the table holds no
+credentials, so there is nothing to seal, and the sweep is the only thing left
+that invokes the function. With both gone, spore-bot has no invoker at all:
+any later invocation, or any `kms:Decrypt` by `spore-bot-role`, is an anomaly.
+The alias stays, so every writer still seals.
+
+The tables (`spore-bot-registry`, `spore-bot-workspaces`, `spore-bot-audit`)
+are not managed here. The first two were created by the `prism-bot`
+CloudFormation stack; retire that stack only after setting `DeletionPolicy:
+Retain` on both (#663).
+
+Two invoke permissions on the function are not managed here either:
+`spore-bot-admin-api` (the IAM-authorized HTTP API `spore-bot-admin`) and
+`spore-bot-rest-admin-api` (for a REST API that no longer exists). The #611
+runbook removes both.
+
+**To bring the bot back after 1.0:** redeploy its credentials (env vars, a
+Slack app install), set `public_endpoint_enabled = true`, `tofu apply`, and
+point each platform at the URL the apply outputs (`function_url`). It may
+differ from the old one.
 
 ## State
 
@@ -141,8 +177,8 @@ tofu import aws_iam_role.spore_bot spore-bot-role
 tofu import 'aws_iam_role_policy_attachment.basic_execution' 'spore-bot-role/arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
 tofu import aws_iam_role_policy.spore_bot 'spore-bot-role:spore-bot-permissions'
 tofu import aws_lambda_function.spore_bot spore-bot
-tofu import aws_lambda_function_url.spore_bot spore-bot
-tofu import aws_lambda_permission.url_public 'spore-bot/FunctionURLAllowPublicAccess'
+tofu import 'aws_lambda_function_url.spore_bot[0]' spore-bot       # with public_endpoint_enabled = true
+tofu import 'aws_lambda_permission.url_public[0]' 'spore-bot/FunctionURLAllowPublicAccess'
 tofu plan      # must be 0 to add / 0 to destroy (only tag changes)
 tofu apply
 ```
