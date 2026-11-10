@@ -23,7 +23,7 @@ export async function reflowProblems(page: Page): Promise<string[]> {
       if (r.width === 0 || r.height === 0) continue;
       // Visually-hidden text is clipped to 1px and positioned inside the viewport.
       if (r.right > vw + 0.5) {
-        const id = el.id ? `#${el.id}` : el.className && typeof el.className === "string" ? `.${el.className.split(" ")[0]}` : el.tagName.toLowerCase();
+        const id = el.id ? `#${el.id}` : el.className && typeof el.className === "string" ? `.${el.className.split(" ")[0]}` : "";
         out.push(`${el.tagName.toLowerCase()}${id} ends at ${Math.round(r.right)}px`);
       }
     }

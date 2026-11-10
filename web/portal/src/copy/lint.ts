@@ -63,7 +63,7 @@ export function compile(g: Glossary = glossary): Matcher[] {
     out.push(m);
   };
   for (const t of g.terms) {
-    for (const d of t.dontSay) push({ re: phraseRegex(d), rule: `glossary: say "${t.say}"`, say: t.say });
+    for (const d of t.dontSay) push({ re: phraseRegex(d), rule: `glossary, ${t.concept}`, say: t.say });
   }
   for (const name of g.toolNames.terms) {
     push({ re: phraseRegex(name), rule: "tool or AWS service name in body copy (brief §6 rule 4)", say: "the task word; tool names go in the command-line footer" });

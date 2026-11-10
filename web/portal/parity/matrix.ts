@@ -105,9 +105,20 @@ export function cliProblems(m: Matrix, read: DocReader): string[] {
 export function renderedProblems(m: Matrix, observed: Map<string, string[]>, unlabelled: string[] = []): string[] {
   const out: string[] = [];
   const known = new Set([...chromeIds(m), ...m.rows.flatMap((r) => r.gui)]);
-  for (const u of unlabelled) out.push(`interactive element with no data-control: ${u}`);
+  // One line per element, not per page it appears on.
+  const byWhat = new Map<string, string[]>();
+  for (const u of unlabelled) {
+    const [what, where = ""] = u.split(" on ");
+    byWhat.set(what, [...(byWhat.get(what) ?? []), where].filter(Boolean));
+  }
+  for (const [what, where] of byWhat) {
+    out.push(`interactive element with no data-control: ${what}${where.length ? ` (on ${where.slice(0, 3).join(", ")}${where.length > 3 ? ` and ${where.length - 3} more` : ""})` : ""}`);
+  }
   for (const [c, where] of observed) {
-    if (!known.has(c)) out.push(`GUI control "${c}" (on ${where.join(", ")}) has no CLI row and is not chrome`);
+    if (!known.has(c)) {
+      const shown = where.slice(0, 3).join(", ") + (where.length > 3 ? ` and ${where.length - 3} more` : "");
+      out.push(`GUI control "${c}" (on ${shown}) has no CLI row and is not chrome`);
+    }
   }
   for (const r of m.rows) {
     if (r.level !== "basic" || r.pending !== undefined) continue;
