@@ -306,7 +306,7 @@ resource "aws_iam_role_policy" "ssm_session" {
         Action = ["ssm:StartSession"]
         Resource = [
           "arn:aws:ssm:*:*:document/AWS-StartInteractiveCommand",
-          "arn:aws:ssm:*::document/SSM-SessionManagerRunShell",
+          "arn:aws:ssm:*:${data.aws_caller_identity.current.account_id}:document/SSM-SessionManagerRunShell",
         ]
       },
       {
