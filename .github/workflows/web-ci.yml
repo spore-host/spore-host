@@ -72,3 +72,24 @@ jobs:
       - name: Build
         working-directory: web
         run: npm run build
+
+      # Same guard deploy-site.yaml runs before uploading, caught pre-merge:
+      # spore.host/app is the static placeholder while the portal is rebuilt
+      # (spore-host#645), so the build must carry its marker, load no script,
+      # and contain no old portal bundle (assets/app-*.js).
+      - name: Assert /app is the placeholder and no portal bundle ships
+        run: |
+          set -euo pipefail
+          page=web/dist/app/index.html
+          grep -qF '<meta name="spore-host-page" content="app-placeholder">' "$page" \
+            || { echo "::error::$page is not the /app placeholder (marker missing)." >&2; exit 1; }
+          if grep -qi '<script' "$page"; then
+            echo "::error::$page loads a script; the placeholder must not." >&2
+            exit 1
+          fi
+          bundles="$(find web/dist/assets -name 'app-*.js' -print)"
+          if [ -n "$bundles" ]; then
+            echo "::error::old portal bundle(s) in the build: $bundles" >&2
+            exit 1
+          fi
+          echo "✅ /app is the placeholder; no portal bundle in dist/"

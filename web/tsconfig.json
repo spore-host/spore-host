@@ -13,5 +13,5 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true
   },
-  "include": ["app", "vite.config.ts"]
+  "include": ["legacy-app", "vite.config.ts"]
 }

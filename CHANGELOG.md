@@ -78,6 +78,16 @@ own changelogs for CLI releases.
     fields the code seals and opens disagree.
 
 ### Changed
+- **spore.host/app temporarily replaced by a placeholder while the web app is
+  rebuilt** (#645). `/app/` (and every old `/app/#/…` deep link) now serves a
+  static page that says the web app isn't available, and points to the spawn,
+  truffle and lagotto install instructions, the quick start and the docs. The
+  production build no longer bundles the old portal: `npm run build` only
+  copies static pages, so no portal JavaScript is deployed. The old portal
+  source moved to `web/legacy-app/`, unbuilt; its tests and typecheck still
+  run. The homepage and For Developers "Dashboard" button, which led to a page
+  that no longer exists, is now an "Install" button. The deploy's checks now
+  assert the placeholder, not a hashed portal bundle.
 - **The hosted spore-bot is off the internet by default** (#611, #644). Chat
   integrations are walled off for 1.0 and the hosted bot is being
   decommissioned. `infra/tofu/spore-bot` has a new `public_endpoint_enabled`
