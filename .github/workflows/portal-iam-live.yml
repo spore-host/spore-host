@@ -7,12 +7,20 @@ name: Portal IAM (live, credential-gated)
 #      equal web/portal/iam/policies/ exactly, with nothing extra attached.
 # Both are web/portal/iam/live.test.ts, which runs only with PORTAL_IAM_LIVE=1.
 #
-# CREDENTIAL-GATED. It needs a read-only audit role that the owner creates in
-# the account holding the portal role, trusting this repository's GitHub OIDC
-# provider, with iam:SimulateCustomPolicy, iam:GetRolePolicy,
-# iam:ListRolePolicies and iam:ListAttachedRolePolicies on the portal role.
-# Set its ARN as the repository variable PORTAL_IAM_AUDIT_ROLE_ARN. Until then
-# every run is a no-op that says so; nothing calls AWS.
+# CREDENTIAL-GATED. It assumes the read-only audit role spore-portal-iam-audit
+# in 435415984226, through the GitHub Actions OIDC provider there. Both are
+# codified in infra/tofu/portal-oidc/main.tf (their named deleter). The role's
+# ARN is the repository variable PORTAL_IAM_AUDIT_ROLE_ARN, which is set. It
+# grants iam:SimulateCustomPolicy, plus iam:GetRole, iam:GetRolePolicy,
+# iam:ListRolePolicies and iam:ListAttachedRolePolicies on spore-portal-launch
+# only; live.test.ts calls nothing else (sts:GetCallerIdentity needs no grant).
+#
+# The role trusts repo:spore-host/spore-host:ref:refs/heads/main only, so this
+# works for the nightly run and for a manual run dispatched from main. A
+# manual run from any other branch fails to assume the role, by design.
+#
+# If the variable is ever unset, every run is a no-op that says so; nothing
+# calls AWS.
 #
 # Once the variable is set, a failure to assume the role or to read the policy
 # FAILS the run. It never skips quietly with credentials configured, so an

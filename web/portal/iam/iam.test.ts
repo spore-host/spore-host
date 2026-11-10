@@ -136,5 +136,11 @@ describe("simulation fixtures", () => {
     const a = normalisePolicy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: ["b:B", "a:A"], Resource: "*" }] });
     const b = normalisePolicy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: ["a:A", "b:B"], Resource: ["*"] }] });
     expect(a).toEqual(b);
+    const c1 = normalisePolicy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "a:A", Resource: "*", Condition: { StringEquals: { k: "v" } } }] });
+    const c2 = normalisePolicy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "a:A", Resource: "*", Condition: { StringEquals: { k: ["v"] } } }] });
+    expect(c1).toEqual(c2);
+    // A changed Sid, value or operator is still drift.
+    const c3 = normalisePolicy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "a:A", Resource: "*", Condition: { StringLike: { k: "v" } } }] });
+    expect(c1).not.toEqual(c3);
   });
 });

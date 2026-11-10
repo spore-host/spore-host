@@ -12,12 +12,15 @@
 #        - aud == the portal's Globus client-ID   (the app users log into)
 #        - sub == an allow-list of Globus identity UUIDs (who may launch)
 #      and grants exactly the EC2 launch + iam:PassRole perms a spawn launch needs.
+#   3. a read-only audit role for the portal's nightly IAM simulate + drift
+#      check (.github/workflows/portal-iam-live.yml), with the GitHub Actions
+#      OIDC provider it trusts. This module is their named deleter.
 #
-# UNLIKE the infra-account modules (dns-updater, spore-bot), this is a fresh
-# `apply` into the DEV compute account (435415984226) — the account where the
-# demo and the #38 cross-account launch were validated and where
-# spored-instance-profile already exists — NOT an import-onto-live. There is no
-# pre-existing resource to reconcile.
+# UNLIKE the infra-account modules (dns-updater, spore-bot), this deploys into
+# the DEV compute account (435415984226), the account where the demo and the
+# #38 cross-account launch were validated and where spored-instance-profile
+# exists. Every resource here now exists live and the root has no state yet
+# (#671): import them all before the first plan (README, "Import").
 #
 # Why sub-UUIDs and not email: AWS only exposes a generic OIDC provider's `aud`
 # and `sub` as IAM condition keys — `email` is NOT a usable condition key here.
@@ -186,8 +189,14 @@ resource "aws_iam_role" "portal_launch" {
   tags = local.common_tags
 }
 
-# EC2 launch + lifecycle — the same surface a spawn launch needs (RunInstances,
-# tag, describe, terminate/stop). Region-scoped where the API supports it.
+# EC2 launch: the surface a spawn launch needs (RunInstances, tag, describe).
+#
+# No Stop, Start or Terminate. The "Lifecycle" statement that granted them
+# (tag-gated on spawn:managed) and the separate PortalEC2Manage policy were
+# removed from the live role on 2026-11-10 by the owner (spore-host#678): a
+# browser tab must not be able to stop or terminate instances (spawn-ts#126).
+# Slice 3 (#686) brings them back under the scoped policy of #678 and the
+# portal's IAM coverage gate, not by restoring the old statement.
 resource "aws_iam_role_policy" "ec2_launch" {
   name = "PortalEC2Launch"
   role = aws_iam_role.portal_launch.id
@@ -209,17 +218,6 @@ resource "aws_iam_role_policy" "ec2_launch" {
           "ec2:CreateTags",
         ]
         Resource = "*"
-      },
-      {
-        Sid      = "Lifecycle"
-        Effect   = "Allow"
-        Action   = ["ec2:TerminateInstances", "ec2:StopInstances", "ec2:StartInstances"]
-        Resource = "*"
-        # spawn/spored tag their instances spawn:managed=true; scope destructive
-        # actions to those so a portal session can't touch unrelated instances.
-        Condition = {
-          StringEquals = { "aws:ResourceTag/spawn:managed" = "true" }
-        }
       },
       {
         Sid    = "ReadSpotAndQuotas"
@@ -275,13 +273,18 @@ resource "aws_iam_role_policy" "ssm_session" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Scoped to spawn-managed instances, matching the "Lifecycle" statement
-        # above. It previously was not, and that was the widest grant in this role:
-        # a shell is at least as powerful as a terminate, so StartSession against
+        # Scoped to spawn-managed instances (tagged spawn:managed=true). It
+        # previously was not, and that was the widest grant in this role: a shell
+        # is at least as powerful as a terminate, so StartSession against
         # `instance/*` let a portal session open a root-capable shell on ANY
-        # SSM-registered instance in the account — an unrelated production box the
-        # portal never launched — while ec2:TerminateInstances on the same instance
-        # was correctly denied. The only thing narrowing it was a client-side
+        # SSM-registered instance in the account, an unrelated production box the
+        # portal never launched, while the then tag-gated ec2:TerminateInstances
+        # on the same instance was denied.
+        #
+        # Still open (#678): ec2:CreateTags on "*" with no condition means a
+        # session can tag any instance spawn:managed=true and then open a shell on
+        # it. Only the owner's Globus identity can assume this role today. The
+        # scoped policy of #678 fixes this before any new tag-gated grant. The only thing narrowing it was a client-side
         # `/^i-[0-9a-f]{8,}$/` on a text field, which is a syntax check, not authz.
         #
         # `ssm:resourceTag/`, not `aws:ResourceTag/`: SSM evaluates the target
@@ -318,6 +321,97 @@ resource "aws_iam_role_policy" "ssm_session" {
   })
 }
 
+# ── Portal IAM audit role (read-only) ─────────────────────────────────────────
+# Assumed by .github/workflows/portal-iam-live.yml for the portal's nightly IAM
+# coverage check (spore-host#683): SimulateCustomPolicy over
+# web/portal/iam/fixtures/, and a drift check that the inline policies above,
+# as deployed, equal web/portal/iam/policies/portal-launch-role.json.
+#
+# Created by hand on 2026-11-10, then codified here so it has a named deleter
+# ("leave no trace"). Matches the live resources exactly; import them before
+# the first plan (README, "Import").
+#
+# The trust admits only workflow runs on refs/heads/main of
+# spore-host/spore-host: a pull request's code never gets these credentials,
+# which is also why the workflow has no pull_request trigger.
+
+locals {
+  github_oidc_host = "token.actions.githubusercontent.com"
+}
+
+# The GitHub Actions OIDC provider. One per URL per account, like Globus's.
+# thumbprint_list is not set: AWS verifies token.actions.githubusercontent.com
+# against its own trust store and fills the field itself, so it is ignored
+# rather than pinned.
+resource "aws_iam_openid_connect_provider" "github" {
+  url            = "https://${local.github_oidc_host}"
+  client_id_list = ["sts.amazonaws.com"]
+  tags = {
+    "spore-host:component"  = "portal-iam-audit"
+    "spore-host:managed-by" = "infra/tofu/portal-oidc"
+  }
+
+  lifecycle {
+    ignore_changes = [thumbprint_list]
+  }
+}
+
+resource "aws_iam_role" "portal_iam_audit" {
+  name                 = "spore-portal-iam-audit"
+  description          = "Read-only: nightly portal IAM simulate + drift check (spore-host#683). Deleter: infra/tofu/portal-oidc."
+  max_session_duration = 3600
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.github_oidc_host}:aud" = "sts.amazonaws.com"
+          "${local.github_oidc_host}:sub" = "repo:spore-host/spore-host:ref:refs/heads/main"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    "spore-host:component" = "portal-iam-audit"
+  }
+}
+
+# Exactly what web/portal/iam/live.test.ts calls: SimulateCustomPolicy (which
+# evaluates documents passed in, so it reads nothing and has no resource to
+# scope), and reads of the portal role's own policies. sts:GetCallerIdentity
+# needs no grant. Nothing here can change anything.
+resource "aws_iam_role_policy" "portal_iam_audit" {
+  name = "PortalIAMAuditReadOnly"
+  role = aws_iam_role.portal_iam_audit.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "SimulateCustom"
+        Effect   = "Allow"
+        Action   = "iam:SimulateCustomPolicy"
+        Resource = "*"
+      },
+      {
+        Sid    = "ReadPortalRole"
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies",
+        ]
+        Resource = aws_iam_role.portal_launch.arn
+      },
+    ]
+  })
+}
+
 # ── Outputs ────────────────────────────────────────────────────────────────────
 output "oidc_provider_arn" {
   value       = aws_iam_openid_connect_provider.globus.arn
@@ -327,4 +421,9 @@ output "oidc_provider_arn" {
 output "role_arn" {
   value       = aws_iam_role.portal_launch.arn
   description = "The portal launch role ARN — set this as the portal's VITE_ROLE_ARN."
+}
+
+output "iam_audit_role_arn" {
+  value       = aws_iam_role.portal_iam_audit.arn
+  description = "The read-only audit role portal-iam-live.yml assumes. Set as the repository variable PORTAL_IAM_AUDIT_ROLE_ARN."
 }

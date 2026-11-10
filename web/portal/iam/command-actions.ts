@@ -43,6 +43,11 @@ export const COMMAND_ACTIONS: Readonly<Record<string, CommandMapping>> = {
     why: "Tags at launch need ec2:CreateTags on the new resources; attaching spored's instance profile needs iam:PassRole on its role.",
   },
   "ec2:CreateTags": { actions: ["ec2:CreateTags"] },
+  // Stop, Start and Terminate are mapped but NOT granted: the live role lost
+  // them on 2026-11-10 (#678). If one reaches the bundle, the inventory gains
+  // the action, the fixture rule "every inventory action has an allowed case"
+  // fails, and the tagged-denial fixtures fail too, until slice 3 (#686) ships
+  // them with #678's scoped policy.
   "ec2:StopInstances": { actions: ["ec2:StopInstances"] },
   "ec2:StartInstances": { actions: ["ec2:StartInstances"] },
   "ec2:TerminateInstances": { actions: ["ec2:TerminateInstances"] },

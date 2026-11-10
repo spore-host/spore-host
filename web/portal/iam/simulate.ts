@@ -168,14 +168,28 @@ export const awsCliSimulator: Simulator = async (req) => {
   return d;
 };
 
-/** Normalise a policy document for comparison: sorted action and resource lists, Sids kept. */
+/**
+ * Normalise a policy document for the drift comparison, so only meaning
+ * counts: IAM accepts a string or a one-element list for Action, Resource and
+ * each condition value, and does not care about their order. Sids, effects,
+ * operators and condition keys are kept as they are, so changing any of them
+ * is drift.
+ */
 export function normalisePolicy(doc: PolicyDoc): unknown {
+  const sorted = (v: string | string[]) => [...list(v)].sort();
   return {
     Version: doc.Version,
     Statement: doc.Statement.map((s) => ({
       ...s,
-      Action: [...list(s.Action)].sort(),
-      Resource: [...list(s.Resource)].sort(),
+      Action: sorted(s.Action),
+      Resource: sorted(s.Resource),
+      ...(s.Condition
+        ? {
+            Condition: Object.fromEntries(
+              Object.entries(s.Condition).map(([op, kv]) => [op, Object.fromEntries(Object.entries(kv).map(([k, v]) => [k, sorted(v)]))]),
+            ),
+          }
+        : {}),
     })),
   };
 }

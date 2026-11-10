@@ -25,8 +25,10 @@ describe("IAM coverage gate: simulation fixtures", () => {
   });
 
   it("fail when a conditioned grant has no denied case", () => {
-    const broken = { ...fixture, cases: fixture.cases.filter((c) => !(c.action === "ec2:TerminateInstances" && c.expect === "denied")) };
-    expect(fixtureProblems([broken], [policy], [])).toContain("PortalEC2Launch/Lifecycle grants ec2:TerminateInstances under a condition, but no case tests it denied");
+    const broken = { ...fixture, cases: fixture.cases.filter((c) => !(c.action === "ssm:StartSession" && c.expect === "denied")) };
+    expect(fixtureProblems([broken], [policy], [])).toContain(
+      "PortalSSMSession/StartSessionOnManagedInstances grants ssm:StartSession under a condition, but no case tests it denied",
+    );
   });
 
   it("fail when an inventory action has no allowed case", () => {
@@ -38,11 +40,32 @@ describe("IAM coverage gate: simulation fixtures", () => {
     expect(fixtureProblems([broken], [policy], [])[0]).toMatch(/has no case expected to be denied/);
   });
 
-  it("fail when the policy loses its tag gate", async () => {
-    // The #678 failure mode: an unconditioned grant defeats the spawn:managed gate.
+  it("deny Stop, Start and Terminate even on a spawn-managed instance (#678, until slice 3 #686)", () => {
+    for (const action of ["ec2:StopInstances", "ec2:StartInstances", "ec2:TerminateInstances"]) {
+      const tagged = fixture.cases.filter((c) => c.action === action && c.context?.["aws:ResourceTag/spawn:managed"] === "true");
+      expect(tagged.map((c) => c.expect), action).toEqual(["denied"]);
+    }
+  });
+
+  it("fail when a lifecycle grant comes back, even tag-gated", async () => {
+    // The pre-2026-11-10 Lifecycle statement, restored.
+    const restored = JSON.parse(JSON.stringify(policy)) as PolicyFile;
+    restored.policies.PortalEC2Launch.Statement.push({
+      Sid: "Lifecycle",
+      Effect: "Allow",
+      Action: ["ec2:TerminateInstances", "ec2:StopInstances", "ec2:StartInstances"],
+      Resource: "*",
+      Condition: { StringEquals: { "aws:ResourceTag/spawn:managed": "true" } },
+    });
+    const f = failures(await runFixtures([fixture], () => restored, offlineSimulator()));
+    expect(f).toHaveLength(3);
+    expect(f[0]).toMatch(/^"never terminate from the browser, even a spawn-managed instance \(#678\)": ec2:TerminateInstances on arn:aws:ec2:us-east-1:111122223333:instance\/i-0123456789abcdef0 was allowed, expected denied$/);
+  });
+
+  it("fail when the command-line grant loses its tag gate", async () => {
     const ungated = JSON.parse(JSON.stringify(policy)) as PolicyFile;
-    delete ungated.policies.PortalEC2Launch.Statement[1].Condition;
+    delete ungated.policies.PortalSSMSession.Statement[0].Condition;
     const f = failures(await runFixtures([fixture], () => ungated, offlineSimulator()));
-    expect(f).toContain('"terminate an instance spawn did not launch": ec2:TerminateInstances on arn:aws:ec2:us-east-1:111122223333:instance/i-0123456789abcdef0 was allowed, expected denied');
+    expect(f).toEqual([expect.stringMatching(/^"open a command line on any other instance": ssm:StartSession .* was allowed, expected denied$/)]);
   });
 });
