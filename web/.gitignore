@@ -4,3 +4,9 @@ dist/
 .DS_Store
 .env
 .env.local
+
+# The rebuilt portal builds here, never into dist/ (portal/vite.config.ts).
+.portal-build/
+# Playwright output
+portal/test-results/
+portal/playwright-report/

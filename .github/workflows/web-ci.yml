@@ -13,15 +13,23 @@ name: Web CI
 # Lives here rather than being folded into #505 so the disclosure work wasn't held
 # up behind a new workflow (spore-host#506).
 
+# docs/gen/** and infra/tofu/portal-oidc/** are inputs to the portal gates: the
+# CLI⇄GUI matrix is checked against the generated CLI reference, and the IAM
+# fixture against the tofu policy. A sync-cli-docs PR that renames a flag, or
+# a policy change, must run the gates that depend on it.
 on:
   pull_request:
     paths:
       - 'web/**'
+      - 'docs/gen/**'
+      - 'infra/tofu/portal-oidc/**'
       - '.github/workflows/web-ci.yml'
   push:
     branches: [main]
     paths:
       - 'web/**'
+      - 'docs/gen/**'
+      - 'infra/tofu/portal-oidc/**'
       - '.github/workflows/web-ci.yml'
   workflow_dispatch:
 
@@ -92,4 +100,59 @@ jobs:
             echo "::error::old portal bundle(s) in the build: $bundles" >&2
             exit 1
           fi
-          echo "✅ /app is the placeholder; no portal bundle in dist/"
+          # The rebuilt portal (web/portal/, #683) is not published until slice 1
+          # (#684) passes its gates. It builds into web/.portal-build/, never dist/;
+          # its pages carry content="portal…" markers, so any that leak are found.
+          leaked="$(grep -rlF 'name="spore-host-page" content="portal' web/dist || true)"
+          if [ -n "$leaked" ] || [ -e web/dist/portal ]; then
+            echo "::error::the rebuilt portal is in the build and would be deployed: ${leaked:-web/dist/portal}" >&2
+            exit 1
+          fi
+          echo "✅ /app is the placeholder; no old or rebuilt portal in dist/"
+
+  # The rebuilt portal (web/portal/, Phase 0 #683). NOT DEPLOYED: it builds into
+  # web/.portal-build/ and deploy-site publishes web/dist/ only (see the
+  # placeholder step above). A slice ships only when these pass (#645):
+  #   - offline gates (npm run portal:test): token contrast, tokens-only CSS,
+  #     banned-words lint on module copy, CLI⇄GUI matrix vs docs/gen, the IAM
+  #     inventory from the production bundle, the IAM fixtures vs the policy and
+  #     the tofu source, and the unit tests of the ported modules;
+  #   - rendered gates (npm run portal:e2e, Playwright on a local `vite
+  #     preview`): axe on every route and gallery state, keyboard and focus,
+  #     44 px targets, 320 px reflow with and without text spacing, banned words
+  #     in rendered copy, the rendered CLI⇄GUI matrix, and a self-test page that
+  #     proves each rendered check can fail.
+  # No AWS credentials exist in this job and the specs abort any AWS request.
+  # The live IAM simulate and drift check are portal-iam-live.yml.
+  portal-gates:
+    name: Portal gates (unbuilt, not deployed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      # The browser build matching the pinned @playwright/test version.
+      - name: Install Chromium for Playwright
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck
+        working-directory: web
+        run: npm run portal:typecheck
+
+      - name: Unit tests and offline gates
+        working-directory: web
+        run: npm run portal:test
+
+      - name: Rendered gates (axe, keyboard, reflow, copy, matrix, self-test)
+        working-directory: web
+        run: npm run portal:e2e

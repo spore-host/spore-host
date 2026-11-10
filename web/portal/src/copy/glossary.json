@@ -1,0 +1,58 @@
+{
+  "$comment": "One word per concept, shared by the GUI and (later) CLI help: 'match both ways' (brief §6). 'say' is the basic-mode word; every 'dontSay' term fails the banned-words lint (gates/copy-lint.test.ts over the error catalogue, e2e/copy.spec.ts over every rendered basic route). Text inside [data-copy-exempt] (the command-line footer, 'Details for support', the 'AWS type' label) is not linted. Noun is 'instance' (owner decision on #645, overriding the brief's D2 'machine').",
+  "terms": [
+    {
+      "concept": "instance",
+      "say": "instance",
+      "dontSay": ["machine", "machines", "virtual machine", "VM", "VMs", "server", "servers", "box", "boxes", "node", "nodes", "computer", "computers"],
+      "cli": "EC2 instance",
+      "note": "Matches the CLI's noun."
+    },
+    {
+      "concept": "size",
+      "say": "size: \"Medium · 4 processors · 16 GB memory\"",
+      "dontSay": ["vCPU", "vCPUs", "GiB", "instance family"],
+      "cli": "--instance-type (shown as \"AWS type: m7i.xlarge\")"
+    },
+    { "concept": "time limit", "say": "time limit", "dontSay": ["TTL", "lifetime", "time-to-live", "time to live"], "cli": "--ttl" },
+    { "concept": "spending limit", "say": "spending limit", "dontSay": ["cost cap", "cost limit", "budget"], "cli": "--cost-limit" },
+    { "concept": "maximum cost", "say": "at most $X", "dontSay": ["ceiling", "cost bound", "upper bound"], "cli": "TTL x rate" },
+    { "concept": "cost so far", "say": "about $X so far (estimate)", "dontSay": ["accumulated cost"], "cli": "spawn cost" },
+    {
+      "concept": "terminate",
+      "say": "terminate (+ \"deletes the instance and everything on its disk\")",
+      "dontSay": ["shut down", "shutdown", "shuts down", "reap", "reaped", "reaper", "kill", "killed", "destroy"],
+      "cli": "spawn terminate"
+    },
+    {
+      "concept": "stop / start",
+      "say": "stop (+ \"disk kept, small storage charge, still terminated at the time limit\") / start",
+      "dontSay": ["pause", "paused", "hibernate", "hibernated", "suspend"],
+      "cli": "spawn stop / spawn start"
+    },
+    { "concept": "extend", "say": "extend", "dontSay": [], "cli": "spawn extend" },
+    { "concept": "connect", "say": "connect / command line", "dontSay": ["shell", "SSM", "session", "sessions", "SSH"], "cli": "spawn connect" },
+    { "concept": "location", "say": "location: \"US East (N. Virginia)\"", "dontSay": ["availability zone", "AZ"], "cli": "--region (AZ: advanced only)" },
+    { "concept": "Spot", "say": "Spot (cheaper, can be taken back)", "dontSay": ["interruptible", "preemptible"], "cli": "--spot" },
+    { "concept": "standard price", "say": "standard price, won't be taken back", "dontSay": ["on-demand", "on demand"], "cli": "on-demand" },
+    { "concept": "list price", "say": "list price from July 2026", "dontSay": ["static price", "offline price", "Price List"], "cli": "static bundled price" },
+    { "concept": "sold out", "say": "sold out / none free right now", "dontSay": ["InsufficientInstanceCapacity", "insufficient capacity"], "cli": "capacity error" },
+    { "concept": "not approved", "say": "not approved for this size yet", "dontSay": ["vCPU quota", "VcpuLimitExceeded", "service quota", "Service Quotas"], "cli": "Service Quotas" },
+    { "concept": "watch", "say": "watch / wait for one", "dontSay": ["capacity poller", "poller"], "cli": "lagotto watch" },
+    { "concept": "hold", "say": "hold (a reservation, costs while held)", "dontSay": ["ODCR", "capacity reservation"], "cli": "lagotto watch --action hold" },
+    { "concept": "account", "say": "your AWS account ending 9012", "dontSay": ["ARN", "account ID"], "cli": "AWS account ID" },
+    { "concept": "sign in", "say": "sign in with your institution", "dontSay": ["federate", "federated", "OIDC", "STS", "log in", "login"], "cli": "AssumeRoleWithWebIdentity" },
+    { "concept": "signed out", "say": "you've been signed out", "dontSay": ["session expired", "token", "tokens", "credentials"], "cli": "STS credential expiry" },
+    { "concept": "past its time limit", "say": "still running past its time limit", "dontSay": ["orphan", "orphans", "orphaned"], "cli": "orphans / reaper" }
+  ],
+  "toolNames": {
+    "$comment": "Brief §6 rule 4: no tool or AWS service names in body copy. They may appear in Details, the command-line footer and the 'AWS type' label. 'AWS' itself is allowed: 'your AWS account', 'AWS type', 'AWS list prices'.",
+    "terms": ["spawn", "truffle", "lagotto", "spored", "strata", "EC2", "IAM", "S3", "CloudFormation", "DynamoDB", "Lambda", "Session Manager", "Globus", "CILogon", "CloudTrail"]
+  },
+  "patterns": [
+    { "name": "region code", "regex": "\\b(?:us|eu|ap|ca|sa|me|af|il|mx)(?:-gov)?-[a-z]+-\\d\\b", "say": "the location's name, e.g. US East (N. Virginia)" },
+    { "name": "full AWS account id", "regex": "\\b\\d{12}\\b", "say": "AWS account ending 9012" },
+    { "name": "instance id", "regex": "\\bi-[0-9a-f]{8,17}\\b", "say": "the instance's name; the id belongs under Details" },
+    { "name": "build variable", "regex": "\\bVITE_[A-Z_]+\\b", "say": "\"This site isn't finished being set up\"; build variables go to the console only" }
+  ]
+}

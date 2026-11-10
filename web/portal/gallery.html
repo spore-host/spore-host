@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Component gallery — spore.host</title>
+  <meta name="robots" content="noindex">
+  <!-- Gate build only (portal/vite.config.ts). Never deployed. -->
+  <meta name="spore-host-page" content="portal-gallery">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Atkinson+Hyperlegible+Mono:wght@400;700&display=swap">
+  <script type="module" src="./src/gallery/main.ts"></script>
+</head>
+<body>
+  <main id="main" tabindex="-1">
+    <div id="page"></div>
+  </main>
+  <div id="announce-polite" class="visually-hidden" role="status" aria-live="polite"></div>
+  <div id="announce-assertive" class="visually-hidden" role="alert"></div>
+</body>
+</html>

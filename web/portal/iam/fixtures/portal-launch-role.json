@@ -1,0 +1,87 @@
+{
+  "$comment": "SimulateCustomPolicy cases for the portal role (iam/policies/portal-launch-role.json). Rules are in iam/simulate.ts: at least one denied case, an allowed case per inventory action, and a denied case for every action of every conditioned statement. realCall:true marks tag-gated allows that also need one real call in the real-AWS e2e harness, because the simulator misjudges some tag conditions. 111122223333 is AWS's documentation account id; the live job substitutes the caller's.",
+  "policyFile": "portal-launch-role.json",
+  "account": "111122223333",
+  "sporedInstanceRole": "spored-instance-role",
+  "cases": [
+    { "name": "list instances", "action": "ec2:DescribeInstances", "resource": "*", "expect": "allowed" },
+    { "name": "launch", "action": "ec2:RunInstances", "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*", "expect": "allowed" },
+    {
+      "name": "terminate a spawn-managed instance",
+      "action": "ec2:TerminateInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": { "aws:ResourceTag/spawn:managed": "true" },
+      "expect": "allowed",
+      "realCall": true
+    },
+    {
+      "name": "terminate an instance spawn did not launch",
+      "action": "ec2:TerminateInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "expect": "denied"
+    },
+    {
+      "name": "terminate an instance tagged spawn:managed=false",
+      "action": "ec2:TerminateInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": { "aws:ResourceTag/spawn:managed": "false" },
+      "expect": "denied"
+    },
+    {
+      "name": "stop a spawn-managed instance",
+      "action": "ec2:StopInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": { "aws:ResourceTag/spawn:managed": "true" },
+      "expect": "allowed",
+      "realCall": true
+    },
+    { "name": "stop an instance spawn did not launch", "action": "ec2:StopInstances", "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0", "expect": "denied" },
+    {
+      "name": "start a spawn-managed instance",
+      "action": "ec2:StartInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": { "aws:ResourceTag/spawn:managed": "true" },
+      "expect": "allowed",
+      "realCall": true
+    },
+    { "name": "start an instance spawn did not launch", "action": "ec2:StartInstances", "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0", "expect": "denied" },
+    {
+      "name": "pass spored's role to EC2",
+      "action": "iam:PassRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/${SPORED_INSTANCE_ROLE}",
+      "context": { "iam:PassedToService": "ec2.amazonaws.com" },
+      "expect": "allowed"
+    },
+    {
+      "name": "pass spored's role to another service",
+      "action": "iam:PassRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/${SPORED_INSTANCE_ROLE}",
+      "context": { "iam:PassedToService": "lambda.amazonaws.com" },
+      "expect": "denied"
+    },
+    {
+      "name": "pass any other role to EC2",
+      "action": "iam:PassRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/AdminRole",
+      "context": { "iam:PassedToService": "ec2.amazonaws.com" },
+      "expect": "denied"
+    },
+    {
+      "name": "open a command line on a spawn-managed instance",
+      "action": "ssm:StartSession",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": { "ssm:resourceTag/spawn:managed": "true" },
+      "expect": "allowed",
+      "realCall": true
+    },
+    {
+      "name": "open a command line on any other instance",
+      "action": "ssm:StartSession",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "expect": "denied"
+    },
+    { "name": "never create IAM roles", "action": "iam:CreateRole", "resource": "arn:aws:iam::${ACCOUNT_ID}:role/anything", "expect": "denied" },
+    { "name": "never change an instance's attributes", "action": "ec2:ModifyInstanceAttribute", "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0", "expect": "denied" },
+    { "name": "never read S3", "action": "s3:GetObject", "resource": "arn:aws:s3:::any-bucket/any-key", "expect": "denied" }
+  ]
+}
