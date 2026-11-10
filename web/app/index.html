@@ -3,17 +3,96 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>spore.host — portal</title>
-  <meta name="description" content="The spore.host portal — launch and manage ephemeral research compute in your own AWS account, driven by the spore.host command-line tools.">
-  <script>(function(){var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}());</script>
+  <title>The spore.host web app is being rebuilt — spore.host</title>
+  <meta name="description" content="The spore.host web app is being rebuilt and isn't available right now. Use the spawn, truffle and lagotto command-line tools instead.">
+  <meta name="robots" content="noindex">
+  <!-- Stable marker for deploy-site.yaml: the build and the live check both
+       assert this exact string, proving /app/ serves this placeholder and not
+       the old portal (spore-host#645). Change it there too if you change it. -->
+  <meta name="spore-host-page" content="app-placeholder">
+  <!-- Static on purpose: no script, so nothing here needs JavaScript. Absolute
+       paths, so it renders the same at /app, /app/ and /app/index.html. Old
+       deep links (/app/#/…) land here too: the fragment never reaches the server. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
-  <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 </head>
 <body>
-  <div id="portal-root"></div>
-  <script type="module" src="./main.ts"></script>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <div class="nav-brand">
+        <a href="/" aria-label="spore.host home">
+          <img class="nav-logo-img" src="/assets/brand/spore-host-logo.png" alt="spore.host" width="1983" height="793">
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content" class="app-placeholder">
+    <div class="container">
+      <h1>The spore.host web app is being rebuilt</h1>
+      <p class="app-placeholder-lede">
+        It isn't available right now. You can do everything today with the
+        spore.host command-line tools. They run on your computer and work in
+        your own AWS account.
+      </p>
+
+      <h2>The tools</h2>
+      <ul class="app-placeholder-tools">
+        <li><a href="https://docs.spore.host/tools/spawn"><strong>spawn</strong></a>: launch and manage machines.</li>
+        <li><a href="https://docs.spore.host/tools/truffle"><strong>truffle</strong></a>: find machine types, availability and prices.</li>
+        <li><a href="https://docs.spore.host/tools/lagotto"><strong>lagotto</strong></a>: wait for scarce capacity.</li>
+      </ul>
+
+      <h2>Install them</h2>
+      <h3>macOS or Linux (Homebrew)</h3>
+<pre><code>brew install spore-host/tap/spawn
+brew install spore-host/tap/truffle
+brew install spore-host/tap/lagotto</code></pre>
+
+      <h3>Windows (Scoop)</h3>
+<pre><code>scoop bucket add spore-host https://github.com/spore-host/scoop-bucket
+scoop install spawn truffle lagotto</code></pre>
+
+      <h3>Debian, Ubuntu, RHEL or Fedora</h3>
+      <p>
+        Each tool has <code>.deb</code> and <code>.rpm</code> packages on its
+        releases page:
+        <a href="https://github.com/spore-host/spawn/releases/latest">spawn</a>,
+        <a href="https://github.com/spore-host/truffle/releases/latest">truffle</a>,
+        <a href="https://github.com/spore-host/lagotto/releases/latest">lagotto</a>.
+        The <a href="https://docs.spore.host/guides/installation">installation guide</a>
+        has the commands, and how to verify a download.
+      </p>
+
+      <h2>Get started</h2>
+      <ul>
+        <li><a href="https://docs.spore.host/quickstart">Quick start</a>: sign in to AWS, launch your first machine, and clean up.</li>
+        <li><a href="https://docs.spore.host/guides/installation">Installation guide</a>: every install method.</li>
+        <li><a href="https://docs.spore.host/">spore.host documentation</a>: everything else.</li>
+      </ul>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div>
+        <div class="footer-brand">spore.host</div>
+        <div class="footer-tagline">Ephemeral compute for research.</div>
+      </div>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="/">Home</a>
+        <a href="https://docs.spore.host/">Docs</a>
+        <a href="https://github.com/spore-host/spore-host">GitHub</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </nav>
+    </div>
+  </footer>
 </body>
 </html>

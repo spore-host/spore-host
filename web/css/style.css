@@ -944,3 +944,22 @@ footer {
 .truffle-detail { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.75rem; margin: 0.5rem 0 0; padding-top: 0.5rem; border-top: 1px solid var(--border); font-size: 0.8rem; }
 .truffle-detail dt { color: var(--text-muted); }
 .truffle-detail dd { margin: 0; font-family: ui-monospace, monospace; }
+
+/* ── /app placeholder (app/index.html) — shown while the web app is rebuilt
+   (spore-host#645). Text links are underlined so they are not told apart by
+   colour alone (the global `a` rule removes the underline). ── */
+.app-placeholder { padding: 4rem 0 5rem; }
+.app-placeholder .container { max-width: 720px; }
+.app-placeholder h1 {
+  font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 800;
+  letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 1rem;
+}
+.app-placeholder h2 { font-size: 1.35rem; font-weight: 700; margin: 2.5rem 0 0.75rem; }
+.app-placeholder h3 { font-size: 1rem; font-weight: 700; margin: 1.5rem 0 0.5rem; }
+.app-placeholder p, .app-placeholder li { line-height: 1.7; }
+.app-placeholder ul { padding-left: 1.25rem; display: grid; gap: 0.35rem; }
+.app-placeholder pre { border-radius: var(--radius); }
+.app-placeholder-lede { font-size: 1.1rem; }
+.app-placeholder a { color: var(--spawn); text-decoration: underline; text-underline-offset: 0.15em; }
+[data-theme="dark"] .app-placeholder a { color: var(--brand-teal); }
+.app-placeholder a:focus-visible { outline: 2px solid var(--spawn); outline-offset: 2px; border-radius: 2px; }

@@ -1,17 +1,19 @@
 name: Deploy Site
 
-# Deploys the marketing site AND the portal (spore.host + spore.host/app) on
-# every push to main under web/**. Before this workflow the site had NO CI
+# Deploys the marketing site AND spore.host/app on every push to main under
+# web/**. spore.host/app is currently a static placeholder while the portal is
+# rebuilt from scratch (spore-host#645); the old portal source sits unbuilt in
+# web/legacy-app/. Before this workflow the site had NO CI
 # deploy — it shipped only via the manual web/deploy.sh, so homepage edits sat in
 # main until someone ran the script by hand and the live site drifted from source
 # (exactly the staleness external reviews kept hitting). This gives web/ the same
 # continuous, verified deploy the docs already have.
 #
-# web/ is a Vite build: `npm run build` emits web/dist/ (marketing pages copied
-# verbatim + the portal SPA with hashed assets). We MUST build and sync dist/,
-# never the source tree: web/app/index.html references `./main.ts`, which only
-# exists in source. Syncing raw web/ overwrites the built app/index.html with
-# that source one and the live portal 404s on main.ts into an empty shell.
+# `npm run build` emits web/dist/ (marketing pages + the app/ placeholder copied
+# verbatim by scripts/copy-static.mjs; no bundler runs). We MUST still build and
+# sync dist/, never the source tree: dist/ holds only publishable files and has
+# the feature-flagged blocks removed, while raw web/ also carries legacy-app/,
+# node_modules/ and the unflagged pages.
 
 on:
   push:
@@ -44,6 +46,8 @@ jobs:
       # Typecheck before deploying. A type error here means the bundle is wrong;
       # better to fail than ship it. web-ci.yml now gates this pre-merge too, so
       # this is the second line of defence rather than the only one.
+      # The old portal (legacy-app/) is not deployed, but it still typechecks and
+      # its tests still run, so it stays a sound reference for the rebuild (#645).
       - name: Typecheck portal
         working-directory: web
         run: npm run typecheck
@@ -51,30 +55,38 @@ jobs:
       # Test before deploying. This step was missing entirely: the portal's suite
       # ran on developer machines and nowhere else, so a regression in the guided
       # launch defaults (TTL present, spot: false) would deploy to spore.host
-      # unnoticed (spore-host#506).
+      # unnoticed (spore-host#506). It now also pins the /app placeholder
+      # (scripts/app-placeholder.test.mjs).
       - name: Test portal
         working-directory: web
         run: npm test
 
-      # Emits web/dist: hashed portal SPA under app/ + assets/, marketing pages
-      # and css/assets/cloudformation copied verbatim (scripts/copy-static.mjs).
-      # Build-time config comes from the committed web/.env.production (all public
-      # identifiers — see the comments there).
-      - name: Build site + portal
+      # Emits web/dist: marketing pages, the app/ placeholder and
+      # css/assets/cloudformation, copied verbatim (scripts/copy-static.mjs).
+      # Build-time flags come from the committed web/.env.production.
+      - name: Build site
         working-directory: web
         run: npm run build
 
-      # Guard the exact failure this workflow used to cause: the built portal HTML
-      # must reference a hashed bundle, never the source ./main.ts entry.
-      - name: Assert the portal build is not a source stub
+      # spore.host/app must be the placeholder (spore-host#645): the built page
+      # carries its marker and loads no script, and no old portal bundle
+      # (assets/app-*.js) is in the build to be uploaded.
+      - name: Assert /app is the placeholder and no portal bundle ships
         run: |
           set -euo pipefail
-          if grep -qF 'main.ts' web/dist/app/index.html; then
-            echo "::error::web/dist/app/index.html still references main.ts — the Vite build did not replace the entry." >&2
+          page=web/dist/app/index.html
+          grep -qF '<meta name="spore-host-page" content="app-placeholder">' "$page" \
+            || { echo "::error::$page is not the /app placeholder (marker missing)." >&2; exit 1; }
+          if grep -qi '<script' "$page"; then
+            echo "::error::$page loads a script; the placeholder must not." >&2
             exit 1
           fi
-          grep -qE 'src="\.\./assets/app-[^"]+\.js"' web/dist/app/index.html
-          echo "✅ portal HTML references a hashed bundle"
+          bundles="$(find web/dist/assets -name 'app-*.js' -print)"
+          if [ -n "$bundles" ]; then
+            echo "::error::old portal bundle(s) in the build: $bundles" >&2
+            exit 1
+          fi
+          echo "✅ /app is the placeholder; no portal bundle in dist/"
 
       # The animated hero degrades silently: if the .riv or the vendored Rive
       # runtime is missing from dist/, the homepage still renders (it just falls
@@ -158,19 +170,20 @@ jobs:
             body="$(curl -fsS "$BASE/$1")" || return 1
             grep -qF "$2" <<<"$body"
           }
-          # The portal's entry must reference a hashed bundle live, not main.ts —
-          # a source stub returns 200 for /app/ but renders an empty shell, so
-          # checking the status code alone would miss it.
+          # /app/ must serve the placeholder (spore-host#645): its marker present
+          # and no reference to the old portal bundle. The status code alone
+          # would also pass for the old portal, so match the body.
           portal_ok() {
             local body
             body="$(curl -fsS "$BASE/app/")" || return 1
-            grep -qE 'src="\.\./assets/app-[^"]+\.js"' <<<"$body"
+            grep -qF '<meta name="spore-host-page" content="app-placeholder">' <<<"$body" \
+              && ! grep -qE 'assets/app-[^"]*\.js' <<<"$body"
           }
           ok=0
           for attempt in 1 2 3 4 5 6 7 8; do
             if check "/" "Five tools" && portal_ok; then
               ok=1
-              echo "✅ Live spore.host serves the current homepage + portal bundle."
+              echo "✅ Live spore.host serves the current homepage + the /app placeholder."
               break
             fi
             echo "Attempt $attempt: live site not current yet (invalidation may still be propagating) — waiting…"

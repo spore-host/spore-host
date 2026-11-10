@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<!-- The OLD spore.host portal, kept for reference only and NOT built or deployed.
+     spore.host/app is a static placeholder (web/app/index.html) until the portal
+     is rebuilt from scratch (spore-host#645). `npm run dev` still serves this at
+     /legacy-app/index.html; its tests still run under `npm test`. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>spore.host — portal</title>
+  <meta name="description" content="The spore.host portal — launch and manage ephemeral research compute in your own AWS account, driven by the spore.host command-line tools.">
+  <script>(function(){var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}());</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+</head>
+<body>
+  <div id="portal-root"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
