@@ -69,8 +69,9 @@ jobs:
         run: npm run build
 
       # spore.host/app must be the placeholder (spore-host#645): the built page
-      # carries its marker and loads no script, and no old portal bundle
-      # (assets/app-*.js) is in the build to be uploaded.
+      # carries its marker and loads no script, no old portal bundle
+      # (assets/app-*.js) is in the build to be uploaded, and nothing from the
+      # rebuilt portal (web/portal/, #683) is either.
       - name: Assert /app is the placeholder and no portal bundle ships
         run: |
           set -euo pipefail
@@ -86,7 +87,15 @@ jobs:
             echo "::error::old portal bundle(s) in the build: $bundles" >&2
             exit 1
           fi
-          echo "✅ /app is the placeholder; no portal bundle in dist/"
+          # The rebuilt portal (web/portal/, #683) is not published until slice 1
+          # (#684) passes its gates. It builds into web/.portal-build/, never dist/;
+          # its pages carry content="portal…" markers, so any that leak are found.
+          leaked="$(grep -rlF 'name="spore-host-page" content="portal' web/dist || true)"
+          if [ -n "$leaked" ] || [ -e web/dist/portal ]; then
+            echo "::error::the rebuilt portal is in the build and would be deployed: ${leaked:-web/dist/portal}" >&2
+            exit 1
+          fi
+          echo "✅ /app is the placeholder; no old or rebuilt portal in dist/"
 
       # The animated hero degrades silently: if the .riv or the vendored Rive
       # runtime is missing from dist/, the homepage still renders (it just falls

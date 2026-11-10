@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gate self-test — spore.host</title>
+  <meta name="robots" content="noindex">
+  <!-- GATE BUILD ONLY. A page that is broken ON PURPOSE, one defect per gate.
+       e2e/selftest.spec.ts runs every rendered-page check against it and
+       asserts each one FAILS, so CI proves on every run that the gates can
+       fail. If a check stops catching its defect here, that spec goes red. -->
+  <meta name="spore-host-page" content="portal-selftest">
+</head>
+<body>
+  <main>
+    <h1>Gate self-test</h1>
+
+    <!-- axe: a field with no label (SC 1.3.1 / 4.1.2), and text below 4.5:1 (SC 1.4.3). -->
+    <section id="defect-axe">
+      <input type="text" data-control="selftest.unlabelled">
+      <p style="color: #a0a0a0; background: #ffffff">Low-contrast text the axe gate must catch.</p>
+    </section>
+
+    <!-- reflow: a fixed-width box wider than 320 CSS px (SC 1.4.10). -->
+    <section id="defect-reflow">
+      <div style="inline-size: 480px; block-size: 8px; background: #eeeeee"></div>
+    </section>
+
+    <!-- copy lint: banned words in body copy. -->
+    <section id="defect-copy">
+      <p>Your machine will shut down when its TTL ends, and spawn will reap the orphan.</p>
+    </section>
+
+    <!-- matrix: a control with no data-control, and one whose id has no CLI row. -->
+    <section id="defect-matrix">
+      <button type="button" style="min-inline-size: 44px; min-block-size: 44px">Reboot</button>
+      <button type="button" data-control="instance.reboot" style="min-inline-size: 44px; min-block-size: 44px">Reboot rnaseq-align</button>
+    </section>
+
+    <!-- keyboard: a focus indicator removed (SC 2.4.7), and a target under 44 px (project rule). -->
+    <section id="defect-focus">
+      <a href="#x" data-control="selftest.no-ring" style="outline: none; box-shadow: none; display: inline-block; padding: 16px">No focus ring</a>
+      <button type="button" data-control="selftest.tiny" style="inline-size: 20px; block-size: 20px; padding: 0">x</button>
+    </section>
+
+    <!-- keyboard: a trap. Tab on this field always puts focus back on it (SC 2.1.2). -->
+    <section id="defect-trap">
+      <label for="trap">Trap</label>
+      <input id="trap" type="text" data-control="selftest.trap">
+    </section>
+  </main>
+  <script type="module">
+    document.getElementById("trap").addEventListener("keydown", (e) => {
+      if (e.key === "Tab") e.preventDefault();
+    });
+  </script>
+</body>
+</html>

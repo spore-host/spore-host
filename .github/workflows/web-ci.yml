@@ -6,22 +6,36 @@ name: Web CI
 # portal merged green and the failure surfaced during the deploy — or not at all,
 # since deploy-site.yaml never ran `npm test` either (fixed there too).
 #
-# Its own file rather than a job in ci.yml because GitHub Actions has no per-job
-# `paths:` filter, and ci.yml must keep running on Go/docs PRs. Same split as
-# deploy-site.yaml.
+# Its own file rather than a job in ci.yml, so its triggers and gating stay
+# separate from the Go/docs jobs. Same split as deploy-site.yaml.
 #
 # Lives here rather than being folded into #505 so the disclosure work wasn't held
 # up behind a new workflow (spore-host#506).
 
+# REQUIRED CHECKS. Branch protection on main requires "Portal typecheck + test
+# + build" and "Portal gates (unbuilt, not deployed)". A workflow-level
+# `paths:` filter on pull_request would leave a PR that doesn't touch web/
+# without those checks at all, and it would wait for them forever. So every PR
+# runs this workflow, and the `changes` job decides whether the heavy jobs do
+# real work. A job skipped by its `if:` reports success, which satisfies a
+# required check. Keep the two job names exactly as they are: branch
+# protection matches on them.
+#
+# What counts as relevant: web/**, plus docs/gen/** and
+# infra/tofu/portal-oidc/**, which the portal gates read (the CLI⇄GUI matrix
+# is checked against the generated CLI reference, the IAM fixture against the
+# tofu policy), and this file.
+#
+# Pushes to main keep a paths filter: no check is required there, and a push
+# that changes nothing relevant needs no run.
 on:
   pull_request:
-    paths:
-      - 'web/**'
-      - '.github/workflows/web-ci.yml'
   push:
     branches: [main]
     paths:
       - 'web/**'
+      - 'docs/gen/**'
+      - 'infra/tofu/portal-oidc/**'
       - '.github/workflows/web-ci.yml'
   workflow_dispatch:
 
@@ -29,8 +43,53 @@ permissions:
   contents: read
 
 jobs:
+  # Cheap: a checkout and one git diff, no third-party action. On a PR, diff
+  # the head against its merge base with the base branch. Pushes to main and
+  # manual runs always count as relevant (the push trigger is already
+  # path-filtered).
+  changes:
+    name: Detect web changes
+    runs-on: ubuntu-latest
+    outputs:
+      portal: ${{ steps.diff.outputs.portal }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The merge base must be reachable.
+          fetch-depth: 0
+
+      - name: Did this change touch the portal or its inputs?
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "portal=true" >> "$GITHUB_OUTPUT"
+            echo "$EVENT: always relevant"
+            exit 0
+          fi
+          base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          files="$(git diff --name-only "$base" "$HEAD_SHA")"
+          relevant="$(grep -E '^(web/|docs/gen/|infra/tofu/portal-oidc/|\.github/workflows/web-ci\.yml$)' <<<"$files" || true)"
+          if [ -n "$relevant" ]; then
+            echo "portal=true" >> "$GITHUB_OUTPUT"
+            echo "Relevant changes:"
+            sed 's/^/  /' <<<"$relevant"
+          else
+            echo "portal=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing under web/, docs/gen/ or infra/tofu/portal-oidc/ changed: the portal jobs skip, which satisfies their required checks."
+          fi
+
+  # Fail closed: if `changes` itself fails or is skipped, run the heavy jobs
+  # anyway. A skipped job counts as passing, so gating only on its output
+  # would let a broken detector wave every PR through.
   web-tests:
     name: Portal typecheck + test + build
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.portal == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -92,4 +151,61 @@ jobs:
             echo "::error::old portal bundle(s) in the build: $bundles" >&2
             exit 1
           fi
-          echo "✅ /app is the placeholder; no portal bundle in dist/"
+          # The rebuilt portal (web/portal/, #683) is not published until slice 1
+          # (#684) passes its gates. It builds into web/.portal-build/, never dist/;
+          # its pages carry content="portal…" markers, so any that leak are found.
+          leaked="$(grep -rlF 'name="spore-host-page" content="portal' web/dist || true)"
+          if [ -n "$leaked" ] || [ -e web/dist/portal ]; then
+            echo "::error::the rebuilt portal is in the build and would be deployed: ${leaked:-web/dist/portal}" >&2
+            exit 1
+          fi
+          echo "✅ /app is the placeholder; no old or rebuilt portal in dist/"
+
+  # The rebuilt portal (web/portal/, Phase 0 #683). NOT DEPLOYED: it builds into
+  # web/.portal-build/ and deploy-site publishes web/dist/ only (see the
+  # placeholder step above). A slice ships only when these pass (#645):
+  #   - offline gates (npm run portal:test): token contrast, tokens-only CSS,
+  #     banned-words lint on module copy, CLI⇄GUI matrix vs docs/gen, the IAM
+  #     inventory from the production bundle, the IAM fixtures vs the policy and
+  #     the tofu source, and the unit tests of the ported modules;
+  #   - rendered gates (npm run portal:e2e, Playwright on a local `vite
+  #     preview`): axe on every route and gallery state, keyboard and focus,
+  #     44 px targets, 320 px reflow with and without text spacing, banned words
+  #     in rendered copy, the rendered CLI⇄GUI matrix, and a self-test page that
+  #     proves each rendered check can fail.
+  # No AWS credentials exist in this job and the specs abort any AWS request.
+  # The live IAM simulate and drift check are portal-iam-live.yml.
+  portal-gates:
+    name: Portal gates (unbuilt, not deployed)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.portal == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      # The browser build matching the pinned @playwright/test version.
+      - name: Install Chromium for Playwright
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck
+        working-directory: web
+        run: npm run portal:typecheck
+
+      - name: Unit tests and offline gates
+        working-directory: web
+        run: npm run portal:test
+
+      - name: Rendered gates (axe, keyboard, reflow, copy, matrix, self-test)
+        working-directory: web
+        run: npm run portal:e2e

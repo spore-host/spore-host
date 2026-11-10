@@ -1,0 +1,108 @@
+/*
+ * spore.host portal design tokens (spore-host#683, brief §5).
+ *
+ * The ONLY file allowed to hold raw colours and lengths. components.css and
+ * layout.css use var(--…) only; gates/token-lint.test.ts fails the build on a
+ * raw hex, px or rem anywhere else (media queries excepted, since custom
+ * properties cannot appear in them).
+ *
+ * Light theme only (owner decision D13). Every colour pair a component uses is
+ * listed in contrast-pairs.json and checked against WCAG 2.2 AA by
+ * gates/contrast.test.ts; a colour token that appears in no pair fails that
+ * gate too, so a new colour cannot ship unchecked.
+ */
+:root {
+  /* ── Type ─────────────────────────────────────────────────────────────── */
+  --font-sans: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --weight-regular: 400;
+  --weight-bold: 700;
+
+  /* size / line-height pairs. caption is metadata only; body is the floor for prose. */
+  --text-caption: 0.8125rem;   --leading-caption: 1.125rem;  /* 13/18 */
+  --text-small: 0.875rem;      --leading-small: 1.25rem;     /* 14/20 */
+  --text-body: 1rem;           --leading-body: 1.5rem;       /* 16/24 */
+  --text-lead: 1.125rem;       --leading-lead: 1.75rem;      /* 18/28 */
+  --text-h3: 1.25rem;          --leading-h3: 1.75rem;        /* 20/28 */
+  --text-h2: 1.5rem;           --leading-h2: 2rem;           /* 24/32 */
+  --text-h1: 2rem;             --leading-h1: 2.5rem;         /* 32/40, exactly one per page */
+  --text-stat: 2.25rem;        --leading-stat: 2.75rem;      /* 36/44, tabular numerals */
+
+  /* ── Spacing (4 px base) ──────────────────────────────────────────────── */
+  --space-1: 0.25rem;  /* 4 */
+  --space-2: 0.5rem;   /* 8 */
+  --space-3: 0.75rem;  /* 12 */
+  --space-4: 1rem;     /* 16 */
+  --space-6: 1.5rem;   /* 24 */
+  --space-8: 2rem;     /* 32 */
+  --space-12: 3rem;    /* 48 */
+  --space-16: 4rem;    /* 64 */
+  --gap-field: var(--space-4);
+  --pad-card: var(--space-6);
+  --gap-section: var(--space-8);
+  --inset-page: var(--space-6);
+  --inset-page-narrow: var(--space-4);
+
+  /* ── Sizes ────────────────────────────────────────────────────────────── */
+  --width-list: 65rem;       /* 1040: List template */
+  --width-task: 40rem;       /* 640: Task template column */
+  --width-card: 36rem;       /* 576: Centred card template */
+  --width-summary: 20rem;    /* 320: sticky summary at >= 1024 */
+  --width-radio-card: 14rem; /* 224: narrowest radio card before the grid wraps */
+  --target-min: 2.75rem;     /* 44: project rule for every basic-mode target (beyond SC 2.5.8's 24) */
+  --control-height: 2.75rem; /* buttons and fields meet the 44 rule */
+  --topbar-height: 4rem;
+  --logo-height: 2rem;
+  --dot-size: 0.625rem;
+  --bar-height: 0.5rem;
+  --hairline: 1px;           /* visually-hidden clip box */
+  --border-width: 1px;
+  --border-width-strong: 2px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* ── Radius ───────────────────────────────────────────────────────────── */
+  --radius-control: 0.375rem; /* 6 */
+  --radius-card: 0.75rem;     /* 12 */
+  --radius-pill: 999px;
+
+  /* ── Colour: text and surfaces ────────────────────────────────────────── */
+  --color-text: #111827;
+  --color-text-muted: #586172;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f7f8fa;
+  --color-surface-sunken: #eef0f3;
+  --color-border: #e3e6eb;          /* decorative dividers only, never a control boundary */
+  /* Control boundaries, >= 3:1 non-text (SC 1.4.11) on every surface. The brief
+     proposed #8a93a3, which is 3.10:1 on white but 2.91:1 on surface-subtle, so
+     it fails wherever a field sits on a subtle panel. #7d8696 is 3.45 there. */
+  --color-border-control: #7d8696;
+
+  /* ── Colour: the one accent (brand blue) ──────────────────────────────── */
+  --color-primary: #4059e5;
+  --color-primary-hover: #3347c4;
+  --color-primary-subtle: #eef0ff;
+  --color-on-primary: #ffffff;
+
+  /* ── Colour: status. Warning colour is reserved for money still being spent
+     or data about to be lost (brief §6 rule 10). ───────────────────────── */
+  --color-success: #047857;
+  --color-success-subtle: #ecfdf5;
+  --color-warning: #92400e;
+  --color-warning-subtle: #fffbeb;
+  --color-warning-graphic: #b45309;
+  --color-danger: #b91c1c;
+  --color-danger-hover: #991b1b;
+  --color-danger-subtle: #fef2f2;
+  --color-info: var(--color-primary);
+  --color-info-subtle: var(--color-primary-subtle);
+  --color-neutral-graphic: #6b7385;
+
+  /* ── Focus: 2 px primary ring, 2 px white offset, never the control's fill */
+  --color-focus: var(--color-primary);
+  --color-focus-offset: #ffffff;
+
+  /* ── Elevation ────────────────────────────────────────────────────────── */
+  --shadow-raised: 0 1px 2px rgb(17 24 39 / 0.08), 0 2px 8px rgb(17 24 39 / 0.06);
+  --backdrop: rgb(17 24 39 / 0.5);
+}

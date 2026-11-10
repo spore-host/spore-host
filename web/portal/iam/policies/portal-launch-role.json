@@ -1,0 +1,90 @@
+{
+  "$comment": "The portal role's inline policies, rendered from infra/tofu/portal-oidc/main.tf (aws_iam_role_policy ec2_launch, pass_spored_profile, ssm_session). ${ACCOUNT_ID} and ${SPORED_INSTANCE_ROLE} are substituted by the simulator runner. gates/iam-policy-source.test.ts fails when the actions here and in main.tf disagree; the credential-gated live job compares this file with the deployed role (iam/live.test.ts). No Stop, Start or Terminate: the Lifecycle statement and the PortalEC2Manage policy were removed from the live role on 2026-11-10 (#678); slice 3 (#686) reintroduces them under #678's scoped policy.",
+  "role": "spore-portal-launch",
+  "policies": {
+    "PortalEC2Launch": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "RunAndInspect",
+          "Effect": "Allow",
+          "Action": [
+            "ec2:RunInstances",
+            "ec2:DescribeInstances",
+            "ec2:DescribeInstanceStatus",
+            "ec2:DescribeImages",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeVpcs",
+            "ec2:DescribeKeyPairs",
+            "ec2:CreateTags"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Sid": "ReadSpotAndQuotas",
+          "Effect": "Allow",
+          "Action": [
+            "ec2:DescribeSpotPriceHistory",
+            "ec2:DescribeInstanceTypeOfferings",
+            "servicequotas:GetServiceQuota",
+            "servicequotas:ListServiceQuotas"
+          ],
+          "Resource": "*"
+        }
+      ]
+    },
+    "PortalPassSporedProfile": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": "iam:PassRole",
+          "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/${SPORED_INSTANCE_ROLE}",
+          "Condition": {
+            "StringEquals": {
+              "iam:PassedToService": "ec2.amazonaws.com"
+            }
+          }
+        }
+      ]
+    },
+    "PortalSSMSession": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "StartSessionOnManagedInstances",
+          "Effect": "Allow",
+          "Action": [
+            "ssm:StartSession"
+          ],
+          "Resource": "arn:aws:ec2:*:*:instance/*",
+          "Condition": {
+            "StringEquals": {
+              "ssm:resourceTag/spawn:managed": "true"
+            }
+          }
+        },
+        {
+          "Sid": "StartSessionDocuments",
+          "Effect": "Allow",
+          "Action": [
+            "ssm:StartSession"
+          ],
+          "Resource": [
+            "arn:aws:ssm:*:*:document/AWS-StartInteractiveCommand",
+            "arn:aws:ssm:*:${ACCOUNT_ID}:document/SSM-SessionManagerRunShell"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ssm:TerminateSession",
+            "ssm:ResumeSession"
+          ],
+          "Resource": "arn:aws:ssm:*:*:session/*"
+        }
+      ]
+    }
+  }
+}

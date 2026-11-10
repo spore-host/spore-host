@@ -1,0 +1,91 @@
+name: Portal IAM (live, credential-gated)
+
+# The LIVE half of the portal's IAM coverage gate (spore-host#683):
+#   1. SimulateCustomPolicy over web/portal/iam/fixtures/ against the checked-in
+#      policy, including the required negative cases;
+#   2. the nightly drift check: the deployed portal role's inline policies must
+#      equal web/portal/iam/policies/ exactly, with nothing extra attached.
+# Both are web/portal/iam/live.test.ts, which runs only with PORTAL_IAM_LIVE=1.
+#
+# CREDENTIAL-GATED. It assumes the read-only audit role spore-portal-iam-audit
+# in 435415984226, through the GitHub Actions OIDC provider there. Both are
+# codified in infra/tofu/portal-oidc/main.tf (their named deleter). The role's
+# ARN is the repository variable PORTAL_IAM_AUDIT_ROLE_ARN, which is set. It
+# grants iam:SimulateCustomPolicy, plus iam:GetRole, iam:GetRolePolicy,
+# iam:ListRolePolicies and iam:ListAttachedRolePolicies on spore-portal-launch
+# only; live.test.ts calls nothing else (sts:GetCallerIdentity needs no grant).
+#
+# The role trusts repo:spore-host/spore-host:ref:refs/heads/main only, so this
+# works for the nightly run and for a manual run dispatched from main. A
+# manual run from any other branch fails to assume the role, by design.
+#
+# If the variable is ever unset, every run is a no-op that says so; nothing
+# calls AWS.
+#
+# Once the variable is set, a failure to assume the role or to read the policy
+# FAILS the run. It never skips quietly with credentials configured, so an
+# expired trust reads red, not green.
+#
+# Not covered here: one real call per tag-gated grant (the simulator misjudges
+# some tag conditions). That belongs to the real-AWS e2e harness with its leak
+# check, which is a later Phase 0 increment.
+
+# Scheduled and manual only, never on pull_request: PR code must not run with
+# AWS credentials. The offline half (web-ci.yml) gates PRs.
+on:
+  schedule:
+    - cron: '23 6 * * *'  # nightly drift check
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: SimulateCustomPolicy and role drift
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AUDIT_ROLE: ${{ vars.PORTAL_IAM_AUDIT_ROLE_ARN }}
+      AWS_REGION: us-east-1
+    steps:
+      - name: Skip when no audit role is configured
+        id: gate
+        run: |
+          if [ -z "${AUDIT_ROLE}" ]; then
+            echo "::notice::PORTAL_IAM_AUDIT_ROLE_ARN is not set: the live IAM simulate and drift check are skipped. No AWS call was made."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - if: steps.gate.outputs.run == 'true'
+        name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - if: steps.gate.outputs.run == 'true'
+        name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: ${{ env.AUDIT_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - if: steps.gate.outputs.run == 'true'
+        name: SimulateCustomPolicy fixtures and role drift
+        working-directory: web
+        env:
+          PORTAL_IAM_LIVE: '1'
+        run: npx vitest run --config portal/vitest.config.ts iam/live.test.ts
