@@ -15,6 +15,8 @@ own changelogs for CLI releases.
 
 ### Fixed
 
+- **Stop, start and terminate work from the portal's instance cards** (`infra/tofu/portal-oidc`). The portal launch role had no `ec2:StopInstances`/`StartInstances`/`TerminateInstances`, so every card button was refused by AWS. New `PortalEC2Manage` grants them on instances tagged `spawn:managed=true` only. Live policy added on 2026-11-10.
+
 - **Portal launches no longer fail with AccessDenied on iam:PassRole** (`infra/tofu/portal-oidc`). The grant named `role/<instance-profile-name>` (`spored-instance-profile`), a role that does not exist; PassRole is evaluated against the role *in* the profile, `spored-instance-role`. A new `spored_instance_role` variable carries it. The live policy in 435415984226 was corrected to the same document on 2026-11-10.
 - **The portal terminal can open a session** (`infra/tofu/portal-oidc`). `PortalSSMSession` allowed `arn:aws:ssm:*::document/SSM-SessionManagerRunShell` (an empty account, the form for AWS-owned documents), but that document is the *account's own* Session Manager preferences document, so its ARN carries the account ID. Every Connect failed with AccessDenied on `ssm:StartSession`. It is now scoped to this account. Live policy corrected on 2026-11-10.
 - **Instances launched with `--notify-platform teams` now send their Teams

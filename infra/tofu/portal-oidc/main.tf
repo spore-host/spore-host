@@ -240,6 +240,29 @@ resource "aws_iam_role_policy" "ec2_launch" {
   })
 }
 
+# Stop / start / terminate from the portal's instance cards (spawn-ts Dashboard
+# actions). Gated to spawn-managed instances, the same tag gate as the browser
+# terminal (PortalSSMSession), so a portal user can only act on instances spawn
+# launched. ec2:ResourceTag is EC2's own key, matching these EC2 actions.
+# Without this, every card button was refused by AWS and the Dashboard
+# swallowed the error (seen 2026-11-10; spawn-ts issue filed).
+resource "aws_iam_role_policy" "ec2_manage" {
+  name = "PortalEC2Manage"
+  role = aws_iam_role.portal_launch.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ManageSpawnInstances"
+      Effect   = "Allow"
+      Action   = ["ec2:StopInstances", "ec2:StartInstances", "ec2:TerminateInstances"]
+      Resource = "arn:aws:ec2:*:${data.aws_caller_identity.current.account_id}:instance/*"
+      Condition = {
+        StringEquals = { "ec2:ResourceTag/spawn:managed" = "true" }
+      }
+    }]
+  })
+}
+
 # iam:PassRole for the spored instance profile only — required to attach it at
 # RunInstances so the instance can self-terminate + call the DNS Lambda.
 resource "aws_iam_role_policy" "pass_spored_profile" {
