@@ -13,7 +13,7 @@ CloudFront:
   [`@spore-host/lagotto-ts`](https://github.com/spore-host/lagotto-ts). There is
   no portal backend of its own. AWS calls go from the tab to AWS with the signed-in
   user's short-lived credentials, and the account-wide features (cost history,
-  teams, the software catalog, Slack) call the shared dashboard API at
+  teams, the software catalog) call the shared dashboard API at
   `api.spore.host`.
 
 `dashboard.html` and `js/` are the older dashboard. The build does not copy them
@@ -32,6 +32,7 @@ web/
 │   ├── main.ts            boot: config, session, shell
 │   ├── shell.ts           header, sidebar, sign-in gate, hash router
 │   ├── config.ts          build-time defaults, overridable per visit (?region=…)
+│   ├── features.ts        build-time feature flags (VITE_EXPERIMENTAL_CHAT), off by default
 │   ├── session.ts         in-memory credentials, expiry warning, disclosure level
 │   ├── disclosure.ts      the guided / standard / expert levels
 │   ├── pricing.ts         the one place an instance type becomes a shown price
@@ -39,7 +40,8 @@ web/
 │   ├── auth/              Globus sign-in → STS AssumeRoleWithWebIdentity
 │   ├── guided/            the curated "what are you doing?" picker and launch flow
 │   └── surfaces/          one file per tool, listed in surfaces/registry.ts
-├── scripts/copy-static.mjs   copies the marketing pages + css/assets into dist/
+├── scripts/copy-static.mjs   copies the marketing pages + css/assets into dist/,
+│                              stripping experimental:chat blocks (static-flags.mjs)
 ├── vite.config.ts         build and test config
 └── package.json           the three -ts libraries + Vite, TypeScript, Vitest
 ```
@@ -57,8 +59,8 @@ is opened. Adding a tool means adding one surface file and one entry in
 | Terminal | yes | A shell on an instance over SSM Session Manager (no SSH, no port 22). |
 | Cost history | yes | The account's spend over time, from the dashboard API. |
 | Software catalog | no | The strata formations, from the dashboard API. |
-| Teams | yes | Team membership, from the dashboard API. Read-only at guided. |
-| Slack | no | Connects a Slack workspace through the dashboard API's OAuth flow. |
+| Teams | yes | spore.host team sharing (not Microsoft Teams): team membership, from the dashboard API. Read-only at guided. |
+| Slack | no | **Experimental, not in a default build.** Connects a Slack workspace through the dashboard API's OAuth flow. Shown only when built with `VITE_EXPERIMENTAL_CHAT=true` (spore-host#611); a default build emits no Slack chunk at all. |
 | Watch capacity | yes | lagotto-ts's `CapacityWatcher` polling for an instance type to become available, in this tab only. |
 | Connect account | no | Bring your own AWS account through a CloudFormation quick-create link. |
 
