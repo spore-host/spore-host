@@ -71,6 +71,10 @@ add their own permissions, listed further down.
         "iam:CreateRole",
         "iam:PutRolePolicy",
         "iam:AttachRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy",
         "iam:GetInstanceProfile",
         "iam:CreateInstanceProfile",
         "iam:AddRoleToInstanceProfile",
@@ -84,6 +88,31 @@ add their own permissions, listed further down.
         "arn:aws:iam::*:role/spawn-instance-*",
         "arn:aws:iam::*:instance-profile/spawn-instance-*"
       ]
+    },
+    {
+      "Sid": "SporedManagedPolicy",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:CreatePolicy",
+        "iam:DeletePolicy"
+      ],
+      "Resource": "arn:aws:iam::*:policy/spore-host/*"
+    },
+    {
+      "Sid": "DetachSporedManagedPolicy",
+      "Effect": "Allow",
+      "Action": "iam:DetachRolePolicy",
+      "Resource": [
+        "arn:aws:iam::*:role/spored*",
+        "arn:aws:iam::*:role/spawn-instance-*"
+      ],
+      "Condition": {
+        "ArnLike": {
+          "iam:PolicyARN": "arn:aws:iam::*:policy/spore-host/*"
+        }
+      }
     },
     {
       "Sid": "PassSporedRoleToEC2",
@@ -165,7 +194,7 @@ add their own permissions, listed further down.
 ```
 
 ::: warning Why the extra statements are required
-A launch does more than `RunInstances`. spawn **imports your SSH public key** (`ec2:ImportKeyPair`), may **create a security group** for the instance (`ec2:CreateSecurityGroup` / `AuthorizeSecurityGroupIngress`), and — so the in-instance `spored` daemon can manage the instance's lifecycle — **creates a `spored` IAM role + instance profile and passes it to EC2 at launch** (the `iam:*` on `spored*` + `iam:PassRole`). Roles and profiles are created with tags, which IAM authorises separately (`iam:TagRole`, `iam:TagInstanceProfile`). A launch that grants the instance extra access (`--iam-policy`, `--s3-read`, `--s3-write`, and every `spawn task run`) creates a role named `spawn-instance-<hash>` instead, which is why that pattern is included. Omit these and `spawn launch` fails partway. The `iam:*` grants are scoped to these two name patterns so they can't touch other roles.
+A launch does more than `RunInstances`. spawn **imports your SSH public key** (`ec2:ImportKeyPair`), may **create a security group** for the instance (`ec2:CreateSecurityGroup` / `AuthorizeSecurityGroupIngress`), and — so the in-instance `spored` daemon can manage the instance's lifecycle — **creates a `spored` IAM role + instance profile and passes it to EC2 at launch** (the `iam:*` on `spored*` + `iam:PassRole`). Roles and profiles are created with tags, which IAM authorises separately (`iam:TagRole`, `iam:TagInstanceProfile`). spored's own grants go on that role as a customer-managed policy, `arn:aws:iam::<account>:policy/spore-host/spored-policy-v<N>` (or `spored-baseline-policy-v<N>`, `spored-nested-baseline-policy-v<N>`), because a role's inline policies share one 10,240-character limit with whatever else is on the role (since spawn v0.163.1, [spawn#1573](https://github.com/spore-host/spawn/issues/1573)). That is what `SporedManagedPolicy` and `DetachSporedManagedPolicy` are for: spawn creates the policy once per account, attaches it, and detaches and deletes an older version when a newer spawn replaces it. Without them spawn warns and writes the grants inline instead, which fails on a role whose inline policies are near the limit. `iam:ListRolePolicies`, `iam:GetRolePolicy` and `iam:DeleteRolePolicy` let spawn remove the inline copies older versions wrote, and list their sizes if the inline limit is ever hit. A launch that grants the instance extra access (`--iam-policy`, `--s3-read`, `--s3-write`, and every `spawn task run`) creates a role named `spawn-instance-<hash>` instead, which is why that pattern is included. Omit these and `spawn launch` fails partway. The `iam:*` grants are scoped to these two name patterns so they can't touch other roles.
 
 After launching, spawn **verifies spored is running** by waiting for the
 `spawn:last-heartbeat` tag spored writes about once a minute, read with
@@ -186,7 +215,7 @@ verification used only SSM, and a caller without these actions was told spored
 never came up.)
 `pricing:GetProducts` sets the instance's price tag. Without it, a launch with
 `--cost-limit` is refused, because a limit that can't be priced can't be
-enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`.
+enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`. `spawn cleanup --instance-roles` also deletes spored managed policies no role has attached; that needs `iam:ListPolicies` (on `"*"`, as IAM offers no narrower resource for it) and the `iam:DeletePolicy` above.
 
 The **default AMI** is found through AWS's public SSM parameters, so `ssm:GetParameter` on `/aws/service/...` is needed unless you always pass `--ami`. The `/spawn/dns/*` parameters are where an administrator can set a [custom DNS](../guides/self-hosting.md#step-3-point-launches-at-your-updater) domain for a whole account. If spawn can't read them, it uses spore.host's DNS instead, without warning ([spawn#1121](https://github.com/spore-host/spawn/issues/1121)).
 :::

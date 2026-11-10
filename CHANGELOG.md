@@ -133,6 +133,7 @@ own changelogs for CLI releases.
   dev-account profile.
 
 ### Documentation
+- **IAM permissions: the managed-policy actions spawn v0.163.1 uses for the spored grants** (spore-host/spawn#1573). The baseline now grants `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:CreatePolicy` and `iam:DeletePolicy` on `arn:aws:iam::*:policy/spore-host/*`, `iam:DetachRolePolicy` on the spawn roles for those policies only, and `iam:ListAttachedRolePolicies`, `iam:ListRolePolicies`, `iam:GetRolePolicy` and `iam:DeleteRolePolicy` on the spawn roles. `iam:ListRolePolicies` and `iam:DeleteRolePolicy` have been needed since spawn v0.162.0 and were missing. `spawn cleanup --instance-roles` also needs `iam:ListPolicies`.
 - **New guide: [Rotating bot credentials](docs/guides/rotating-bot-credentials.md)**
   (#611, spore-host/spawn#868). It covers Slack signing secrets, bot and
   refresh tokens, and webhook URLs; the Teams Azure Bot secret; and Discord
