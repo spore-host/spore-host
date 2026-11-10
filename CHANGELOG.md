@@ -14,6 +14,8 @@ own changelogs for CLI releases.
 ## [Unreleased]
 
 ### Fixed
+
+- **Portal launches no longer fail with AccessDenied on iam:PassRole** (`infra/tofu/portal-oidc`). The grant named `role/<instance-profile-name>` (`spored-instance-profile`), a role that does not exist; PassRole is evaluated against the role *in* the profile, `spored-instance-role`. A new `spored_instance_role` variable carries it. The live policy in 435415984226 was corrected to the same document on 2026-11-10.
 - **Instances launched with `--notify-platform teams` now send their Teams
   users DMs, and spore-bot no longer calls Slack's API with a Teams
   credential** (#596). `/notify` ran the Teams DM fan-out only for Slack

@@ -103,6 +103,15 @@ variable "spored_instance_profile" {
   default = "spored-instance-profile"
 }
 
+# The IAM ROLE inside that instance profile. iam:PassRole is evaluated against
+# the role's ARN, not the profile's name: granting role/<profile-name> passes a
+# role that does not exist, and every portal launch fails with AccessDenied on
+# iam:PassRole (seen 2026-11-10). spored-instance-profile contains this role.
+variable "spored_instance_role" {
+  type    = string
+  default = "spored-instance-role"
+}
+
 # Other Globus client IDs (auds) this ONE shared IAM OIDC provider must keep
 # trusting besides the portal's. AWS allows a single OIDC provider per URL per
 # account, and the dev account already has one for auth.globus.org carrying the
@@ -243,13 +252,13 @@ resource "aws_iam_role_policy" "pass_spored_profile" {
       # PassRole is REQUIRED to attach an instance profile at RunInstances, and it
       # is already maximally scoped: a single named role ARN in THIS account (not a
       # wildcard) plus iam:PassedToService=ec2, so it can only ever hand
-      # spored-instance-profile to EC2 — nothing else. The rule flags the action
+      # spored-instance-role (the role in spored-instance-profile) to EC2 — nothing else. The rule flags the action
       # unconditionally; the scoping here is the mitigation. (Same inline-suppress
       # convention as spore-bot/main.tf:111. Suppression reviewed + approved by the
       # repo owner, 2026-07-26.)
       # nosemgrep: terraform.lang.security.iam.no-iam-resource-exposure.no-iam-resource-exposure
       Action   = "iam:PassRole"
-      Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.spored_instance_profile}"
+      Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.spored_instance_role}"
       Condition = {
         StringEquals = { "iam:PassedToService" = "ec2.amazonaws.com" }
       }
