@@ -114,17 +114,43 @@ Replace `<YOUR_BOT_APP_ID>` with the Azure Bot's app ID (Client ID). Zip the man
 
 ## Step 3: Connect your workspace
 
-Register your Teams tenant and bot credentials with the spore-bot Lambda:
+Register your Teams tenant with the spore-bot Lambda:
 
 ```sh
 spawn notify workspace add \
   --platform teams \
   --workspace-id <TEAMS_TENANT_ID> \
-  --bot-token <AZURE_BOT_CLIENT_SECRET> \
-  --signing-secret <AZURE_BOT_APP_ID>
+  --bot-token <AZURE_BOT_CLIENT_SECRET>
 ```
 
 Your tenant ID is visible in the Azure Portal under **Azure Active Directory → Overview** (the Directory/Tenant ID field).
+
+A Teams workspace has **no signing secret**. spore-bot accepts a Teams request
+only with a valid Bot Framework token: signed by Microsoft, issued for your
+bot's App ID (the Lambda's `TEAMS_APP_ID`), unexpired, and issued for the
+`serviceUrl` the bot will reply to. It refuses any other request, including a
+Teams outgoing-webhook (HMAC) request.
+
+::: danger Never store the App ID as a secret
+The App ID is public: it is in your Teams app manifest. An earlier version of
+this step passed it as `--signing-secret`. If you did that, delete the stored
+value and rotate the Azure Bot client secret (see
+[Rotating bot credentials](/guides/rotating-bot-credentials#teams-azure-bot-client-secret)):
+
+```sh
+aws dynamodb update-item --region <REGION> --table-name spore-bot-workspaces \
+  --key '{"workspace_key":{"S":"teams#<TEAMS_TENANT_ID>"}}' \
+  --update-expression 'REMOVE signing_secret'
+```
+
+Also delete your users' stored Teams conversation references (the
+`spore-bot-registry` items whose `nickname` is `teams_ref`). Each one is
+re-created by that user's next message to the bot.
+
+Older spawn releases require `--signing-secret` for every platform. Upgrade
+spawn rather than pass one: never store the App ID, or any other value, as a
+Teams signing secret.
+:::
 
 ## Step 4: Register an instance
 
@@ -244,7 +270,7 @@ spawn notify deregister \
 
 ## Rotating credentials
 
-To replace the Azure Bot client secret (or an outgoing-webhook secret) without downtime, and store the new value encrypted, see
+To replace the Azure Bot client secret without downtime, and store the new value encrypted, see
 [Rotating bot credentials](/guides/rotating-bot-credentials).
 
 ## Troubleshooting

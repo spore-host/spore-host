@@ -61,7 +61,7 @@ of spore-bot's secrets are in its Lambda environment.
 | Slack **incoming webhook URL** | `incoming_webhook_url` on the workspace items | Posting notifications to the channel picked at install |
 | Slack **client secret** | spore-bot env `<PLATFORM>_SLACK_CLIENT_SECRET`; the dashboard's Secrets Manager secret (`client_secret` field) | The OAuth install and token refresh |
 | Teams **Azure Bot client secret** | spore-bot env `TEAMS_APP_SECRET`. A tenant registered with `--bot-token` (as [Teams Setup](/guides/teams-setup) step 3 says) also has a copy in that tenant's `bot_token` | Getting Bot Framework tokens to send replies and DMs |
-| Teams **outgoing-webhook secret** | `signing_secret` on `teams#<tenant>` | Verifying Teams outgoing-webhook requests (HMAC) |
+| Teams **signing secret** | Nothing. spore-bot verifies Teams requests only with Bot Framework tokens, and refuses to store a `signing_secret` on `teams#<tenant>`. If an item still has one, [remove it](/guides/teams-setup#step-3-connect-your-workspace) | Nothing |
 | Discord **channel webhook URL** | `incoming_webhook_url` on `discord#<guild>` | Posting notification embeds |
 | Discord **application public key** | `public_key` on `discord#<guild>`; env `DISCORD_PUBLIC_KEY` | Verifying interactions. **Public, not a secret**; it changes only if you recreate the application |
 | Discord **bot token** | Not stored by spore-bot, unless you passed it as `--bot-token` | Registering slash commands (`scripts/register-discord-commands.sh`) |
@@ -329,7 +329,7 @@ The secret spore-bot really uses is the `TEAMS_APP_SECRET` env var.
 
 4. If a tenant item has a `bot_token` (`ws_lengths` shows `teams#<tenant>` with
    `bot_token` > 0), it is a copy of the old secret. Replace it with
-   `spawn notify workspace add --platform teams --workspace-id <tenant> --bot-token <new> --signing-secret <current>`.
+   `spawn notify workspace add --platform teams --workspace-id <tenant> --bot-token <new>`.
    This rewrites the whole item: pass every flag you registered it with. Run it
    from a shell that keeps no history (`set +o history` in bash). spore-bot uses
    that copy only to know the tenant exists (see
@@ -340,9 +340,11 @@ The secret spore-bot really uses is the `TEAMS_APP_SECRET` env var.
    Framework tokens issued with the old secret stay valid until they expire,
    within the hour.
 
-A Teams **outgoing-webhook** secret (`signing_secret` on `teams#<tenant>`) is
-rotated like a Slack signing secret: create a new one in Teams, then
-`ask_secret` and `seal_put 'teams#<tenant>' signing_secret`.
+A Teams workspace has no signing secret to rotate: spore-bot accepts Teams
+requests only with Bot Framework tokens. If `ws_lengths` shows a
+`signing_secret` on `teams#<tenant>`, it is unused; remove it as
+[Teams Setup](/guides/teams-setup#step-3-connect-your-workspace) describes, and
+rotate the Azure Bot client secret as above.
 
 ## Discord
 

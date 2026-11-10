@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/hex"
 	"net/http"
 	"net/url"
@@ -53,8 +53,9 @@ type lifetimeFixture struct {
 	cfg  aws.Config
 	chat *deliveryRecorder // every outbound chat call (Slack, Teams, Discord)
 
-	slackSecret, teamsSecret string
-	discordKey               ed25519.PrivateKey
+	slackSecret string
+	discordKey  ed25519.PrivateKey
+	teamsKey    *rsa.PrivateKey // signs Bot Framework tokens; its public half is the injected JWKS
 }
 
 func setupLifetimeFixture(t *testing.T, ddbDelay time.Duration) *lifetimeFixture {
@@ -81,7 +82,6 @@ func setupLifetimeFixture(t *testing.T, ddbDelay time.Duration) *lifetimeFixture
 		cfg:         slow,
 		chat:        &deliveryRecorder{delay: 10 * time.Millisecond},
 		slackSecret: "slack-signing-secret",
-		teamsSecret: "teams-shared-secret",
 	}
 	createRegistryTable(t, f.ddb)
 	createWorkspacesTable(t, f.ddb)
@@ -95,10 +95,17 @@ func setupLifetimeFixture(t *testing.T, ddbDelay time.Duration) *lifetimeFixture
 	}
 	f.discordKey = priv
 
+	f.teamsKey, err = rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withTestKey(t, teamsTestKid, &f.teamsKey.PublicKey)
+	t.Setenv("TEAMS_APP_ID", teamsTestAppID)
+
 	s := func(v string) dynamodbtypes.AttributeValue { return &dynamodbtypes.AttributeValueMemberS{Value: v} }
 	for _, ws := range []map[string]dynamodbtypes.AttributeValue{
 		{"workspace_key": s("slack#T1"), "platform": s("slack"), "signing_secret": s(f.slackSecret), "bot_token": s("xoxb-test")},
-		{"workspace_key": s("teams#tenant1"), "platform": s("teams"), "signing_secret": s(f.teamsSecret)},
+		{"workspace_key": s("teams#tenant1"), "platform": s("teams"), "bot_token": s("azure-bot-secret")},
 		{"workspace_key": s("discord#g1"), "platform": s("discord")},
 	} {
 		if _, err := f.ddb.PutItem(context.Background(), &dynamodb.PutItemInput{TableName: aws.String(testWorkspacesTable), Item: ws}); err != nil {
@@ -131,14 +138,14 @@ func (f *lifetimeFixture) slackRequest(text string) events.APIGatewayProxyReques
 	}}
 }
 
-func (f *lifetimeFixture) teamsRequest(text string) events.APIGatewayProxyRequest {
-	body := `{"type":"message","text":"<at>spore</at> ` + text + `","entities":[{"type":"mention","text":"<at>spore</at>"}],"from":{"id":"user1"},` +
+func (f *lifetimeFixture) teamsRequest(t *testing.T, text string) events.APIGatewayProxyRequest {
+	t.Helper()
+	body := `{"type":"message","channelId":"msteams","text":"<at>spore</at> ` + text + `","entities":[{"type":"mention","text":"<at>spore</at>"}],"from":{"id":"user1"},` +
 		`"recipient":{"id":"bot1"},"conversation":{"id":"conv1"},"serviceUrl":"https://smba.trafficmanager.net/teams/",` +
 		`"channelData":{"tenant":{"id":"tenant1"}}}`
-	mac := hmac.New(sha256.New, []byte(f.teamsSecret))
-	mac.Write([]byte(body))
+	tok := mkJWT(t, f.teamsKey, teamsTestKid, botFrameworkClaims(teamsTestAppID, "https://smba.trafficmanager.net/teams/"))
 	return events.APIGatewayProxyRequest{HTTPMethod: "POST", Path: "/teams", Body: body, Headers: map[string]string{
-		"Authorization": "HMAC " + encodeBase64(mac.Sum(nil)),
+		"Authorization": "Bearer " + tok,
 	}}
 }
 
@@ -214,22 +221,28 @@ func TestAuditLogBoundedUnderLambdaDeadline(t *testing.T) {
 func TestWebhookNotQueued(t *testing.T) {
 	tests := []struct {
 		platform string
-		req      func(*lifetimeFixture) events.APIGatewayProxyRequest
+		req      func(*testing.T, *lifetimeFixture) events.APIGatewayProxyRequest
 		command  string
 	}{
-		{"slack", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.slackRequest("help") }, "help"},
-		{"slack", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.slackRequest("list") }, "list"},
+		{"slack", func(t *testing.T, f *lifetimeFixture) events.APIGatewayProxyRequest { return f.slackRequest("help") }, "help"},
+		{"slack", func(t *testing.T, f *lifetimeFixture) events.APIGatewayProxyRequest { return f.slackRequest("list") }, "list"},
 		// Teams "list" used to run in a goroutine even when the queue worked.
-		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("/spore list") }, "list"},
-		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("/spore status gpu1") }, "status"},
-		{"teams", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.teamsRequest("stop gpu1") }, "stop"},
-		{"discord", func(f *lifetimeFixture) events.APIGatewayProxyRequest { return f.discordRequest("help") }, "help"},
+		{"teams", func(t *testing.T, f *lifetimeFixture) events.APIGatewayProxyRequest {
+			return f.teamsRequest(t, "/spore list")
+		}, "list"},
+		{"teams", func(t *testing.T, f *lifetimeFixture) events.APIGatewayProxyRequest {
+			return f.teamsRequest(t, "/spore status gpu1")
+		}, "status"},
+		{"teams", func(t *testing.T, f *lifetimeFixture) events.APIGatewayProxyRequest {
+			return f.teamsRequest(t, "stop gpu1")
+		}, "stop"},
+		{"discord", func(t *testing.T, f *lifetimeFixture) events.APIGatewayProxyRequest { return f.discordRequest("help") }, "help"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.platform+"/"+tt.command, func(t *testing.T) {
 			f := setupLifetimeFixture(t, 100*time.Millisecond)
 
-			resp, err := handleWebhook(invocationCtx(t), f.cfg, f.reg, tt.req(f))
+			resp, err := handleWebhook(invocationCtx(t), f.cfg, f.reg, tt.req(t, f))
 			audits := f.auditRecords(t) // as of the moment the handler returned
 			if err != nil || resp.StatusCode != 200 {
 				t.Fatalf("handleWebhook = %d %s, %v", resp.StatusCode, resp.Body, err)
@@ -280,7 +293,7 @@ func TestWebhookNotQueued(t *testing.T) {
 // (#572), on a command that is queued normally.
 func TestTeamsWebhookStoresConversationRefBeforeReturning(t *testing.T) {
 	f := setupLifetimeFixture(t, 150*time.Millisecond)
-	sc, err := handleTeamsWebhook(invocationCtx(t), f.reg, f.teamsRequest("/spore help"))
+	sc, err := handleTeamsWebhook(invocationCtx(t), f.reg, f.teamsRequest(t, "/spore help"))
 	if err != nil || sc == nil {
 		t.Fatalf("handleTeamsWebhook = %v, %v", sc, err)
 	}

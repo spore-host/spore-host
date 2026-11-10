@@ -27,6 +27,21 @@ own changelogs for CLI releases.
 
 ### Security
 
+- **spore-bot accepts Teams requests only with Bot Framework authentication**
+  (GHSA-ccj3-jfqj-m3mh). The Teams outgoing-webhook (HMAC) path is removed:
+  a `/teams` request without a valid Bot Framework bearer token is refused, and
+  a Teams workspace's `signing_secret` is never read. The token must now also
+  carry a `serviceurl` claim equal to the activity's `serviceUrl`, have an
+  expiry, and be signed by a key endorsed for the activity's channel, so the
+  bot replies (with its own Bot Framework token) only to a service URL
+  Microsoft vouched for. Replies go only to `https` service URLs, and the
+  unauthenticated reply fallback is gone. spore-bot refuses to store a Teams
+  `signing_secret` (admin API and every registry write), and its admin API
+  sends a bot token to Slack only for a Slack workspace. `teams-setup.md` step
+  3 no longer stores the bot's App ID, which is public, as the signing secret.
+  If you followed it: remove that `signing_secret`, delete stored Teams
+  conversation references (`teams_ref`), and rotate the Azure Bot client
+  secret.
 - **spore-bot workspace credentials are now sealed at rest** (#611, spore-host/spawn#868, Phase B): `seal_workspace_credentials` defaults to `true`, which creates `alias/spore-bot-secrets` and the hourly `spore-bot-seal-legacy-credentials` sweep. Every writer now seals, and existing plaintext is sealed within the hour. Never set it back to false.
 - **spore-bot stores and reads chat-platform workspace credentials encrypted
   at rest** (#611, spore-host/spawn#868). The signing secret, bot token,

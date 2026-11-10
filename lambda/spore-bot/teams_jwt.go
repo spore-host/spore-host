@@ -22,12 +22,17 @@ import (
 // Teams "Bearer <jwt>" requests arrive at a public Function URL. The token is
 // issued by Microsoft's Bot Framework for our bot; without verifying it, any
 // caller can send "Authorization: Bearer anything" plus a forged activity and
-// drive an executable command. We verify the standard Bot Framework claims:
+// drive an executable command. It is the only way a Teams request is
+// authenticated. We verify the standard Bot Framework claims:
 //
-//   - signature: RS256 against Microsoft's published JWKS (keyed by `kid`)
-//   - issuer:    https://api.botframework.com
-//   - audience:  equals our configured bot App ID (TEAMS_APP_ID)
-//   - expiry/nbf: token currently valid
+//   - signature:   RS256 against Microsoft's published JWKS (keyed by `kid`)
+//   - issuer:      https://api.botframework.com
+//   - audience:    equals our configured bot App ID (TEAMS_APP_ID)
+//   - expiry/nbf:  token currently valid; exp is required
+//   - serviceurl:  equals the activity's serviceUrl. spore-bot replies to that
+//     URL with a Bot Framework token of its own, so it must be one Microsoft
+//     vouched for, not one the request body picked.
+//   - endorsement: the signing key is endorsed for the activity's channelId
 //
 // Docs: https://learn.microsoft.com/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
 const (
@@ -35,25 +40,50 @@ const (
 	botFrameworkOpenIDURL = "https://login.botframework.com/v1/.well-known/openidconfiguration"
 )
 
+// signingKey is one Bot Framework signing key and the channels it is
+// endorsed for.
+type signingKey struct {
+	pub          *rsa.PublicKey
+	endorsements []string
+}
+
+// endorses reports whether the key is endorsed for channelID.
+func (k signingKey) endorses(channelID string) bool {
+	for _, e := range k.endorsements {
+		if e == channelID {
+			return true
+		}
+	}
+	return false
+}
+
 // jwksCache caches the Bot Framework signing keys (modulus/exponent per kid).
 // Microsoft rotates these infrequently; we refresh on a cache miss or TTL expiry.
 type jwksCache struct {
 	mu        sync.RWMutex
-	keys      map[string]*rsa.PublicKey
+	keys      map[string]signingKey
 	fetchedAt time.Time
 }
 
-var botFrameworkKeys = &jwksCache{keys: map[string]*rsa.PublicKey{}}
+var botFrameworkKeys = &jwksCache{keys: map[string]signingKey{}}
 
 // jwksTTL bounds how long signing keys are cached before a forced refresh.
 const jwksTTL = 24 * time.Hour
 
 // verifyTeamsJWT validates a Bot Framework bearer token and returns nil if the
-// token is authentic, issued for our bot, and currently valid. appID is the
-// configured bot App ID (TEAMS_APP_ID); it must be non-empty.
-func verifyTeamsJWT(ctx context.Context, token, appID string) error {
+// token is authentic, issued for our bot, currently valid, and issued for this
+// activity's serviceUrl and channel. appID is the configured bot App ID
+// (TEAMS_APP_ID); serviceURL and channelID are the activity's serviceUrl and
+// channelId. All three must be non-empty.
+func verifyTeamsJWT(ctx context.Context, token, appID, serviceURL, channelID string) error {
 	if appID == "" {
 		return fmt.Errorf("TEAMS_APP_ID not configured")
+	}
+	if serviceURL == "" {
+		return fmt.Errorf("activity has no serviceUrl")
+	}
+	if channelID == "" {
+		return fmt.Errorf("activity has no channelId")
 	}
 	token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
 	if token == "" {
@@ -87,10 +117,11 @@ func verifyTeamsJWT(ctx context.Context, token, appID string) error {
 		return fmt.Errorf("decode JWT claims: %w", err)
 	}
 	var claims struct {
-		Iss string          `json:"iss"`
-		Aud json.RawMessage `json:"aud"`
-		Exp int64           `json:"exp"`
-		Nbf int64           `json:"nbf"`
+		Iss        string          `json:"iss"`
+		Aud        json.RawMessage `json:"aud"`
+		Exp        int64           `json:"exp"`
+		Nbf        int64           `json:"nbf"`
+		ServiceURL string          `json:"serviceurl"`
 	}
 	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
 		return fmt.Errorf("parse JWT claims: %w", err)
@@ -102,8 +133,14 @@ func verifyTeamsJWT(ctx context.Context, token, appID string) error {
 	if !audienceMatches(claims.Aud, appID) {
 		return fmt.Errorf("audience does not match configured bot App ID")
 	}
+	if claims.ServiceURL == "" || claims.ServiceURL != serviceURL {
+		return fmt.Errorf("token serviceurl claim does not match the activity's serviceUrl")
+	}
 	now := time.Now().Unix()
-	if claims.Exp != 0 && now > claims.Exp {
+	if claims.Exp == 0 {
+		return fmt.Errorf("token has no expiry")
+	}
+	if now > claims.Exp {
 		return fmt.Errorf("token expired")
 	}
 	// Allow 5 minutes of clock skew for nbf.
@@ -111,9 +148,12 @@ func verifyTeamsJWT(ctx context.Context, token, appID string) error {
 		return fmt.Errorf("token not yet valid")
 	}
 
-	pubKey, err := botFrameworkKeys.keyFor(ctx, hdr.Kid)
+	key, err := botFrameworkKeys.keyFor(ctx, hdr.Kid)
 	if err != nil {
 		return fmt.Errorf("resolve signing key: %w", err)
+	}
+	if !key.endorses(channelID) {
+		return fmt.Errorf("signing key is not endorsed for channel %q", channelID)
 	}
 
 	signed := []byte(parts[0] + "." + parts[1])
@@ -122,7 +162,7 @@ func verifyTeamsJWT(ctx context.Context, token, appID string) error {
 		return fmt.Errorf("decode JWT signature: %w", err)
 	}
 	hashed := sha256.Sum256(signed)
-	if err := rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashed[:], sig); err != nil {
+	if err := rsa.VerifyPKCS1v15(key.pub, crypto.SHA256, hashed[:], sig); err != nil {
 		return fmt.Errorf("JWT signature invalid: %w", err)
 	}
 	return nil
@@ -149,9 +189,9 @@ func audienceMatches(raw json.RawMessage, appID string) bool {
 	return false
 }
 
-// keyFor returns the RSA public key for the given kid, refreshing the JWKS from
+// keyFor returns the signing key for the given kid, refreshing the JWKS from
 // Microsoft on a cache miss or once the cached set is older than jwksTTL.
-func (c *jwksCache) keyFor(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+func (c *jwksCache) keyFor(ctx context.Context, kid string) (signingKey, error) {
 	c.mu.RLock()
 	key, ok := c.keys[kid]
 	fresh := time.Since(c.fetchedAt) < jwksTTL
@@ -166,7 +206,7 @@ func (c *jwksCache) keyFor(ctx context.Context, kid string) (*rsa.PublicKey, err
 		if ok {
 			return key, nil
 		}
-		return nil, err
+		return signingKey{}, err
 	}
 
 	c.mu.RLock()
@@ -174,7 +214,7 @@ func (c *jwksCache) keyFor(ctx context.Context, kid string) (*rsa.PublicKey, err
 	if key, ok := c.keys[kid]; ok {
 		return key, nil
 	}
-	return nil, fmt.Errorf("no signing key for kid %q", kid)
+	return signingKey{}, fmt.Errorf("no signing key for kid %q", kid)
 }
 
 // refresh fetches the OpenID configuration, then the JWKS, and replaces the
@@ -212,23 +252,24 @@ func fetchJWKSURI(ctx context.Context, openIDURL string) (string, error) {
 	return doc.JWKSURI, nil
 }
 
-func fetchJWKS(ctx context.Context, jwksURI string) (map[string]*rsa.PublicKey, error) {
+func fetchJWKS(ctx context.Context, jwksURI string) (map[string]signingKey, error) {
 	body, err := httpGetJSON(ctx, jwksURI)
 	if err != nil {
 		return nil, fmt.Errorf("fetch jwks: %w", err)
 	}
 	var doc struct {
 		Keys []struct {
-			Kid string `json:"kid"`
-			Kty string `json:"kty"`
-			N   string `json:"n"`
-			E   string `json:"e"`
+			Kid          string   `json:"kid"`
+			Kty          string   `json:"kty"`
+			N            string   `json:"n"`
+			E            string   `json:"e"`
+			Endorsements []string `json:"endorsements"`
 		} `json:"keys"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, fmt.Errorf("parse jwks: %w", err)
 	}
-	out := make(map[string]*rsa.PublicKey, len(doc.Keys))
+	out := make(map[string]signingKey, len(doc.Keys))
 	for _, k := range doc.Keys {
 		if k.Kty != "RSA" || k.Kid == "" {
 			continue
@@ -237,7 +278,7 @@ func fetchJWKS(ctx context.Context, jwksURI string) (map[string]*rsa.PublicKey, 
 		if err != nil {
 			continue
 		}
-		out[k.Kid] = pub
+		out[k.Kid] = signingKey{pub: pub, endorsements: k.Endorsements}
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("jwks contained no usable RSA keys")
