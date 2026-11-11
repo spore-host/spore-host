@@ -30,6 +30,12 @@ so an AZ that offers the watch's type but has no default subnet is skipped, and
 the watch can never land there. Each such AZ is a warning, with the
 'aws ec2 create-default-subnet' command that fixes it.
 
+It lists every active --action notify watch as a warning (lagotto#283): notify
+is deprecated and will be removed in a later release, because it reports that a
+type is offered at or under the max price, not that there is capacity. Use
+--action hold or --action spawn instead. The check is omitted when there are
+none.
+
 It checks that the shared EventBridge Scheduler invoke role's policy allows
 invoking THIS region's poller (lagotto#218: the role is IAM-global, and a deploy
 by lagotto older than v0.65.1 scoped it to the deploying region alone, so every

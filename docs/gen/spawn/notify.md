@@ -2,6 +2,10 @@
 
 *Aliases: bot*
 
+EXPERIMENTAL: chat-platform notifications are not supported in this
+release. Every command here requires SPAWN_EXPERIMENTAL_CHAT=1 (or
+experimental.chat: true in ~/.spawn/config.yaml) and otherwise refuses.
+
 Register and manage Slack/Teams/SMS notifications for instances.
 
 Lets authorized users receive lifecycle events (launch, idle stop, TTL warn,
@@ -105,12 +109,14 @@ Both the instance ID and instance name (DNS name or spawn:name tag) are
 accepted as the target in slash commands once registered.
 
 Without --role-arn, spawn creates the SpawnBotCrossAccount role in your
-account, trusting spore-bot's execution role (SPORE_BOT_LAMBDA_ROLE_ARN
-overrides it) under a per-account ExternalId, and stores that ExternalId in the
+account, trusting your self-hosted spore-bot's execution role, which
+SPORE_BOT_LAMBDA_ROLE_ARN must name (spore.host no longer hosts a bot, so there
+is no default), under a per-account ExternalId, and stores that ExternalId in the
 registration. If the role exists but trusts a different principal, or has no
-per-account ExternalId, register stops and says so. A role spawn created
-before #1046 trusted the prism-bot stack's role; --repair rewrites its trust
-policy. A role spawn did not create is never modified.
+per-account ExternalId, register stops and says so; --repair rewrites the
+trust policy of a role spawn created (for example one that still trusts
+spore.host's retired hosted bot). A role spawn did not create is never
+modified.
 
 With --role-arn (for example the bot-cross-account-role.yaml stack's RoleArn
 output), pass the ExternalId in that role's trust policy with --external-id.
@@ -147,10 +153,19 @@ spawn notify workspace
 
 #### `spawn notify workspace add`
 
-Store the Slack bot token and signing secret for a workspace so the
-spore-bot Lambda can verify incoming slash command requests.
+Store a workspace's bot credentials so the spore-bot Lambda can verify
+incoming requests and reply to them. Credentials are stored encrypted.
 
-Run this once after installing the Slack app in a workspace:
+What each platform needs:
+
+  slack    --bot-token and --signing-secret (the Slack app's signing secret)
+  teams    --bot-token (the Azure Bot client secret). No --signing-secret:
+           spore-bot verifies Teams requests with Bot Framework tokens, and
+           refuses a Teams workspace that carries one. Never pass the bot's
+           App ID; it is public.
+  discord  --public-key (the application's Ed25519 public key)
+
+Run this once after installing the app in a workspace:
 
   spawn notify workspace add \
     --platform slack \
@@ -158,6 +173,11 @@ Run this once after installing the Slack app in a workspace:
     --workspace-name "My Workspace" \
     --bot-token xoxb-... \
     --signing-secret abc123...
+
+  spawn notify workspace add \
+    --platform teams \
+    --workspace-id <TEAMS_TENANT_ID> \
+    --bot-token <AZURE_BOT_CLIENT_SECRET>
 
 ```
 spawn notify workspace add [flags]
@@ -168,11 +188,11 @@ spawn notify workspace add [flags]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--allowed-channels` |  | stringSlice |  | Restrict commands to specific channel IDs (e.g. C12345,C67890). Empty = all channels. |
-| `--bot-token` |  | string |  | Bot token (Slack xoxb-..., or Discord bot token) |
+| `--bot-token` |  | string |  | Bot token (Slack xoxb-..., Teams Azure Bot client secret, or Discord bot token) |
 | `--connect-ttl` |  | int |  | Max /spore connect code lifetime in hours (0 = use platform default, typically 24h). Can only lower the platform default. |
 | `--platform` |  | string |  | Chat platform: slack, teams, or discord |
 | `--public-key` |  | string |  | Discord application public key (Ed25519, hex; required for discord) |
-| `--signing-secret` |  | string |  | Slack/Teams signing secret (required for slack/teams) |
+| `--signing-secret` |  | string |  | Slack app signing secret (required for slack; refused for teams) |
 | `--table` |  | string |  | Override DynamoDB workspaces table name |
 | `--webhook-url` |  | string |  | Channel webhook URL for notifications (Discord channel webhook, or manual Slack incoming webhook) |
 | `--workspace-id` |  | string |  | Platform workspace ID |

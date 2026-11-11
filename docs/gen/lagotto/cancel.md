@@ -1,6 +1,12 @@
 ## `lagotto cancel`
 
-Cancel an active watch (w-…) or a scheduled launch (sl-…, from 'lagotto launch').
+Cancel an active watch (w-…), a watch group (its name, from 'lagotto watch
+--group'), or a scheduled launch (sl-…, from 'lagotto launch').
+
+A group: the group ends, and every active member is cancelled as a watch is,
+with the tombstone "group &lt;name&gt; cancelled". A member's launch still landing
+is not terminated (its TTL applies); a member's pending reservation is
+released.
 
 A watch: any capacity reservation it recorded is released, and
 each email address it notifies is unsubscribed from the alerts topic unless another
@@ -21,7 +27,7 @@ any schedule left behind. The record is in the region 'launch' ran in; pass
 --region if that is not your default.
 
 ```
-lagotto cancel <watch-id | scheduled-launch-id> [flags]
+lagotto cancel <watch-id | scheduled-launch-id | group> [flags]
 ```
 
 **Flags:**

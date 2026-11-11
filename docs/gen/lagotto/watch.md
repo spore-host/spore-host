@@ -13,8 +13,10 @@ lagotto watch <instance-type-pattern> [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--action` |  | string | `notify` | Action on match: notify, spawn, hold |
+| `--action` |  | string | `notify` | Action on match: spawn (launch it), hold (reserve it), or notify (deprecated: offering only, not a capacity check). The notify default is deprecated too: pass --action explicitly |
 | `--azs` |  | stringSlice |  | Availability zones to pin/order within the region(s), comma-separated (e.g. us-west-2b,us-west-2c). Empty = all AZs. AZ breadth is free (same-region data locality), so all AZs are tried each poll. |
+| `--group-on-extra` |  | string |  | With --group: what happens to this member's launch if it lands after the group was already won: terminate (default; a hold's reservation is released) or keep |
+| `--group` |  | string |  | Join (or create) a watch group: the first member to land wins and every other member is cancelled. Members may differ in pattern, regions, Spot and spawn config; --action spawn or hold only, not with --maintain, --until-landed or --service sagemaker. 'lagotto status &lt;group&gt;' and 'lagotto cancel &lt;group&gt;' act on the whole group. |
 | `--maintain` |  | int |  | Goal-driven fleet: maintain this many workers (relaunching toward the goal, even from zero) until --until holds. Requires --action spawn and --regions. 0 = single-shot (default). |
 | `--max-price` |  | float64 |  | Maximum acceptable price per hour (0 = any) |
 | `--notify` |  | stringSlice |  | Notification channels (e.g., email:user@example.com, webhook:https://..., sns:&lt;topic-arn&gt;). An email address is subscribed to the alerts topic and must confirm by clicking the link in the AWS Notification email before anything is delivered. |
