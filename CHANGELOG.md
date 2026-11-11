@@ -13,6 +13,10 @@ own changelogs for CLI releases.
 
 ## [Unreleased]
 
+### Security
+
+- Build and test with Go 1.26.11 / 1.27.4: GO-2026-6859 (net/http: an HTTP/1 server crash from a `MaxBytesReader` header race), published 2026-11-11.
+
 ### Added
 
 - **A real-AWS e2e harness for the rebuilt portal, with an independent leak check** (`web/portal/e2e-aws/`, #683). It launches two t4g.nano On-Demand instances in the dev account, through spawn-ts as the portal does. One is `spawn:managed=true`; the other is identical but without that tag. Both have a 15-minute TTL and a run-id tag, and a run is capped at two instances. On them it makes one real call per tag-gated grant in the portal's policy, in both directions: StartSession is allowed on the managed instance and denied on the control. Stop, Start and Terminate are denied on the managed instance, checked with EC2 DryRun (#678). It always tears down, then checks independently, by run tag and by time window, for instances, volumes, network interfaces, Elastic IPs, security groups, key pairs and SSM sessions left behind. A new offline gate fails any PR that adds a tag-gated grant the harness cannot prove. It runs nightly and on demand (`portal-e2e-aws.yml`, never on pull requests) and locally (`AWS_PROFILE=spore-host-dev make portal-e2e-aws`). It acts as a new `spore-portal-e2e` role, whose inline policies are the portal role's own; the nightly drift job now fails when they differ. A `spore-portal-e2e-teardown` role, trusted by GitHub OIDC on main only, observes and tears down. Both roles are in `infra/tofu/portal-oidc`.
