@@ -244,7 +244,7 @@ export function glob(pattern: string, value: string, caseInsensitive: boolean): 
  * An offline approximation of IAM evaluation, so the default test run checks
  * that the fixtures agree with the checked-in policy without calling AWS.
  * It understands Allow/Deny, Action and Resource wildcards, and the
- * StringEquals operator; anything else throws rather than guessing. The live
+ * StringEquals and Null operators; anything else throws rather than guessing. The live
  * simulator is the authority; this only catches a fixture and a policy
  * drifting apart before that job runs.
  */
@@ -258,10 +258,15 @@ export function offlineSimulator(): Simulator {
         if (!list(s.Resource).some((r) => glob(r, req.resource, false))) continue;
         let conditionMet = true;
         for (const [op, kv] of Object.entries(s.Condition ?? {})) {
-          if (op !== "StringEquals") throw new Error(`offline simulator does not evaluate ${op}; run the live job`);
+          if (op !== "StringEquals" && op !== "Null") throw new Error(`offline simulator does not evaluate ${op}; run the live job`);
           for (const [k, v] of Object.entries(kv)) {
             const have = Object.entries(req.context).find(([ck]) => ck.toLowerCase() === k.toLowerCase())?.[1];
-            if (have === undefined || !list(v).includes(have)) conditionMet = false;
+            if (op === "Null") {
+              // Null "true": the key is absent; "false": it is present.
+              const wantAbsent = list(v).map((x) => x.toLowerCase());
+              if (wantAbsent.length !== 1 || !["true", "false"].includes(wantAbsent[0])) throw new Error(`offline simulator: Null takes "true" or "false", not ${JSON.stringify(v)}`);
+              if ((have === undefined) !== (wantAbsent[0] === "true")) conditionMet = false;
+            } else if (have === undefined || !list(v).includes(have)) conditionMet = false;
           }
         }
         if (!conditionMet) continue;

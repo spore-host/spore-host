@@ -440,7 +440,7 @@ resource "aws_iam_role_policy" "portal_iam_audit" {
 #   id, and the precondition re-checks it.
 #
 # The teardown role is what CI signs in as (GitHub OIDC, main only). It is the
-# harness's observer: the leak check's reads, terminate for instances carrying
+# harness's observer: the leak check's reads, terminate for t4g.nano instances carrying
 # spore-host:e2e-run only, close for spore-e2e-* sessions only, and
 # sts:AssumeRole on the e2e role. Locally the operator's own credentials play
 # this part. Neither role has anything the portal role lacks except the
@@ -579,14 +579,19 @@ resource "aws_iam_role_policy" "portal_e2e_teardown" {
         Resource = "*"
       },
       {
-        # Only instances that carry the run tag, whatever its value: the
-        # harness narrows to its own run id (e2e-aws/leaks.ts teardownTargets).
+        # Only t4g.nano instances that carry the run tag, whatever its value:
+        # the harness narrows to its own run id (e2e-aws/leaks.ts
+        # teardownTargets). The instance type matters because ec2:CreateTags
+        # on "*" (the #678 gap) lets a portal or e2e session forge the run tag
+        # on any instance; the type limits what a forged tag can reach to the
+        # one type the harness launches (e2e-aws/config.ts INSTANCE_TYPE).
         Sid      = "TerminateE2EInstancesOnly"
         Effect   = "Allow"
         Action   = "ec2:TerminateInstances"
         Resource = "arn:aws:ec2:us-east-1:${local.account_id}:instance/*"
         Condition = {
-          Null = { "aws:ResourceTag/${local.e2e_run_tag}" = "false" }
+          Null         = { "aws:ResourceTag/${local.e2e_run_tag}" = "false" }
+          StringEquals = { "ec2:InstanceType" = "t4g.nano" }
         }
       },
       {

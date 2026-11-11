@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { E2E_ROLE_NAME, RUN_TAG, SESSION_PREFIX, TEARDOWN_ROLE_NAME } from "../e2e-aws/config.js";
+import { E2E_ROLE_NAME, INSTANCE_TYPE, RUN_TAG, SESSION_PREFIX, TEARDOWN_ROLE_NAME } from "../e2e-aws/config.js";
 import type { PolicyDoc, PolicyFile } from "../iam/simulate.js";
 import { readTf, tfActions, tfPolicyBlock, tfResource } from "./tf-source.js";
 
@@ -142,7 +142,7 @@ describe("e2e teardown role", () => {
 
   it("can terminate only instances that carry the run tag, and close only e2e sessions", () => {
     const term = doc.Statement.find((s) => list(s.Action).includes("ec2:TerminateInstances"))!;
-    expect(term.Condition).toEqual({ Null: { [`aws:ResourceTag/${RUN_TAG}`]: "false" } });
+    expect(term.Condition).toEqual({ Null: { [`aws:ResourceTag/${RUN_TAG}`]: "false" }, StringEquals: { "ec2:InstanceType": INSTANCE_TYPE } });
     expect(list(term.Resource)).toEqual(["arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*"]);
     const close = doc.Statement.find((s) => list(s.Action).includes("ssm:TerminateSession"))!;
     expect(list(close.Resource)).toEqual([`arn:aws:ssm:us-east-1:\${ACCOUNT_ID}:session/${SESSION_PREFIX}*`]);
@@ -152,6 +152,8 @@ describe("e2e teardown role", () => {
     for (const s of doc.Statement.filter((x) => x !== term && x !== close && x !== assume)) for (const a of list(s.Action)) expect(a, a).toMatch(/^(ec2|ssm):Describe/);
     const block = tfPolicyBlock(tf, "PortalE2ETeardown")!;
     expect(block).toContain('Resource = "arn:aws:ec2:us-east-1:${local.account_id}:instance/*"');
+    expect(block).toContain('Null         = { "aws:ResourceTag/${local.e2e_run_tag}" = "false" }');
+    expect(block).toContain(`StringEquals = { "ec2:InstanceType" = "${INSTANCE_TYPE}" }`);
     expect(block).toContain(`Resource = "arn:aws:ssm:us-east-1:\${local.account_id}:session/${SESSION_PREFIX}*"`);
     expect(block).toContain("Resource = aws_iam_role.portal_e2e.arn");
   });

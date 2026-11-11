@@ -121,6 +121,16 @@ describe("simulation fixtures", () => {
     await expect(sim({ policies: [unsupported], action: "a:B", resource: "*", context: {} })).rejects.toThrow(/does not evaluate StringLike/);
   });
 
+  it("evaluates Null: false means the key is present, true means absent", async () => {
+    const sim = offlineSimulator();
+    const doc = (v: string) => JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "a:B", Resource: "*", Condition: { Null: { "aws:ResourceTag/t": v } } }] });
+    expect(await sim({ policies: [doc("false")], action: "a:B", resource: "*", context: { "aws:ResourceTag/t": "x" } })).toBe("allowed");
+    expect(await sim({ policies: [doc("false")], action: "a:B", resource: "*", context: {} })).toBe("implicitDeny");
+    expect(await sim({ policies: [doc("true")], action: "a:B", resource: "*", context: {} })).toBe("allowed");
+    expect(await sim({ policies: [doc("true")], action: "a:B", resource: "*", context: { "aws:resourcetag/t": "x" } })).toBe("implicitDeny");
+    await expect(sim({ policies: [doc("maybe")], action: "a:B", resource: "*", context: {} })).rejects.toThrow(/Null takes "true" or "false"/);
+  });
+
   it("matches IAM wildcards without regexes", () => {
     expect(glob("*", "anything", false)).toBe(true);
     expect(glob("arn:aws:ec2:*:*:instance/*", "arn:aws:ec2:us-east-1:111122223333:instance/i-1", false)).toBe(true);

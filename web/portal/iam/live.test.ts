@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { loadE2ERoles, teardownPolicyFile } from "./e2e-roles.js";
 import { awsCliSimulator, failures, normalisePolicy, normaliseTrust, renderPolicies, runFixtures, type Fixture, type PolicyDoc, type PolicyFile, type TrustDoc } from "./simulate.js";
 
 const live = process.env.PORTAL_IAM_LIVE === "1";
@@ -29,9 +30,8 @@ const fixture = JSON.parse(readFileSync(resolve(here, "fixtures/portal-launch-ro
 const sporedRole = process.env.PORTAL_SPORED_INSTANCE_ROLE ?? fixture.sporedInstanceRole;
 // The real-AWS e2e roles (e2e-aws/, #683). The e2e role must carry exactly the
 // portal role's policies, or the e2e harness proves another role's grants.
-const e2eRoles = JSON.parse(readFileSync(resolve(here, "policies/portal-e2e-roles.json"), "utf8")) as {
-  roles: Record<string, { trust: TrustDoc; inlinePoliciesFrom?: string; policies?: Record<string, PolicyDoc> }>;
-};
+const e2eRoles = loadE2ERoles();
+const teardownFixture = JSON.parse(readFileSync(resolve(here, "fixtures/portal-e2e-teardown.json"), "utf8")) as Fixture;
 
 async function aws(...args: string[]): Promise<unknown> {
   const { stdout } = await run("aws", [...args, "--output", "json"], { maxBuffer: 1 << 20 });
@@ -64,6 +64,12 @@ describe.skipIf(!live)("IAM coverage gate, live (credential-gated)", () => {
     expect(failures(results)).toEqual([]);
     const needsReal = results.filter((r) => r.case.realCall).map((r) => r.case.name);
     console.log(`tag-gated grants that also need one real call in the e2e harness: ${needsReal.join("; ")}`);
+  }, 120_000);
+
+  it("every e2e teardown-role case gets the expected SimulateCustomPolicy decision", async () => {
+    const account = await callerAccount();
+    const results = await runFixtures([{ ...teardownFixture, account }], () => teardownPolicyFile(e2eRoles), awsCliSimulator);
+    expect(failures(results)).toEqual([]);
   }, 120_000);
 
   it("the deployed role's inline policies match iam/policies/ exactly (nightly drift)", async () => {

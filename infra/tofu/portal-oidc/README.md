@@ -67,7 +67,9 @@ It codifies the trust that spawn-ts's demo proved live (see
     `repo:spore-host/spore-host:ref:refs/heads/main` only. Its
     `PortalE2ETeardown` policy grants four things:
     - the leak check's `Describe*` reads;
-    - `ec2:TerminateInstances` on instances carrying `spore-host:e2e-run` only;
+    - `ec2:TerminateInstances` only on t4g.nano instances carrying
+      `spore-host:e2e-run`. The instance type bounds what a tag forged through
+      the `ec2:CreateTags`-on-`*` gap (#678) can reach;
     - `ssm:TerminateSession` on `spore-e2e-*` sessions only;
     - `sts:AssumeRole` on `spore-portal-e2e`.
 
