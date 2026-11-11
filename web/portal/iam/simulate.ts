@@ -16,8 +16,9 @@
 // 4. Every case names an action some policy statement mentions or is
 //    explicitly a "must never be allowed" case (expect denied).
 // Tag-gated allow cases carry realCall:true: the simulator is known to
-// misjudge some tag conditions, so each also needs one real call in the
-// real-AWS e2e harness (#683), which is not part of the offline gate.
+// misjudge some tag conditions, so each also gets one real call, both ways, in
+// the real-AWS e2e harness (web/portal/e2e-aws/). gates/e2e-aws-plan.test.ts
+// fails offline when a tag-gated grant has no such call planned.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -189,6 +190,34 @@ export function normalisePolicy(doc: PolicyDoc): unknown {
               Object.entries(s.Condition).map(([op, kv]) => [op, Object.fromEntries(Object.entries(kv).map(([k, v]) => [k, sorted(v)]))]),
             ),
           }
+        : {}),
+    })),
+  };
+}
+
+/** A role's trust policy, as the drift check reads it. */
+export interface TrustDoc {
+  Version: string;
+  Statement: {
+    Sid?: string;
+    Effect: string;
+    Principal: Record<string, string | string[]>;
+    Action: string | string[];
+    Condition?: Record<string, Record<string, string | string[]>>;
+  }[];
+}
+
+/** normalisePolicy for a trust policy: Principal values, Action and condition values as sorted lists. */
+export function normaliseTrust(doc: TrustDoc): unknown {
+  const sorted = (v: string | string[]) => [...list(v)].sort();
+  return {
+    Version: doc.Version,
+    Statement: doc.Statement.map((s) => ({
+      ...s,
+      Principal: Object.fromEntries(Object.entries(s.Principal).map(([k, v]) => [k, sorted(v)])),
+      Action: sorted(s.Action),
+      ...(s.Condition
+        ? { Condition: Object.fromEntries(Object.entries(s.Condition).map(([op, kv]) => [op, Object.fromEntries(Object.entries(kv).map(([k, v]) => [k, sorted(v)]))])) }
         : {}),
     })),
   };

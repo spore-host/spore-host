@@ -1,0 +1,98 @@
+{
+  "$comment": "The two roles of the portal's real-AWS e2e harness (web/portal/e2e-aws/, spore-host#683), rendered from infra/tofu/portal-oidc/main.tf (aws_iam_role.portal_e2e, aws_iam_role_policy.portal_e2e, aws_iam_role.portal_e2e_teardown, aws_iam_role_policy.portal_e2e_teardown). ${ACCOUNT_ID} is the dev account. spore-portal-e2e has NO policy of its own: its inline policies are exactly portal-launch-role.json's, by name, so the harness proves the portal role's grants; gates/iam-e2e-roles.test.ts checks main.tf does that, and the nightly drift job (iam/live.test.ts) fails when the deployed e2e role's policies differ from the portal role's. Its trust admits only same-account principals (this account's root, narrowed by aws:PrincipalArn to the operator roles and the teardown role) and only session names starting spore-e2e-; there is no cross-account trust. The teardown role is assumed by .github/workflows/portal-e2e-aws.yml over GitHub OIDC from main only: it observes (for the leak check), terminates only instances carrying spore-host:e2e-run, closes only spore-e2e-* sessions, and may assume the e2e role.",
+  "roles": {
+    "spore-portal-e2e": {
+      "inlinePoliciesFrom": "portal-launch-role.json",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "SameAccountOperatorsAndTeardownRole",
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "arn:aws:iam::${ACCOUNT_ID}:root"
+            },
+            "Action": "sts:AssumeRole",
+            "Condition": {
+              "ArnEquals": {
+                "aws:PrincipalArn": [
+                  "arn:aws:iam::${ACCOUNT_ID}:role/OrganizationAccountAccessRole",
+                  "arn:aws:iam::${ACCOUNT_ID}:role/spore-portal-e2e-teardown"
+                ]
+              },
+              "StringLike": {
+                "sts:RoleSessionName": "spore-e2e-*"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "spore-portal-e2e-teardown": {
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "GitHubActionsMainOnly",
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spore-host:ref:refs/heads/main"
+              }
+            }
+          }
+        ]
+      },
+      "policies": {
+        "PortalE2ETeardown": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "BecomeTheE2ERole",
+              "Effect": "Allow",
+              "Action": "sts:AssumeRole",
+              "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/spore-portal-e2e"
+            },
+            {
+              "Sid": "ObserveForTheLeakCheck",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:DescribeAddresses",
+                "ec2:DescribeInstances",
+                "ec2:DescribeKeyPairs",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeVolumes",
+                "ssm:DescribeInstanceInformation",
+                "ssm:DescribeSessions"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "TerminateE2EInstancesOnly",
+              "Effect": "Allow",
+              "Action": "ec2:TerminateInstances",
+              "Resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*",
+              "Condition": {
+                "Null": {
+                  "aws:ResourceTag/spore-host:e2e-run": "false"
+                }
+              }
+            },
+            {
+              "Sid": "CloseE2ESessionsOnly",
+              "Effect": "Allow",
+              "Action": "ssm:TerminateSession",
+              "Resource": "arn:aws:ssm:us-east-1:${ACCOUNT_ID}:session/spore-e2e-*"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

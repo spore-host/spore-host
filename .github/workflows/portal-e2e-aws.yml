@@ -1,0 +1,113 @@
+name: Portal e2e (real AWS, credential-gated)
+
+# The portal's real-AWS e2e harness with its independent leak check
+# (spore-host#683), web/portal/e2e-aws/. Per run, in the dev account
+# (435415984226), us-east-1:
+#   1. refuse to start if any instance from an earlier e2e run is still live;
+#   2. launch two t4g.nano On-Demand instances (the cap) AS THE PORTAL, through
+#      spawn-ts, with a 15-minute spawn:ttl: one spawn:managed=true, one
+#      otherwise identical without it. This proves RunInstances, CreateTags
+#      and PassRole;
+#   3. one real call per tag-gated grant in web/portal/iam/policies/, both ways
+#      (StartSession allowed on the managed instance, denied on the control),
+#      and Stop, Start and Terminate denied on the managed instance (#678),
+#      via EC2 DryRun;
+#   4. teardown, always, terminating only this run's tagged instances;
+#   5. the leak check: no instance, volume, network interface, Elastic IP,
+#      security group, key pair or SSM session of the run is left.
+#
+# CREDENTIAL-GATED. It signs in over GitHub OIDC as spore-portal-e2e-teardown
+# (the observer: leak-check reads, terminate e2e-tagged instances only) and
+# the harness assumes spore-portal-e2e from there, whose inline policies are
+# the portal role's (portal-iam-live.yml checks that nightly). Both roles are
+# in infra/tofu/portal-oidc/main.tf, their named deleter, and both trust only
+# this repository's main branch (the e2e role through the teardown role).
+#
+# Gated on the repository variables PORTAL_E2E_ROLE_ARN and
+# PORTAL_E2E_TEARDOWN_ROLE_ARN. If either is unset, every run is a no-op that
+# says so; nothing calls AWS. Once they are set, any failure (credentials, the
+# guard, a proof, teardown, a leak) FAILS the run.
+
+# Scheduled and manual only, never on pull_request: PR code must not run with
+# AWS credentials, and must not launch instances. The offline half (the plan
+# gate, gates/e2e-aws-plan.test.ts, and the harness's unit tests) runs in
+# web-ci.yml on every PR.
+on:
+  schedule:
+    - cron: '47 6 * * *'  # nightly, after the IAM drift check (06:23)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time: the guard refuses to start while another run's
+# instances are live, and two runs would trip it.
+concurrency:
+  group: portal-e2e-aws
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: Real-AWS e2e and leak check
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      E2E_ROLE: ${{ vars.PORTAL_E2E_ROLE_ARN }}
+      TEARDOWN_ROLE: ${{ vars.PORTAL_E2E_TEARDOWN_ROLE_ARN }}
+      AWS_REGION: us-east-1
+      # One id for the harness and the sweep after it.
+      PORTAL_E2E_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Skip when the e2e roles are not configured
+        id: gate
+        run: |
+          if [ -z "${E2E_ROLE}" ] || [ -z "${TEARDOWN_ROLE}" ]; then
+            echo "::notice::PORTAL_E2E_ROLE_ARN or PORTAL_E2E_TEARDOWN_ROLE_ARN is not set: the portal real-AWS e2e is skipped. No AWS call was made and nothing was proven."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - if: steps.gate.outputs.run == 'true'
+        name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - if: steps.gate.outputs.run == 'true'
+        name: Configure AWS credentials (teardown role)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: ${{ env.TEARDOWN_ROLE }}
+          role-session-name: portal-e2e-observer-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - if: steps.gate.outputs.run == 'true'
+        name: Launch, prove, tear down, leak-check
+        working-directory: web
+        env:
+          PORTAL_E2E_AWS: '1'
+          PORTAL_E2E_ROLE_ARN: ${{ env.E2E_ROLE }}
+        run: npm run portal:e2e-aws
+
+      # Runs even when the harness failed, timed out or was cancelled, so a run
+      # killed mid-flight is still torn down. Idempotent: on a clean run it
+      # finds nothing and passes.
+      - if: always() && steps.gate.outputs.run == 'true'
+        name: Sweep this run (always)
+        working-directory: web
+        env:
+          PORTAL_E2E_SWEEP: '1'
+        run: npm run portal:e2e-aws:sweep

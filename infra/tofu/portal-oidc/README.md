@@ -39,12 +39,39 @@ It codifies the trust that spawn-ts's demo proved live (see
     requests never get its credentials.
   - `aws_iam_role_policy.portal_iam_audit` (`PortalIAMAuditReadOnly`):
     `iam:SimulateCustomPolicy`, plus `iam:GetRole`, `GetRolePolicy`,
-    `ListRolePolicies` and `ListAttachedRolePolicies` on `spore-portal-launch`
-    only.
+    `ListRolePolicies` and `ListAttachedRolePolicies` on `spore-portal-launch`,
+    `spore-portal-e2e` and `spore-portal-e2e-teardown` only.
 
   These were created by hand on 2026-11-10 and are codified here so this root
   is their deleter. Its ARN is the `iam_audit_role_arn` output and the
   repository variable `PORTAL_IAM_AUDIT_ROLE_ARN`.
+- The **real-AWS e2e harness's two roles** (`web/portal/e2e-aws/`,
+  `.github/workflows/portal-e2e-aws.yml`, #683). Their documents are
+  `web/portal/iam/policies/portal-e2e-roles.json`, and
+  `web/portal/gates/iam-e2e-roles.test.ts` keeps that file identical to this
+  root.
+  - `aws_iam_role.portal_e2e` (**`spore-portal-e2e`**) has **no policy of its
+    own**. `aws_iam_role_policy.portal_e2e` gives it the three portal policies
+    above, by name, copied from those resources. The harness therefore proves
+    the portal role's grants: its effective permissions equal the portal
+    role's. The nightly drift job fails when the deployed e2e role's policies
+    differ, or when either role gains a permissions boundary.
+  - Its trust is `sts:AssumeRole` from this account's root, narrowed by
+    `aws:PrincipalArn` to two kinds of principal: the roles in
+    `e2e_operator_role_names` (default `OrganizationAccountAccessRole`, which
+    `spore-host-dev` signs in as) and the teardown role. The session name must
+    match `spore-e2e-*`. **No other account is trusted.** Principals are role
+    names in this account, never ARNs, and a precondition re-checks this.
+  - `aws_iam_role.portal_e2e_teardown` (**`spore-portal-e2e-teardown`**) is
+    what CI signs in as. It trusts GitHub OIDC for
+    `repo:spore-host/spore-host:ref:refs/heads/main` only. Its
+    `PortalE2ETeardown` policy grants four things:
+    - the leak check's `Describe*` reads;
+    - `ec2:TerminateInstances` on instances carrying `spore-host:e2e-run` only;
+    - `ssm:TerminateSession` on `spore-e2e-*` sessions only;
+    - `sts:AssumeRole` on `spore-portal-e2e`.
+
+    Locally, the operator's own credentials play this part.
 
 Keep `web/portal/iam/policies/portal-launch-role.json` identical to the three
 portal policies here: `web/portal/gates/iam-policy-source.test.ts` fails on a
@@ -116,11 +143,76 @@ tofu import -var="globus_client_id=<uuid>" \
   aws_iam_openid_connect_provider.github arn:aws:iam::435415984226:oidc-provider/token.actions.githubusercontent.com
 tofu import -var="globus_client_id=<uuid>" aws_iam_role.portal_iam_audit spore-portal-iam-audit
 tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.portal_iam_audit spore-portal-iam-audit:PortalIAMAuditReadOnly
+
+# The e2e roles, once created ("E2E roles" below).
+tofu import -var="globus_client_id=<uuid>" aws_iam_role.portal_e2e spore-portal-e2e
+tofu import -var="globus_client_id=<uuid>" 'aws_iam_role_policy.portal_e2e["PortalEC2Launch"]' spore-portal-e2e:PortalEC2Launch
+tofu import -var="globus_client_id=<uuid>" 'aws_iam_role_policy.portal_e2e["PortalPassSporedProfile"]' spore-portal-e2e:PortalPassSporedProfile
+tofu import -var="globus_client_id=<uuid>" 'aws_iam_role_policy.portal_e2e["PortalSSMSession"]' spore-portal-e2e:PortalSSMSession
+tofu import -var="globus_client_id=<uuid>" aws_iam_role.portal_e2e_teardown spore-portal-e2e-teardown
+tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.portal_e2e_teardown spore-portal-e2e-teardown:PortalE2ETeardown
 ```
 
 Then `tofu plan` should show no changes to the policies. Expected noise: tags
 on the Globus provider and the launch role, if the live ones differ from
 `common_tags`, and nothing on the GitHub provider's thumbprint (ignored).
+
+## E2E roles: create by hand
+
+The root has no state yet (#671), so the e2e roles are created by hand from the
+checked-in documents and then imported (above). Run this from the repo root
+with `AWS_PROFILE=spore-host-dev`. Every principal is in `435415984226`: the
+account root, roles in it and its existing GitHub OIDC provider.
+
+```sh
+export AWS_PROFILE=spore-host-dev AWS_REGION=us-east-1
+P=web/portal/iam/policies
+D="$HOME/.xtmp/e2e-iam"; mkdir -p "$D"
+r() { sed -e 's/[$]{ACCOUNT_ID}/435415984226/g' -e 's/[$]{SPORED_INSTANCE_ROLE}/spored-instance-role/g'; }
+
+# spore-portal-e2e: the portal role's three policies, verbatim.
+jq '.roles["spore-portal-e2e"].trust' "$P/portal-e2e-roles.json" | r > "$D/e2e-trust.json"
+aws iam create-role --role-name spore-portal-e2e --max-session-duration 3600 \
+  --description "Portal real-AWS e2e: the portal role's policies, assumable by same-account operators and the e2e teardown role (spore-host#683). Deleter: infra/tofu/portal-oidc." \
+  --tags Key=spore-host:component,Value=portal-e2e \
+  --assume-role-policy-document "file://$D/e2e-trust.json"
+for n in PortalEC2Launch PortalPassSporedProfile PortalSSMSession; do
+  jq ".policies.$n" "$P/portal-launch-role.json" | r > "$D/$n.json"
+  aws iam put-role-policy --role-name spore-portal-e2e --policy-name "$n" --policy-document "file://$D/$n.json"
+done
+
+# spore-portal-e2e-teardown: CI's observer and teardown.
+jq '.roles["spore-portal-e2e-teardown"].trust' "$P/portal-e2e-roles.json" | r > "$D/teardown-trust.json"
+jq '.roles["spore-portal-e2e-teardown"].policies.PortalE2ETeardown' "$P/portal-e2e-roles.json" | r > "$D/teardown-policy.json"
+aws iam create-role --role-name spore-portal-e2e-teardown --max-session-duration 3600 \
+  --description "Portal real-AWS e2e observer + teardown: leak-check reads, terminate e2e-tagged instances only (spore-host#683). Deleter: infra/tofu/portal-oidc." \
+  --tags Key=spore-host:component,Value=portal-e2e \
+  --assume-role-policy-document "file://$D/teardown-trust.json"
+aws iam put-role-policy --role-name spore-portal-e2e-teardown --policy-name PortalE2ETeardown \
+  --policy-document "file://$D/teardown-policy.json"
+
+# The audit role must read both, or the nightly drift job goes red.
+cat > "$D/audit.json" <<'EOF'
+{"Version":"2012-10-17","Statement":[
+ {"Sid":"SimulateCustom","Effect":"Allow","Action":"iam:SimulateCustomPolicy","Resource":"*"},
+ {"Sid":"ReadPortalRole","Effect":"Allow",
+  "Action":["iam:GetRole","iam:GetRolePolicy","iam:ListRolePolicies","iam:ListAttachedRolePolicies"],
+  "Resource":["arn:aws:iam::435415984226:role/spore-portal-launch",
+              "arn:aws:iam::435415984226:role/spore-portal-e2e",
+              "arn:aws:iam::435415984226:role/spore-portal-e2e-teardown"]}]}
+EOF
+aws iam put-role-policy --role-name spore-portal-iam-audit --policy-name PortalIAMAuditReadOnly \
+  --policy-document "file://$D/audit.json"
+
+# CI reads both role ARNs from repository variables.
+gh variable set PORTAL_E2E_ROLE_ARN --repo spore-host/spore-host --body arn:aws:iam::435415984226:role/spore-portal-e2e
+gh variable set PORTAL_E2E_TEARDOWN_ROLE_ARN --repo spore-host/spore-host --body arn:aws:iam::435415984226:role/spore-portal-e2e-teardown
+rm -r "$D"
+```
+
+To delete them by hand instead of through this root, run
+`aws iam delete-role-policy` for each policy, then `aws iam delete-role`, for
+each role, and unset the two variables.
 
 ## State
 

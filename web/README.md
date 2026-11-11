@@ -252,6 +252,38 @@ open web/index.html
 # Use browser dev tools to test mobile/tablet views
 ```
 
+### Portal real-AWS e2e
+
+The rebuilt portal (`web/portal/`) has a credential-gated harness in
+`web/portal/e2e-aws/` (spore-host#683). It runs in the dev account
+(435415984226), us-east-1, and does the following:
+
+1. It refuses to start if an earlier run left an instance live.
+2. It launches two t4g.nano On-Demand instances as the portal would, through
+   spawn-ts, with `spawn:ttl=15m`. One is `spawn:managed=true`; the other is
+   identical but without that tag.
+3. It proves every tag-gated grant with a real call in both directions.
+4. It tears down whatever happens, then checks independently that nothing is
+   left.
+
+It acts as `spore-portal-e2e`, whose inline policies are the portal role's own
+(`infra/tofu/portal-oidc`). Your own credentials do the teardown and the leak
+check. Run it locally:
+
+```bash
+AWS_PROFILE=spore-host-dev make portal-e2e-aws
+```
+
+- **Cost:** it launches at most two t4g.nano instances for about ten minutes,
+  well under a cent.
+- **Run id:** the harness prints one. If a run is killed, sweep it with
+  `AWS_PROFILE=spore-host-dev PORTAL_E2E_RUN_ID=<id> make portal-e2e-aws-sweep`.
+- **Without credentials:** without `PORTAL_E2E_AWS=1` (which the make target
+  sets), `npm run portal:test` skips the suite and says so. With it, any failure
+  fails the run, including missing credentials.
+- **In CI:** `.github/workflows/portal-e2e-aws.yml` runs it nightly and on
+  manual dispatch, never on a pull request.
+
 ### Future
 ```bash
 # Unit tests

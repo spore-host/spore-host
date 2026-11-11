@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { COMMAND_ACTIONS } from "./command-actions.js";
 import { buildInventory, inventoryDrift } from "./inventory.js";
-import { failures, fixtureProblems, glob, normalisePolicy, offlineSimulator, renderPolicies, runFixtures, type Fixture, type PolicyFile } from "./simulate.js";
+import { failures, fixtureProblems, glob, normalisePolicy, normaliseTrust, offlineSimulator, renderPolicies, runFixtures, type Fixture, type PolicyFile } from "./simulate.js";
 
 describe("closed command table", () => {
   it("maps known commands to actions", () => {
@@ -142,5 +142,14 @@ describe("simulation fixtures", () => {
     // A changed Sid, value or operator is still drift.
     const c3 = normalisePolicy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "a:A", Resource: "*", Condition: { StringLike: { k: "v" } } }] });
     expect(c1).not.toEqual(c3);
+  });
+
+  it("normalises trust policies the same way, and still sees a new principal", () => {
+    const base = { Sid: "S", Effect: "Allow", Action: "sts:AssumeRole" };
+    const a = normaliseTrust({ Version: "2012-10-17", Statement: [{ ...base, Principal: { AWS: "arn:aws:iam::111122223333:root" }, Condition: { ArnEquals: { "aws:PrincipalArn": ["b", "a"] } } }] });
+    const b = normaliseTrust({ Version: "2012-10-17", Statement: [{ ...base, Principal: { AWS: ["arn:aws:iam::111122223333:root"] }, Condition: { ArnEquals: { "aws:PrincipalArn": ["a", "b"] } } }] });
+    expect(a).toEqual(b);
+    const c = normaliseTrust({ Version: "2012-10-17", Statement: [{ ...base, Principal: { AWS: ["arn:aws:iam::111122223333:root", "arn:aws:iam::999988887777:root"] }, Condition: { ArnEquals: { "aws:PrincipalArn": ["a", "b"] } } }] });
+    expect(a).not.toEqual(c);
   });
 });

@@ -9,7 +9,7 @@ export default defineConfig({
   root: resolve(__dirname),
   test: {
     environment: "happy-dom",
-    include: ["src/**/*.test.ts", "gates/**/*.test.ts", "build/**/*.test.ts", "parity/**/*.test.ts", "iam/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "gates/**/*.test.ts", "build/**/*.test.ts", "parity/**/*.test.ts", "iam/**/*.test.ts", "e2e-aws/**/*.test.ts"],
     // The IAM inventory gate runs a real production build; give it room.
     testTimeout: 30_000,
   },

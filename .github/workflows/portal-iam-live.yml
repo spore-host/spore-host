@@ -4,7 +4,11 @@ name: Portal IAM (live, credential-gated)
 #   1. SimulateCustomPolicy over web/portal/iam/fixtures/ against the checked-in
 #      policy, including the required negative cases;
 #   2. the nightly drift check: the deployed portal role's inline policies must
-#      equal web/portal/iam/policies/ exactly, with nothing extra attached.
+#      equal web/portal/iam/policies/ exactly, with nothing extra attached;
+#      and the real-AWS e2e role spore-portal-e2e must carry exactly the same
+#      policies (and spore-portal-e2e-teardown exactly its own), with the
+#      trusts in iam/policies/portal-e2e-roles.json and no permissions
+#      boundary, or the e2e proofs (portal-e2e-aws.yml) prove another role.
 # Both are web/portal/iam/live.test.ts, which runs only with PORTAL_IAM_LIVE=1.
 #
 # CREDENTIAL-GATED. It assumes the read-only audit role spore-portal-iam-audit
@@ -12,8 +16,9 @@ name: Portal IAM (live, credential-gated)
 # codified in infra/tofu/portal-oidc/main.tf (their named deleter). The role's
 # ARN is the repository variable PORTAL_IAM_AUDIT_ROLE_ARN, which is set. It
 # grants iam:SimulateCustomPolicy, plus iam:GetRole, iam:GetRolePolicy,
-# iam:ListRolePolicies and iam:ListAttachedRolePolicies on spore-portal-launch
-# only; live.test.ts calls nothing else (sts:GetCallerIdentity needs no grant).
+# iam:ListRolePolicies and iam:ListAttachedRolePolicies on spore-portal-launch,
+# spore-portal-e2e and spore-portal-e2e-teardown only; live.test.ts calls
+# nothing else (sts:GetCallerIdentity needs no grant).
 #
 # The role trusts repo:spore-host/spore-host:ref:refs/heads/main only, so this
 # works for the nightly run and for a manual run dispatched from main. A
@@ -27,8 +32,8 @@ name: Portal IAM (live, credential-gated)
 # expired trust reads red, not green.
 #
 # Not covered here: one real call per tag-gated grant (the simulator misjudges
-# some tag conditions). That belongs to the real-AWS e2e harness with its leak
-# check, which is a later Phase 0 increment.
+# some tag conditions). That is the real-AWS e2e harness with its leak check,
+# .github/workflows/portal-e2e-aws.yml.
 
 # Scheduled and manual only, never on pull_request: PR code must not run with
 # AWS credentials. The offline half (web-ci.yml) gates PRs.
