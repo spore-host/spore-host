@@ -8,6 +8,9 @@ Besides each watch's definition, the table shows its heartbeat:
              watch is flagged "!" when that is over 15 minutes: the poller is
              disabled or failing, or its capacity search keeps failing.
   TRIES      how many launch/hold/notify attempts it has made.
+  GROUP      the watch group it belongs to (lagotto watch --group): the
+             first member to land cancels the others. "lagotto status
+             &lt;group&gt;" shows the whole group.
   LAST ERR   the class of its latest error: capacity, quota, terminal,
              unknown, or search (the capacity search itself failed).
 
