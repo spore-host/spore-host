@@ -6,27 +6,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PolicyFile } from "../iam/simulate.js";
+import { readTf, tfActions, tfPolicyBlock } from "./tf-source.js";
 
 const policy = JSON.parse(readFileSync(resolve(import.meta.dirname, "../iam/policies/portal-launch-role.json"), "utf8")) as PolicyFile;
-const tf = readFileSync(resolve(import.meta.dirname, "../../../infra/tofu/portal-oidc/main.tf"), "utf8");
-
-/** The text of the aws_iam_role_policy block whose name is `name`. */
-function tfPolicyBlock(source: string, name: string): string | null {
-  const at = source.indexOf(`name = "${name}"`);
-  if (at === -1) return null;
-  const end = source.indexOf('\nresource "', at);
-  return source.slice(at, end === -1 ? undefined : end);
-}
-
-/** IAM actions named in Action = ... lines of an HCL policy block. Comments stripped. */
-function tfActions(block: string): string[] {
-  const clean = block.replace(/#.*$/gm, "");
-  const out: string[] = [];
-  for (const m of clean.matchAll(/Action\s*=\s*(\[[^\]]*\]|"[^"]*")/g)) {
-    for (const a of m[1].matchAll(/"([a-z0-9-]+:[A-Za-z0-9*]+)"/g)) out.push(a[1]);
-  }
-  return out.sort();
-}
+const tf = readTf();
 
 function jsonActions(name: string): string[] {
   return policy.policies[name].Statement.flatMap((s) => (Array.isArray(s.Action) ? s.Action : [s.Action])).sort();

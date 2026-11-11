@@ -15,6 +15,9 @@
 #   3. a read-only audit role for the portal's nightly IAM simulate + drift
 #      check (.github/workflows/portal-iam-live.yml), with the GitHub Actions
 #      OIDC provider it trusts. This module is their named deleter.
+#   4. the real-AWS e2e harness's two roles (.github/workflows/portal-e2e-aws.yml):
+#      spore-portal-e2e, carrying the portal role's policies verbatim, and
+#      spore-portal-e2e-teardown, its observer and teardown.
 #
 # UNLIKE the infra-account modules (dns-updater, spore-bot), this deploys into
 # the DEV compute account (435415984226), the account where the demo and the
@@ -406,7 +409,198 @@ resource "aws_iam_role_policy" "portal_iam_audit" {
           "iam:ListRolePolicies",
           "iam:ListAttachedRolePolicies",
         ]
-        Resource = aws_iam_role.portal_launch.arn
+        # The e2e role and the teardown role too: the nightly drift check
+        # (iam/live.test.ts) proves the e2e role's policies equal the portal
+        # role's, and reads both trusts, or the e2e proofs prove nothing.
+        Resource = [
+          aws_iam_role.portal_launch.arn,
+          aws_iam_role.portal_e2e.arn,
+          aws_iam_role.portal_e2e_teardown.arn,
+        ]
+      },
+    ]
+  })
+}
+
+# ── Portal real-AWS e2e roles ─────────────────────────────────────────────────
+# The e2e harness (web/portal/e2e-aws/, spore-host#683) needs credentials whose
+# effective permissions are EXACTLY the portal role's. spore-portal-launch
+# itself only admits a browser's Globus id_token, so neither CI nor an operator
+# can assume it unattended. spore-portal-e2e is its twin for that purpose:
+#
+# - Its inline policies are the portal role's three policies, by name, taken
+#   from the resources above (no copy to drift). iam/live.test.ts fails nightly
+#   when the deployed e2e role's policies differ from the checked-in portal
+#   policy, which the same job proves equals the deployed portal role's.
+# - Its trust admits this account's root, narrowed by aws:PrincipalArn to the
+#   operator roles in var.e2e_operator_role_names and the teardown role below,
+#   and only with a session name starting spore-e2e- (the harness's, which
+#   makes SSM sessions and CloudTrail entries attributable to a run). There is
+#   NO cross-account trust: every principal ARN is built from this account's
+#   id, and the precondition re-checks it.
+#
+# The teardown role is what CI signs in as (GitHub OIDC, main only). It is the
+# harness's observer: the leak check's reads, terminate for t4g.nano instances carrying
+# spore-host:e2e-run only, close for spore-e2e-* sessions only, and
+# sts:AssumeRole on the e2e role. Locally the operator's own credentials play
+# this part. Neither role has anything the portal role lacks except the
+# teardown role's reads and its tag-gated terminate.
+#
+# Created by hand from web/portal/iam/policies/portal-e2e-roles.json (which
+# gates/iam-e2e-roles.test.ts keeps identical to this), then imported (README).
+
+# Same-account roles operators sign in as, allowed to assume the e2e role. Names,
+# not ARNs, so a principal from another account cannot be written here.
+variable "e2e_operator_role_names" {
+  type        = list(string)
+  description = "Roles in THIS account whose sessions may assume spore-portal-e2e (the operator's local run)."
+  default     = ["OrganizationAccountAccessRole"]
+
+  validation {
+    condition     = alltrue([for n in var.e2e_operator_role_names : can(regex("^[A-Za-z0-9+=,.@_-]{1,64}$", n))])
+    error_message = "e2e_operator_role_names are role NAMES in this account, not ARNs: a cross-account principal is not allowed here."
+  }
+}
+
+locals {
+  account_id             = data.aws_caller_identity.current.account_id
+  e2e_role_name          = "spore-portal-e2e"
+  e2e_teardown_role_name = "spore-portal-e2e-teardown"
+  e2e_run_tag            = "spore-host:e2e-run"
+  e2e_assumers = concat(
+    [for n in var.e2e_operator_role_names : "arn:aws:iam::${local.account_id}:role/${n}"],
+    ["arn:aws:iam::${local.account_id}:role/${local.e2e_teardown_role_name}"],
+  )
+}
+
+resource "aws_iam_role" "portal_e2e" {
+  name                 = local.e2e_role_name
+  description          = "Portal real-AWS e2e: the portal role's policies, assumable by same-account operators and the e2e teardown role (spore-host#683). Deleter: infra/tofu/portal-oidc."
+  max_session_duration = 3600
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "SameAccountOperatorsAndTeardownRole"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${local.account_id}:root" }
+      Action    = "sts:AssumeRole"
+      Condition = {
+        ArnEquals  = { "aws:PrincipalArn" = local.e2e_assumers }
+        StringLike = { "sts:RoleSessionName" = "spore-e2e-*" }
+      }
+    }]
+  })
+
+  tags = {
+    "spore-host:component" = "portal-e2e"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = alltrue([for a in local.e2e_assumers : startswith(a, "arn:aws:iam::${local.account_id}:role/")])
+      error_message = "spore-portal-e2e may be assumed only by roles in this account."
+    }
+  }
+}
+
+# The portal role's three inline policies, by name, verbatim.
+resource "aws_iam_role_policy" "portal_e2e" {
+  for_each = {
+    PortalEC2Launch         = aws_iam_role_policy.ec2_launch.policy
+    PortalPassSporedProfile = aws_iam_role_policy.pass_spored_profile.policy
+    PortalSSMSession        = aws_iam_role_policy.ssm_session.policy
+  }
+  name   = each.key
+  role   = aws_iam_role.portal_e2e.id
+  policy = each.value
+}
+
+resource "aws_iam_role" "portal_e2e_teardown" {
+  name                 = local.e2e_teardown_role_name
+  description          = "Portal real-AWS e2e observer + teardown: leak-check reads, terminate e2e-tagged instances only (spore-host#683). Deleter: infra/tofu/portal-oidc."
+  max_session_duration = 3600
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "GitHubActionsMainOnly"
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.github_oidc_host}:aud" = "sts.amazonaws.com"
+          "${local.github_oidc_host}:sub" = "repo:spore-host/spore-host:ref:refs/heads/main"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    "spore-host:component" = "portal-e2e"
+  }
+}
+
+resource "aws_iam_role_policy" "portal_e2e_teardown" {
+  name = "PortalE2ETeardown"
+  role = aws_iam_role.portal_e2e_teardown.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "BecomeTheE2ERole"
+        Effect = "Allow"
+        # The rule flags sts:AssumeRole unconditionally because it returns
+        # credentials. Here that is the point: CI gets the e2e role's
+        # credentials (the portal role's permissions) only through this grant.
+        # It is scoped to that one role ARN, whose own trust also requires the
+        # spore-e2e-* session name. Same inline-suppress convention as
+        # pass_spored_profile above. Suppression needs the owner's review
+        # (spore-host#683).
+        # nosemgrep: terraform.lang.security.iam.no-iam-creds-exposure.no-iam-creds-exposure
+        Action   = "sts:AssumeRole"
+        Resource = aws_iam_role.portal_e2e.arn
+      },
+      {
+        # Describe calls cannot be scoped to resources. Read-only.
+        Sid    = "ObserveForTheLeakCheck"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeAddresses",
+          "ec2:DescribeInstances",
+          "ec2:DescribeKeyPairs",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeVolumes",
+          "ssm:DescribeInstanceInformation",
+          "ssm:DescribeSessions",
+        ]
+        Resource = "*"
+      },
+      {
+        # Only t4g.nano instances that carry the run tag, whatever its value:
+        # the harness narrows to its own run id (e2e-aws/leaks.ts
+        # teardownTargets). The instance type matters because ec2:CreateTags
+        # on "*" (the #678 gap) lets a portal or e2e session forge the run tag
+        # on any instance; the type limits what a forged tag can reach to the
+        # one type the harness launches (e2e-aws/config.ts INSTANCE_TYPE).
+        Sid      = "TerminateE2EInstancesOnly"
+        Effect   = "Allow"
+        Action   = "ec2:TerminateInstances"
+        Resource = "arn:aws:ec2:us-east-1:${local.account_id}:instance/*"
+        Condition = {
+          Null         = { "aws:ResourceTag/${local.e2e_run_tag}" = "false" }
+          StringEquals = { "ec2:InstanceType" = "t4g.nano" }
+        }
+      },
+      {
+        # SSM session ids start with the caller's role session name, which the
+        # e2e role's trust forces to spore-e2e-*.
+        Sid      = "CloseE2ESessionsOnly"
+        Effect   = "Allow"
+        Action   = "ssm:TerminateSession"
+        Resource = "arn:aws:ssm:us-east-1:${local.account_id}:session/spore-e2e-*"
       },
     ]
   })
@@ -421,6 +615,16 @@ output "oidc_provider_arn" {
 output "role_arn" {
   value       = aws_iam_role.portal_launch.arn
   description = "The portal launch role ARN — set this as the portal's VITE_ROLE_ARN."
+}
+
+output "e2e_role_arn" {
+  value       = aws_iam_role.portal_e2e.arn
+  description = "The portal e2e role (the portal role's policies). Set as the repository variable PORTAL_E2E_ROLE_ARN."
+}
+
+output "e2e_teardown_role_arn" {
+  value       = aws_iam_role.portal_e2e_teardown.arn
+  description = "The e2e observer + teardown role portal-e2e-aws.yml signs in as. Set as the repository variable PORTAL_E2E_TEARDOWN_ROLE_ARN."
 }
 
 output "iam_audit_role_arn" {

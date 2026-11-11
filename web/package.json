@@ -19,7 +19,9 @@
     "portal:build:gate": "vite build --config portal/vite.config.ts --mode gate",
     "portal:iam:update": "PORTAL_IAM_UPDATE=1 vitest run --config portal/vitest.config.ts gates/iam-inventory.test.ts",
     "portal:e2e": "playwright test --config portal/playwright.config.ts",
-    "portal:gates": "npm run portal:typecheck && npm run portal:test && npm run portal:e2e"
+    "portal:gates": "npm run portal:typecheck && npm run portal:test && npm run portal:e2e",
+    "portal:e2e-aws": "vitest run --config portal/vitest.config.ts e2e-aws/harness.live.test.ts",
+    "portal:e2e-aws:sweep": "vitest run --config portal/vitest.config.ts e2e-aws/sweep.live.test.ts"
   },
   "dependencies": {
     "@spore-host/lagotto-ts": "^0.2.0",
@@ -27,6 +29,9 @@
     "@spore-host/truffle-ts": "^0.5.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-ec2": "3.1095.0",
+    "@aws-sdk/client-ssm": "3.1095.0",
+    "@aws-sdk/client-sts": "3.1095.0",
     "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.65.0",
     "@types/node": "^22.0.0",

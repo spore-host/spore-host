@@ -1,0 +1,102 @@
+{
+  "$comment": "SimulateCustomPolicy cases for the e2e teardown role's PortalE2ETeardown policy (iam/policies/portal-e2e-roles.json, role spore-portal-e2e-teardown). Run offline by gates/iam-e2e-teardown.test.ts through the offline evaluator, and live by iam/live.test.ts through aws iam simulate-custom-policy. The terminate grant needs BOTH the run tag and ec2:InstanceType=t4g.nano: ec2:CreateTags on * (the #678 gap) lets a portal or e2e session forge the tag on any instance, and the type limits what a forged tag can reach to the one type the harness launches. The allowed terminate is also exercised for real by every e2e teardown; the denials cannot be, because the harness never launches anything but a t4g.nano. 111122223333 is AWS's documentation account id; the live job substitutes the caller's.",
+  "policyFile": "portal-e2e-roles.json#spore-portal-e2e-teardown",
+  "account": "111122223333",
+  "sporedInstanceRole": "spored-instance-role",
+  "cases": [
+    {
+      "name": "terminate a tagged t4g.nano e2e instance",
+      "action": "ec2:TerminateInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": {
+        "aws:ResourceTag/spore-host:e2e-run": "gh-1-1",
+        "ec2:InstanceType": "t4g.nano"
+      },
+      "expect": "allowed"
+    },
+    {
+      "name": "terminate a tagged instance that is not a t4g.nano (a forged tag on someone else's instance)",
+      "action": "ec2:TerminateInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": {
+        "aws:ResourceTag/spore-host:e2e-run": "gh-1-1",
+        "ec2:InstanceType": "p5.48xlarge"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "terminate an untagged t4g.nano",
+      "action": "ec2:TerminateInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": {
+        "ec2:InstanceType": "t4g.nano"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "terminate a tagged t4g.nano in another region",
+      "action": "ec2:TerminateInstances",
+      "resource": "arn:aws:ec2:us-west-2:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": {
+        "aws:ResourceTag/spore-host:e2e-run": "gh-1-1",
+        "ec2:InstanceType": "t4g.nano"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "stop a tagged t4g.nano e2e instance",
+      "action": "ec2:StopInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": {
+        "aws:ResourceTag/spore-host:e2e-run": "gh-1-1",
+        "ec2:InstanceType": "t4g.nano"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "close an e2e session",
+      "action": "ssm:TerminateSession",
+      "resource": "arn:aws:ssm:us-east-1:${ACCOUNT_ID}:session/spore-e2e-gh-1-1-0123456789abcdef0",
+      "expect": "allowed"
+    },
+    {
+      "name": "close someone else's session",
+      "action": "ssm:TerminateSession",
+      "resource": "arn:aws:ssm:us-east-1:${ACCOUNT_ID}:session/alice-0123456789abcdef0",
+      "expect": "denied"
+    },
+    {
+      "name": "become the e2e role",
+      "action": "sts:AssumeRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/spore-portal-e2e",
+      "expect": "allowed"
+    },
+    {
+      "name": "become any other role",
+      "action": "sts:AssumeRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/OrganizationAccountAccessRole",
+      "expect": "denied"
+    },
+    {
+      "name": "read instances for the leak check",
+      "action": "ec2:DescribeInstances",
+      "resource": "*",
+      "expect": "allowed"
+    },
+    {
+      "name": "never launch",
+      "action": "ec2:RunInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*",
+      "expect": "denied"
+    },
+    {
+      "name": "never pass a role",
+      "action": "iam:PassRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/spored-instance-role",
+      "context": {
+        "iam:PassedToService": "ec2.amazonaws.com"
+      },
+      "expect": "denied"
+    }
+  ]
+}

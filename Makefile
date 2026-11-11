@@ -9,7 +9,7 @@
 # This repo holds infrastructure: the rest-api Lambda, dashboard (web/),
 # Python SDK (sdk/), deployment scripts (scripts/), AMIs (infra/), and docs.
 
-.PHONY: build-rest-api test-rest-api docs-dev docs-build security clean help portal-check portal-gates portal-iam-update
+.PHONY: build-rest-api test-rest-api docs-dev docs-build security clean help portal-check portal-gates portal-iam-update portal-e2e-aws portal-e2e-aws-sweep
 
 # Build the hosted REST API Lambda
 build-rest-api:
@@ -44,6 +44,24 @@ portal-check:
 portal-gates:
 	@cd web && npm run portal:gates
 
+# portal-e2e-aws: the REAL-AWS e2e harness (web/portal/e2e-aws/). Launches two
+# t4g.nano On-Demand instances in the dev account with a 15m TTL, proves the
+# tag-gated grants, tears down and leak-checks, then sweeps the run whatever
+# happened. Needs credentials for 435415984226 that may assume
+# spore-portal-e2e, e.g. AWS_PROFILE=spore-host-dev. Costs well under a cent.
+portal-e2e-aws:
+	@cd web && run_id="$${PORTAL_E2E_RUN_ID:-local-$$(date -u +%Y%m%dt%H%M%Sz)-$$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')}"; \
+	  echo "portal e2e run id: $$run_id"; \
+	  PORTAL_E2E_RUN_ID="$$run_id" PORTAL_E2E_AWS=1 npm run portal:e2e-aws; status=$$?; \
+	  PORTAL_E2E_RUN_ID="$$run_id" PORTAL_E2E_SWEEP=1 npm run portal:e2e-aws:sweep || status=1; \
+	  exit $$status
+
+# portal-e2e-aws-sweep: terminate and leak-check one e2e run by id, e.g. after a
+# killed run: PORTAL_E2E_RUN_ID=<id> make portal-e2e-aws-sweep
+portal-e2e-aws-sweep:
+	@test -n "$(PORTAL_E2E_RUN_ID)" || { echo "set PORTAL_E2E_RUN_ID=<run id>"; exit 2; }
+	@cd web && PORTAL_E2E_SWEEP=1 npm run portal:e2e-aws:sweep
+
 # Regenerate web/portal/iam/inventory.json after adding or removing an AWS call.
 portal-iam-update:
 	@cd web && npm run portal:iam:update
@@ -62,4 +80,6 @@ help:
 	@echo "  portal-check    Portal typecheck, unit tests and offline gates"
 	@echo "  portal-gates    portal-check plus the Playwright accessibility/keyboard/reflow gates"
 	@echo "  portal-iam-update  Regenerate the portal's IAM inventory"
+	@echo "  portal-e2e-aws  Portal real-AWS e2e + leak check (AWS_PROFILE=spore-host-dev; launches 2 t4g.nano)"
+	@echo "  portal-e2e-aws-sweep  Terminate + leak-check one e2e run (PORTAL_E2E_RUN_ID=<id>)"
 	@echo "  clean           Remove build artifacts"
