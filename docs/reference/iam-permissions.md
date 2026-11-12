@@ -9,14 +9,40 @@ spore.host tools act on EC2 with **your** AWS credentials (see [AWS Authenticati
 ## Recommended least-privilege baseline
 
 This is the recommended least-privilege policy for the core flow — **`spawn launch`
-→ connect → manage → terminate**. It was **verified on 2026-10-18 by a real
-`spawn launch`, `status`, `extend` and `terminate` under exactly this policy**
-(spawn v0.134.0, a throwaway role in a test account), and each action is traced
-to the spawn code that calls it. Dropping a core action fails the launch; see the
-callout below. One path wasn't exercised: that account already had the `spored`
-role, so its first-time creation ran only through the matching
-`spawn-instance-*` path. Optional features (FSx, the `spawn dns` commands)
-add their own permissions, listed further down.
+→ connect → manage → terminate**. Each action is traced to the spawn code that
+calls it. Optional features (FSx, the `spawn dns` commands) add their own
+permissions, listed further down.
+
+The policy is built so that holding it gives no path to IAM administration
+and no reach into instances spawn didn't launch:
+
+- **Roles spawn creates are capped by a permissions boundary.** Every IAM write
+  to an instance role (`iam:CreateRole`, `iam:PutRolePolicy`,
+  `iam:AttachRolePolicy`) is allowed only when the role has the boundary
+  `arn:aws:iam::<account>:policy/spore-host/spawn-instance-boundary`. Whatever
+  is written onto the role, its effective permissions are the intersection with
+  that boundary, and this policy can't change, remove or replace the boundary.
+- **Tags that decide ownership are written only at creation.** `ec2:CreateTags`
+  is allowed on any resource only as part of the request that creates it
+  (`ec2:CreateAction`). Afterwards, spawn may change only its own `spawn:*`
+  keys on instances and Spot requests already tagged `spawn:managed=true`
+  (volumes are the one exception, below), and an explicit
+  `Deny` stops anyone holding this policy from writing or deleting the keys
+  that say which resources spawn owns. That is what keeps the tag-scoped
+  statements below (`EC2Manage`, `SendCommand`) scoped.
+
+::: warning Requires spawn to provision the boundary
+spawn sets `spore-host/spawn-instance-boundary` on the roles it creates, and
+creates the boundary once per account
+([below](#the-permissions-boundary)), so you don't write it. **Released spawn
+versions don't do this yet.** Until a spawn release that does, `CreateRole` and every policy
+write on an instance role are refused under this policy, so a launch that has
+to create or update a role fails. The earlier version of this page granted
+those actions without the boundary condition. That version let anyone holding
+it give an instance role any permissions, so it is not a safe stand-in. This
+policy also hasn't yet been checked by a real `spawn launch` (the earlier one
+was, on 2026-10-18 with spawn v0.134.0).
+:::
 
 ```json
 {
@@ -58,19 +84,95 @@ add their own permissions, listed further down.
       "Action": [
         "ec2:ImportKeyPair",
         "ec2:CreateSecurityGroup",
-        "ec2:AuthorizeSecurityGroupIngress",
-        "ec2:CreateTags"
+        "ec2:AuthorizeSecurityGroupIngress"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "TagOnCreate",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:CreateAction": [
+            "RunInstances",
+            "CreateSecurityGroup",
+            "ImportKeyPair"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "RetagSpawnInstances",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "Resource": [
+        "arn:aws:ec2:*:*:instance/*",
+        "arn:aws:ec2:*:*:spot-instances-request/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/spawn:managed": "true"
+        },
+        "ForAllValues:StringLike": {
+          "aws:TagKeys": [
+            "spawn:*",
+            "spore:plugin:*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "TagSpawnVolumesFromSnapshots",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": "arn:aws:ec2:*:*:volume/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/spawn:managed": "true"
+        }
+      }
+    },
+    {
+      "Sid": "DenyOwnershipTagsAfterCreate",
+      "Effect": "Deny",
+      "Action": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "Null": {
+          "ec2:CreateAction": "true"
+        },
+        "ForAnyValue:StringEquals": {
+          "aws:TagKeys": [
+            "spawn:managed",
+            "spawn:root",
+            "spawn:created-by",
+            "spawn:iam-user",
+            "spawn:account-id",
+            "spawn:launch-time",
+            "spawn:config",
+            "spawn:nested-parent",
+            "spawn:pre-stop",
+            "spawn:pre-stop-timeout",
+            "spawn:local-username",
+            "spawn:instance-id",
+            "spawn:instance-arn"
+          ]
+        }
+      }
     },
     {
       "Sid": "InstanceProfileForSpored",
       "Effect": "Allow",
       "Action": [
         "iam:GetRole",
-        "iam:CreateRole",
-        "iam:PutRolePolicy",
-        "iam:AttachRolePolicy",
         "iam:ListAttachedRolePolicies",
         "iam:ListRolePolicies",
         "iam:GetRolePolicy",
@@ -90,15 +192,58 @@ add their own permissions, listed further down.
       ]
     },
     {
-      "Sid": "SporedManagedPolicy",
+      "Sid": "CreateBoundedInstanceRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:PutRolePolicy",
+        "iam:PutRolePermissionsBoundary"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/spored*",
+        "arn:aws:iam::*:role/spawn-instance-*"
+      ],
+      "Condition": {
+        "ArnLike": {
+          "iam:PermissionsBoundary": "arn:aws:iam::*:policy/spore-host/spawn-instance-boundary"
+        }
+      }
+    },
+    {
+      "Sid": "AttachSporedPoliciesToBoundedRoles",
+      "Effect": "Allow",
+      "Action": "iam:AttachRolePolicy",
+      "Resource": [
+        "arn:aws:iam::*:role/spored*",
+        "arn:aws:iam::*:role/spawn-instance-*"
+      ],
+      "Condition": {
+        "ArnLike": {
+          "iam:PermissionsBoundary": "arn:aws:iam::*:policy/spore-host/spawn-instance-boundary",
+          "iam:PolicyARN": [
+            "arn:aws:iam::*:policy/spore-host/spored-*",
+            "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "SporedManagedPolicyRead",
       "Effect": "Allow",
       "Action": [
         "iam:GetPolicy",
-        "iam:GetPolicyVersion",
+        "iam:GetPolicyVersion"
+      ],
+      "Resource": "arn:aws:iam::*:policy/spore-host/*"
+    },
+    {
+      "Sid": "SporedManagedPolicy",
+      "Effect": "Allow",
+      "Action": [
         "iam:CreatePolicy",
         "iam:DeletePolicy"
       ],
-      "Resource": "arn:aws:iam::*:policy/spore-host/*"
+      "Resource": "arn:aws:iam::*:policy/spore-host/spored-*"
     },
     {
       "Sid": "DetachSporedManagedPolicy",
@@ -110,9 +255,29 @@ add their own permissions, listed further down.
       ],
       "Condition": {
         "ArnLike": {
-          "iam:PolicyARN": "arn:aws:iam::*:policy/spore-host/*"
+          "iam:PolicyARN": "arn:aws:iam::*:policy/spore-host/spored-*"
         }
       }
+    },
+    {
+      "Sid": "DenyBoundaryChanges",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy"
+      ],
+      "Resource": "arn:aws:iam::*:policy/spore-host/spawn-instance-boundary"
+    },
+    {
+      "Sid": "DenyBoundaryRemoval",
+      "Effect": "Deny",
+      "Action": "iam:DeleteRolePermissionsBoundary",
+      "Resource": "*"
     },
     {
       "Sid": "PassSporedRoleToEC2",
@@ -134,10 +299,7 @@ add their own permissions, listed further down.
       "Action": [
         "ec2:StartInstances",
         "ec2:StopInstances",
-        "ec2:TerminateInstances",
-        "ec2:DeleteTags",
-        "ec2:DescribeTags",
-        "ec2:ModifyInstanceAttribute"
+        "ec2:TerminateInstances"
       ],
       "Resource": "*",
       "Condition": {
@@ -194,7 +356,37 @@ add their own permissions, listed further down.
 ```
 
 ::: warning Why the extra statements are required
-A launch does more than `RunInstances`. spawn **imports your SSH public key** (`ec2:ImportKeyPair`), may **create a security group** for the instance (`ec2:CreateSecurityGroup` / `AuthorizeSecurityGroupIngress`), and — so the in-instance `spored` daemon can manage the instance's lifecycle — **creates a `spored` IAM role + instance profile and passes it to EC2 at launch** (the `iam:*` on `spored*` + `iam:PassRole`). Roles and profiles are created with tags, which IAM authorises separately (`iam:TagRole`, `iam:TagInstanceProfile`). spored's own grants go on that role as a customer-managed policy, `arn:aws:iam::<account>:policy/spore-host/spored-policy-v<N>` (or `spored-baseline-policy-v<N>`, `spored-nested-baseline-policy-v<N>`), because a role's inline policies share one 10,240-character limit with whatever else is on the role (since spawn v0.163.1, [spawn#1573](https://github.com/spore-host/spawn/issues/1573)). That is what `SporedManagedPolicy` and `DetachSporedManagedPolicy` are for: spawn creates the policy once per account, attaches it, and detaches and deletes an older version when a newer spawn replaces it. Without them spawn warns and writes the grants inline instead, which fails on a role whose inline policies are near the limit. `iam:ListRolePolicies`, `iam:GetRolePolicy` and `iam:DeleteRolePolicy` let spawn remove the inline copies older versions wrote, and list their sizes if the inline limit is ever hit. A launch that grants the instance extra access (`--iam-policy`, `--s3-read`, `--s3-write`, and every `spawn task run`) creates a role named `spawn-instance-<hash>` instead, which is why that pattern is included. Omit these and `spawn launch` fails partway. The `iam:*` grants are scoped to these two name patterns so they can't touch other roles.
+A launch does more than `RunInstances`. spawn **imports your SSH public key** (`ec2:ImportKeyPair`), may **create a security group** for the instance (`ec2:CreateSecurityGroup` / `AuthorizeSecurityGroupIngress`), and — so the in-instance `spored` daemon can manage the instance's lifecycle — **creates a `spored` IAM role + instance profile and passes it to EC2 at launch** (the `iam:*` on `spored*` + `iam:PassRole`). Roles and profiles are created with tags, which IAM authorises separately (`iam:TagRole`, `iam:TagInstanceProfile`). spored's own grants go on that role as a customer-managed policy, `arn:aws:iam::<account>:policy/spore-host/spored-policy-v<N>` (or `spored-baseline-policy-v<N>`, `spored-nested-baseline-policy-v<N>`), because a role's inline policies share one 10,240-character limit with whatever else is on the role (since spawn v0.163.1, [spawn#1573](https://github.com/spore-host/spawn/issues/1573)). That is what `SporedManagedPolicy`, `SporedManagedPolicyRead` and `DetachSporedManagedPolicy` are for: spawn creates the policy once per account, attaches it, and detaches and deletes an older version when a newer spawn replaces it. Without them spawn warns and writes the grants inline instead, which fails on a role whose inline policies are near the limit. `iam:ListRolePolicies`, `iam:GetRolePolicy` and `iam:DeleteRolePolicy` let spawn remove the inline copies older versions wrote, and list their sizes if the inline limit is ever hit. A launch that grants the instance extra access (`--iam-policy`, `--s3-read`, `--s3-write`, and every `spawn task run`) creates a role named `spawn-instance-<hash>` instead, which is why that pattern is included. Omit these and `spawn launch` fails partway.
+
+**What the IAM statements allow, and what they don't.** The name patterns limit
+which roles you can touch; they don't limit what goes on those roles. IAM can't
+condition `PutRolePolicy` or `CreatePolicy` on the document's contents, and
+spawn writes caller-chosen documents by design (`--iam-policy-file`, the task
+staging policy). So the containment is the boundary, not the names:
+
+- `CreateRole`, `PutRolePolicy` and `AttachRolePolicy` are allowed only on a
+  role whose permissions boundary is `spore-host/spawn-instance-boundary`.
+  `PutRolePermissionsBoundary` can only set that boundary, which is how spawn
+  moves a role created before the boundary existed onto it. Nothing in the
+  policy removes a boundary or edits the boundary policy (`DenyBoundaryChanges`,
+  `DenyBoundaryRemoval`).
+- `AttachRolePolicy` is limited to spawn's own `spore-host/spored-*` policies
+  and `AmazonSSMManagedInstanceCore`. To use `--iam-managed-policies`, add the
+  [statement below](#managed-policies-on-instance-roles).
+- `CreatePolicy` and `DeletePolicy` cover only `spore-host/spored-*`, the names
+  spawn writes. A policy you create there is still capped by the boundary when
+  attached.
+- `iam:UpdateAssumeRolePolicy`, `iam:DeleteRolePermissionsBoundary` and
+  `iam:CreatePolicyVersion` are not granted.
+
+What this doesn't contain: within the boundary, you can still give an instance
+access you don't hold yourself, for example S3 on a bucket your own identity
+can't read, through `--iam-policy-file`. The boundary removes IAM
+administration and account-level changes from what an instance role can hold;
+it doesn't make an instance role a subset of your own permissions, which IAM
+can't express. If that matters in your account, an administrator should
+narrow the resource scopes in the boundary, or launch with `--instance-profile`
+naming a profile they manage.
 
 After launching, spawn **verifies spored is running** by waiting for the
 `spawn:last-heartbeat` tag spored writes about once a minute, read with
@@ -221,8 +413,65 @@ The **default AMI** is found through AWS's public SSM parameters, so `ssm:GetPar
 :::
 
 ::: tip Scope on tags
-`EC2Manage` is conditioned on `spawn:managed=true`, so you can only start/stop/terminate instances spawn created — never unrelated ones. The read (`Describe*`) and launch statements can't be tag-scoped (the resources don't exist yet at describe/launch time).
+`EC2Manage` and `RunSporedStatusOnSpawnInstances` are conditioned on
+`spawn:managed=true`, so you can only start, stop, terminate or run commands on
+instances spawn created. That holds only because nothing in this policy can put
+`spawn:managed` on an existing resource: `TagOnCreate` applies to the request
+that creates a resource, `RetagSpawnInstances` reaches only resources already
+tagged and only `spawn:*` and `spore:plugin:*` keys, and
+`DenyOwnershipTagsAfterCreate` refuses writes and deletes of the ownership keys
+on any existing resource. After launch, spawn writes only keys outside that
+list: the TTL and cost-limit keys (`spawn extend`), `spawn:dns-*`
+(`spawn dns`), `spawn:fsx-*`, `spawn:last-st*` (`spawn stop`/`start`),
+`spawn:spored-version`, `spawn:spot-price-per-hour`,
+`spawn:original-instance-id` on a persistent Spot request, and
+`spore:plugin:<name>`. `TagSpawnVolumesFromSnapshots` copies an attached
+snapshot's own tags onto its volume, which can carry any key, so it isn't
+limited to `spawn:*`; it is still limited to spawn-managed volumes and still
+under the ownership `Deny`. `ec2:ModifyInstanceAttribute` and
+`ec2:DescribeTags`, in earlier versions of this page, are gone: the CLI calls
+neither.
+
+The read (`Describe*`) and launch statements can't be tag-scoped (the resources
+don't exist yet at describe/launch time).
 :::
+
+### The permissions boundary
+
+`arn:aws:iam::<account>:policy/spore-host/spawn-instance-boundary` is a
+customer-managed policy, one per account, that spawn sets as the permissions
+boundary of every role it creates (`spored-instance-role`, every
+`spawn-instance-*` role, and `spawn-pool-worker-*`). It allows the services
+spawn's instance grants use (spored's self-management, the `--iam-policy`
+shorthands, task staging, FSx, DNS registration) and refuses IAM writes other
+than passing spawn's own roles to EC2. You don't write or edit it.
+
+Creating it needs `iam:CreatePolicy` on its name, which the policy above
+refuses on purpose: a caller who could create the boundary could choose its
+contents. So it's created once per account by spawn running under
+administrator credentials, at the point an administrator sets spawn up for the
+account. The spawn release that provisions it will name the command; until
+then, see the warning at the top of this section.
+
+### Managed policies on instance roles
+
+`--iam-managed-policies` attaches the managed policies you name to the
+instance's role. To allow it, add this statement. It is still conditioned on
+the boundary, so whatever you attach is capped by it:
+
+```json
+{
+  "Sid": "AttachManagedPoliciesToBoundedRoles",
+  "Effect": "Allow",
+  "Action": "iam:AttachRolePolicy",
+  "Resource": "arn:aws:iam::*:role/spawn-instance-*",
+  "Condition": {
+    "ArnLike": {
+      "iam:PermissionsBoundary": "arn:aws:iam::*:policy/spore-host/spawn-instance-boundary"
+    }
+  }
+}
+```
 
 ::: tip Note on `sts:GetCallerIdentity`
 The `Identity` statement is included for completeness because spawn calls
@@ -285,8 +534,10 @@ code, not from a tested minimal policy:
   `sqs:CreateQueue`, `sqs:GetQueueUrl` and `sqs:DeleteQueue` (to clean up a
   pool that didn't come up); `s3:ListBucket` on the results bucket
   `spawn-results-<account>-<region>`, plus `s3:CreateBucket` the first time;
-  and the baseline's `InstanceProfileForSpored` and `PassSporedRoleToEC2`
-  actions on `spawn-pool-worker-*` roles and instance profiles.
+  and the baseline's `InstanceProfileForSpored`, `CreateBoundedInstanceRoles`,
+  `AttachSporedPoliciesToBoundedRoles` and `PassSporedRoleToEC2` statements
+  with `spawn-pool-worker-*` roles and instance profiles added to their
+  resources. Keep the boundary conditions: they are what cap the worker role.
 - **`submit`**: `s3:PutObject` on the results bucket, `sqs:GetQueueUrl` and
   `sqs:SendMessage`.
 - **`status`**: `sqs:GetQueueUrl` and `sqs:GetQueueAttributes`.
@@ -387,8 +638,10 @@ aws iam put-role-policy \
 Add the [Spot](#spot-instances), [DNS](#dns-integration), [worker pool](#worker-pools), [FSx](#fsx-for-lustre), or [service-quota](#service-quotas) statements only if you use those features.
 
 The instance itself runs under spawn's `spored` role, which spawn creates with
-the permissions spored needs. This page covers only your own policy.
+the permissions spored needs, capped by the
+[permissions boundary](#the-permissions-boundary). This page covers only your
+own policy.
 
 ::: tip Prefer least privilege over `PowerUserAccess`
-It's tempting to attach `PowerUserAccess` while getting started, but the policy above is small and complete — start with it. If you must broaden temporarily, tighten back to this policy before any shared or production use.
+It's tempting to attach `PowerUserAccess` while getting started, but start with the policy above. `PowerUserAccess` grants `ec2:CreateTags` on every resource with no condition, so a caller holding it can put `spawn:managed=true` on any instance, and every grant here that is scoped by that tag stops being scoped. If you must broaden temporarily, tighten back to this policy before any shared or production use.
 :::
