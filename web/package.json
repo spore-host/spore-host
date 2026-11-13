@@ -36,7 +36,7 @@
     "@playwright/test": "1.65.0",
     "@types/node": "^22.0.0",
     "happy-dom": "^20.11.1",
-    "typescript": "^5.6.0",
+    "typescript": "^7.0.2",
     "vite": "^6.0.0",
     "vitest": "^2.1.9"
   }
