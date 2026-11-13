@@ -23,15 +23,23 @@ on:
       - '.github/workflows/deploy-site.yaml'
   workflow_dispatch:
 
+# Nothing here holds id-token by default. Only the deploy job, which runs no
+# npm code at all, may mint the OIDC token that assumes the deploy role
+# (#699). The build job runs npm ci, the tests and the build, which is every
+# third-party package in web/package-lock.json, with a read-only token and no
+# way to reach AWS. It hands the deploy job web/dist/ as an artifact.
 permissions:
-  id-token: write
   contents: read
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
@@ -39,9 +47,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      # --ignore-scripts: no dependency's install hook runs. Nothing the site
+      # build or tests use needs one (esbuild ships its binary as a per-platform
+      # optional dependency; Playwright's browser download isn't used here).
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       # Typecheck before deploying. A type error here means the bundle is wrong;
       # better to fail than ship it. web-ci.yml now gates this pre-merge too, so
@@ -112,6 +123,37 @@ jobs:
           done
           echo "✅ hero orb scene + vendored Rive runtime present"
 
+      - name: Upload the build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-dist
+          path: web/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # Holds id-token, and runs only the AWS CLI and this repo's own prune
+  # script: no npm install, no package code. The trust's sub is unchanged
+  # (repo:spore-host/spore-host:ref:refs/heads/main for a push to main; no
+  # environment), so GitHubActionsDocsDeployRole still accepts it.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # For scripts/prune_site_bucket.py. No dependencies are installed.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - name: Download the build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-dist
+          path: web/dist
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
@@ -127,9 +169,8 @@ jobs:
       # excludes are needed.
       - name: Deploy to S3
         run: |
-          # Pass 1: long-lived, content-addressed assets — long cache. Vite emits
-          # hashed filenames under assets/ (e.g. terminal-UsCfG-Qc.js), so those are
-          # safe to cache for a day. EXCLUDE css/ here: css/style.css is a hand-copied
+          set -euo pipefail
+          # Pass 1: assets — a one-day cache. EXCLUDE css/ here: css/style.css is a hand-copied
           # static file with a STABLE name, so a 24h cache means a CSS change is
           # invisible to returning visitors for up to a day even after a CloudFront
           # invalidation (the edge is fresh, the browser isn't) — which is exactly how
@@ -153,7 +194,30 @@ jobs:
             --exclude "*" \
             --include "*.html"
 
+      # Passes 1 and 1b never delete, so every non-HTML file an old build
+      # uploaded stayed published: old portal bundles (assets/app-*.js,
+      # app/assets/), the legacy dashboard's js/ (#705). Delete what is under
+      # the prefixes this build owns outright and is not in this build. Only
+      # those four prefixes are touched; anything at the root or under
+      # cloudformation/ is left alone. Runs after the upload, so nothing the
+      # new HTML references can be removed. It refuses, deleting nothing, if
+      # the build lacks a page it must have or if more than 500 objects would
+      # go. Every key deleted is in the job summary.
+      - name: Prune stale objects under the managed prefixes
+        id: prune
+        run: |
+          python3 -I scripts/prune_site_bucket.py \
+            --bucket spore-host-website --dist web/dist \
+            --expected-owner 966362334030 \
+            --prefix assets/ --prefix css/ --prefix app/ --prefix js/ \
+            --require index.html --require app/index.html --require css/style.css \
+            --require assets/brand/spore-host-og.png \
+            --max-delete 500
+
+      # Runs even if the prune refused or failed: the upload above succeeded, so
+      # visitors must still get it. The job stays red for the prune.
       - name: Invalidate CloudFront
+        if: success() || steps.prune.outcome == 'failure'
         run: |
           aws cloudfront create-invalidation \
             --distribution-id EY67INS5HDFLU \
@@ -165,6 +229,7 @@ jobs:
       # `grep -q` under `set -o pipefail` (grep -q closes the pipe → the writer gets
       # a broken-pipe error → pipefail fails the whole pipeline despite a match).
       - name: Verify live site
+        if: success() || steps.prune.outcome == 'failure'
         run: |
           set -euo pipefail
           BASE="https://spore.host"
