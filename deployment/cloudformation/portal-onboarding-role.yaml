@@ -62,13 +62,29 @@ Parameters:
     Default: spore-portal-onboard
     Description: Name of the cross-account role to create.
 
-  SporedInstanceProfile:
+  SporedInstanceRole:
     Type: String
-    Default: spored-instance-profile
+    Default: spored-instance-role
     Description: >
-      Instance profile launched instances receive (spored self-terminate + DNS
-      invoke). iam:PassRole is scoped to exactly this role. Must exist in this
-      account (create it separately if absent).
+      The IAM role inside the instance profile launched instances receive
+      (spored-instance-profile holds spored-instance-role). iam:PassRole is
+      evaluated against the role's ARN, so this names the role, not the
+      profile. Must exist in this account (spawn creates it on first launch).
+
+# The account boundary (spawn#1582): this template creates a role another
+# account can assume.
+Rules:
+  NotTheForbiddenAccount:
+    Assertions:
+      - Assert: !Not [!Equals [!Ref 'AWS::AccountId', '942542972736']]
+        AssertDescription: >-
+          This template creates a role another account can assume, and must
+          never be deployed in 942542972736: an Amazon-internal account and the
+          management account of its AWS Organization, which no spore.host
+          account may be trusted into or out of (spawn#1582). Deploy it in a
+          member account. A management account of any other organization is
+          refused by spawn's CLI paths, which can ask AWS Organizations; this
+          rule cannot, so do not deploy it in one either.
 
 Conditions:
   # The prober principal is optional so this template stays deployable by anyone who
@@ -129,20 +145,52 @@ Resources:
                   - ec2:DescribeSecurityGroups
                   - ec2:DescribeVpcs
                   - ec2:DescribeKeyPairs
-                  - ec2:CreateTags
                 Resource: '*'
-              - Sid: Lifecycle
+              # Tags only as part of the RunInstances request that creates the
+              # resource. ec2:CreateAction is absent from a CreateTags call on an
+              # existing resource, so this grants no retagging: the portal tags
+              # at launch and nowhere else. Unconditioned, CreateTags could put
+              # spawn:managed=true on any instance in this account and so widen
+              # every grant scoped by that tag, here and in spawn's other roles.
+              - Sid: TagOnLaunch
                 Effect: Allow
                 Action:
-                  - ec2:TerminateInstances
-                  - ec2:StopInstances
-                  - ec2:StartInstances
-                # Destructive actions restricted to spawn-managed instances so a
-                # portal session can't touch unrelated instances in this account.
+                  - ec2:CreateTags
                 Resource: '*'
                 Condition:
                   StringEquals:
-                    'aws:ResourceTag/spawn:managed': 'true'
+                    'ec2:CreateAction': RunInstances
+              # Belt and braces for the statement above: the keys that say which
+              # resources spawn owns are never written or removed on an existing
+              # resource with this role, whatever else is attached to it.
+              - Sid: DenyOwnershipTagsAfterCreate
+                Effect: Deny
+                Action:
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                Resource: '*'
+                Condition:
+                  'Null':
+                    'ec2:CreateAction': 'true'
+                  'ForAnyValue:StringEquals':
+                    'aws:TagKeys':
+                      - 'spawn:managed'
+                      - 'spawn:root'
+                      - 'spawn:created-by'
+                      - 'spawn:iam-user'
+                      - 'spawn:account-id'
+                      - 'spawn:launch-time'
+                      - 'spawn:config'
+                      - 'spawn:nested-parent'
+                      - 'spawn:pre-stop'
+                      - 'spawn:pre-stop-timeout'
+                      - 'spawn:local-username'
+                      - 'spawn:instance-id'
+                      - 'spawn:instance-arn'
+              # No Stop, Start or Terminate, matching the live portal role
+              # (infra/tofu/portal-oidc/main.tf, spore-host#678 and #694). They
+              # come back under the scoped policy of #686, not as a tag-gated
+              # statement here.
               - Sid: ReadSpotAndQuotas
                 Effect: Allow
                 Action:
@@ -150,14 +198,10 @@ Resources:
                   - servicequotas:GetServiceQuota
                   - servicequotas:ListServiceQuotas
                 Resource: '*'
-              # Scoped to spawn-managed instances, matching Lifecycle above. It
-              # previously was not, which made this the widest grant in the role: a
-              # shell is at least as powerful as a terminate, so StartSession against
-              # instance/* allowed a root-capable shell on ANY SSM-registered
-              # instance in the account — including ones the portal never launched —
-              # while ec2:TerminateInstances on that same instance was denied. The
-              # only thing narrowing it was a regex on a text field in the browser,
-              # which validates syntax, not authorization.
+              # Scoped to spawn-managed instances, as on the live portal role. The
+              # tag is a real scope only because TagOnLaunch and
+              # DenyOwnershipTagsAfterCreate keep this role from adding it to an
+              # instance that already exists.
               #
               # ssm:resourceTag/, not aws:ResourceTag/: SSM evaluates the target
               # node's tags under its own service-specific condition key here.
@@ -189,11 +233,13 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # PassRole scoped to the single spored profile + PassedToService ec2
-              # — required to attach the profile at RunInstances, nothing broader.
+              # PassRole scoped to the single spored ROLE + PassedToService ec2
+              # — required to attach its profile at RunInstances, nothing broader.
+              # Names the role, not the profile: PassRole on role/<profile-name>
+              # passes a role that does not exist (#672, spawn#817).
               - Effect: Allow
                 Action: iam:PassRole
-                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${SporedInstanceProfile}'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${SporedInstanceRole}'
                 Condition:
                   StringEquals:
                     iam:PassedToService: ec2.amazonaws.com

@@ -114,7 +114,7 @@ See `spawn/IAM_PERMISSIONS.md` for complete policy.
 - **IAM:** Create `spored-instance-role` and `spored-instance-profile` (one-time setup)
 - **SSM:** Read `/aws/service/ami-amazon-linux-latest/*` (AMI auto-detection)
 
-**Compatible with:** PowerUserAccess + spawn-specific IAM permissions (see below)
+**Compatible with:** the least-privilege baseline in `docs/reference/iam-permissions.md` (see below). Not with PowerUserAccess plus IAM grants.
 
 **NOT Compatible with:** PowerUserAccess alone (missing IAM permissions)
 
@@ -122,46 +122,18 @@ See `spawn/IAM_PERMISSIONS.md` for complete policy.
 
 ### PowerUser + spawn IAM Policy
 
-For organizations using AWS `PowerUser` managed policy, add this supplementary policy:
+Don't pair `PowerUserAccess` with spawn's IAM grants. `PowerUserAccess`
+grants `ec2:CreateTags` on every resource with no condition, which defeats
+spawn's grants that are scoped by the `spawn:managed` tag. Use the
+[recommended least-privilege baseline](docs/reference/iam-permissions.md#recommended-least-privilege-baseline)
+instead.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "SpawnIAMRoleManagement",
-      "Effect": "Allow",
-      "Action": [
-        "iam:CreateRole",
-        "iam:GetRole",
-        "iam:PutRolePolicy",
-        "iam:CreateInstanceProfile",
-        "iam:GetInstanceProfile",
-        "iam:AddRoleToInstanceProfile",
-        "iam:PassRole"
-      ],
-      "Resource": [
-        "arn:aws:iam::*:role/spored-instance-role",
-        "arn:aws:iam::*:instance-profile/spored-instance-profile"
-      ]
-    },
-    {
-      "Sid": "SpawnIAMTagging",
-      "Effect": "Allow",
-      "Action": [
-        "iam:TagRole",
-        "iam:TagInstanceProfile"
-      ],
-      "Resource": [
-        "arn:aws:iam::*:role/spored-instance-role",
-        "arn:aws:iam::*:instance-profile/spored-instance-profile"
-      ]
-    }
-  ]
-}
-```
-
-**Why:** PowerUser excludes all IAM permissions. This grants minimal IAM access scoped to spawn-specific resources only.
+An earlier version of this section gave a supplementary policy granting
+`iam:CreateRole`, `iam:PutRolePolicy` and `iam:PassRole` on
+`spored-instance-role` with no permissions boundary. Remove it if you
+applied it. Holding those three together with `ec2:RunInstances` lets a
+caller give an instance any permissions. The baseline grants spawn's role
+writes only on roles carrying spawn's permissions boundary.
 
 ---
 
