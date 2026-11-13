@@ -90,6 +90,7 @@ own changelogs for CLI releases.
     both repos' readers are deployed (see the module README).
   - A new gate (`credentials_gate_test.go`) fails if the KMS grants and the
     fields the code seals and opens disagree.
+- **The GitHub OIDC trusts of every CI role are written down and checked** (`infra/iam/github-oidc/`, #709). Most of these roles were created by hand, so nothing showed whether a trust pinned its `sub`: `GitHubActionsDocsDeployRole`, spawn's release and Lambda-deploy roles, the portal audit and teardown roles, and the spore-plugins and spawn-ts test roles. `trusts.json` records the trust each must carry: `aud` = `sts.amazonaws.com`, plus a `sub` of one exact ref or environment. A `v*` tag pattern is allowed only for spawn's release. A CI check (`scripts/check_oidc_trusts.py`) fails on a looser expected trust, or on a workflow here that assumes an unlisted role, runs on `pull_request`, or uses an environment its trust doesn't name. Run with `--live`, it compares saved `aws iam get-role` output against the inventory.
 
 ### Changed
 - **spore.host/app temporarily replaced by a placeholder while the web app is

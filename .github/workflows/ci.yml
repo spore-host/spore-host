@@ -239,6 +239,20 @@ jobs:
         working-directory: ${{ matrix.module }}
         run: staticcheck ./...
 
+  # Every AWS role a spore.host workflow assumes has its expected GitHub OIDC
+  # trust in infra/iam/github-oidc/trusts.json, pinned to one ref or
+  # environment (#709). No AWS call: the live comparison is a manual step
+  # (see that directory's README).
+  oidc-trusts:
+    name: GitHub OIDC trusts are pinned
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run scripts/check_oidc_trusts.py
+        run: |
+          python3 -I scripts/test_check_oidc_trusts.py
+          python3 -I scripts/check_oidc_trusts.py
+
   docs-build:
     name: Docs build + link check
     runs-on: ubuntu-latest

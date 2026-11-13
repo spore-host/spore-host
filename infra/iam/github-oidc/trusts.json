@@ -1,0 +1,220 @@
+{
+  "_about": "Expected GitHub Actions OIDC trust policies for every AWS role a spore.host workflow assumes (spore-host#709). scripts/check_oidc_trusts.py checks them in CI, and compares a live `aws iam get-role` against them: see README.md. No account may appear here that spawn's forbiddenTrustAccounts refuses (942542972736).",
+  "roles": [
+    {
+      "role": "GitHubActionsDocsDeployRole",
+      "account": "966362334030",
+      "role_arn": "arn:aws:iam::966362334030:role/GitHubActionsDocsDeployRole",
+      "variables": [],
+      "used_by": [
+        "spore-host/spore-host:.github/workflows/deploy-site.yaml",
+        "spore-host/spore-host:.github/workflows/docs.yaml"
+      ],
+      "codified_in": null,
+      "why": "Deploys spore.host and docs.spore.host from a push to main (or a manual run on main). Neither job sets an environment, so GitHub issues sub ref:refs/heads/main. A manual run from any other branch must be refused.",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::966362334030:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spore-host:ref:refs/heads/main"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "role": "GitHubActions-spore-host-release",
+      "account": "966362334030",
+      "role_arn": "arn:aws:iam::966362334030:role/GitHubActions-spore-host-release",
+      "variables": [],
+      "used_by": [
+        "spore-host/spawn:.github/workflows/release.yaml"
+      ],
+      "codified_in": null,
+      "why": "spawn's release, run by pushing a v* tag. A tag push's sub is ref:refs/tags/<tag>, so the one wildcard allowed anywhere in this inventory is the tag name, under StringLike. Anyone who can push a v* tag to spawn can assume this role, so protect v* tags with a ruleset.",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::966362334030:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+              },
+              "StringLike": {
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spawn:ref:refs/tags/v*"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "role": "GitHubActions-spawn-lambda-deploy",
+      "account": "966362334030",
+      "role_arn": "arn:aws:iam::966362334030:role/GitHubActions-spawn-lambda-deploy",
+      "variables": [],
+      "used_by": [
+        "spore-host/spawn:.github/workflows/deploy-lambdas.yaml"
+      ],
+      "codified_in": "spore-host/spawn:scripts/setup-lambda-deploy-ci-role.sh",
+      "why": "Approval-gated Lambda deploy. The job runs in the production environment, so the sub names the environment, not a ref.",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::966362334030:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spawn:environment:production"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "role": "spore-portal-iam-audit",
+      "account": "435415984226",
+      "role_arn": "arn:aws:iam::435415984226:role/spore-portal-iam-audit",
+      "variables": [
+        "vars.PORTAL_IAM_AUDIT_ROLE_ARN"
+      ],
+      "used_by": [
+        "spore-host/spore-host:.github/workflows/portal-iam-live.yml"
+      ],
+      "codified_in": "infra/tofu/portal-oidc/main.tf",
+      "why": "Nightly read-only portal IAM check, scheduled or run manually on main.",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::435415984226:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spore-host:ref:refs/heads/main"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "role": "spore-portal-e2e-teardown",
+      "account": "435415984226",
+      "role_arn": "arn:aws:iam::435415984226:role/spore-portal-e2e-teardown",
+      "variables": [
+        "vars.PORTAL_E2E_TEARDOWN_ROLE_ARN"
+      ],
+      "used_by": [
+        "spore-host/spore-host:.github/workflows/portal-e2e-aws.yml"
+      ],
+      "codified_in": "infra/tofu/portal-oidc/main.tf",
+      "why": "Portal real-AWS e2e, scheduled or run manually on main. It assumes spore-portal-e2e itself; only the teardown role trusts GitHub.",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::435415984226:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spore-host:ref:refs/heads/main"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "role": "<the role in secrets.AWS_DEV_ROLE_ARN>",
+      "account": "435415984226",
+      "role_arn": null,
+      "variables": [
+        "secrets.AWS_DEV_ROLE_ARN"
+      ],
+      "used_by": [
+        "spore-host/spore-plugins:.github/workflows/integration.yml"
+      ],
+      "codified_in": null,
+      "why": "Plugin integration tests on real instances: nightly schedule (main) or manual dispatch. The trust must pin main, so a dispatch from a branch is refused.",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::435415984226:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spore-plugins:ref:refs/heads/main"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "role": "<the roles in vars.LIVE_SMOKE_ROLE_ARN and vars.LIVE_SMOKE_LAUNCH_ROLE_ARN>",
+      "account": "435415984226",
+      "role_arn": null,
+      "variables": [
+        "vars.LIVE_SMOKE_ROLE_ARN",
+        "vars.LIVE_SMOKE_LAUNCH_ROLE_ARN"
+      ],
+      "used_by": [
+        "spore-host/spawn-ts:.github/workflows/live-smoke.yml"
+      ],
+      "codified_in": null,
+      "why": "spawn-ts real-AWS smoke, gated behind the live-smoke environment, so the sub names that environment. If those variables are unset, no role exists yet; create it with exactly this trust.",
+      "trust": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::435415984226:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:spore-host/spawn-ts:environment:live-smoke"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
