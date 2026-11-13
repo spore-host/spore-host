@@ -104,6 +104,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Every workflow pins the same Go version
         run: scripts/check-go-version-pins.sh
+      # Every action by commit SHA, every container image by digest, no
+      # @latest, no `curl | tar`, and a pinned sha256 for every downloaded
+      # release file (#707).
+      - name: Every workflow pins and verifies its tools
+        run: |
+          python3 -I scripts/test_check_workflow_pins.py
+          python3 -I scripts/check_workflow_pins.py
 
   # scripts/branch-preflight.sh is what CLAUDE.md tells people to run before a
   # PR; #565 was it failing on every pushed branch. Exercise it against

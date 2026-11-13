@@ -53,10 +53,21 @@ jobs:
         # later, leaving spawn at v0.152.0 and truffle at v0.62.1 in the docs.
         # Each CLI is vendored from its latest release tag, so a full sync is
         # idempotent and cheap. The input is kept to restrict a manual run.
+        #
+        # The input is checked against an allow-list before it goes anywhere
+        # (#708). It used to be echoed unchecked into the step output, which the
+        # next step expanded with ${{ }} straight into its script, so
+        # cli="spawn; <command>" ran <command> with this job's write token.
         run: |
+          set -euo pipefail
           sel="${INPUT_CLI:-all}"
-          echo "dispatched by: ${DISPATCH_CLI:-<none>}; syncing: $sel"
-          if [ "$sel" = "all" ] || [ -z "$sel" ]; then
+          if ! [[ "$sel" =~ ^(all|(spawn|truffle|lagotto)( (spawn|truffle|lagotto))*)$ ]]; then
+            echo "::error::cli must be all, or a space-separated list of spawn, truffle and lagotto"
+            exit 1
+          fi
+          # Printed as data through env, never interpolated into a script.
+          printf 'dispatched by: %s; syncing: %s\n' "${DISPATCH_CLI:-<none>}" "$sel"
+          if [ "$sel" = "all" ]; then
             echo "clis=spawn truffle lagotto" >> "$GITHUB_OUTPUT"
           else
             echo "clis=$sel" >> "$GITHUB_OUTPUT"
@@ -65,9 +76,13 @@ jobs:
       - name: Vendor docs-gen from each CLI's latest tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through env, not ${{ }} in the script body (#708).
+          CLIS: ${{ steps.which.outputs.clis }}
         run: |
           set -euo pipefail
-          for cli in ${{ steps.which.outputs.clis }}; do
+          read -r -a clis <<<"$CLIS"
+          for cli in "${clis[@]}"; do
+            case "$cli" in spawn|truffle|lagotto) ;; *) echo "::error::unexpected cli '$cli'"; exit 1 ;; esac
             repo="spore-host/$cli"
             tag=$(gh release view --repo "$repo" --json tagName -q .tagName)
             echo "Syncing $repo @ $tag"

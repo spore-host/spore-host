@@ -54,11 +54,23 @@ jobs:
           fetch-depth: 0
       # gitleaks BINARY (MIT, free for orgs); the action wrapper needs a paid
       # org license. Allowlist in .gitleaks.toml covers doc examples + fixtures.
+      #
+      # Verified before it runs (#707), as spawn does (spawn#885). This binary
+      # decides whether a merge carries a secret, and it ran as `curl | tar`
+      # with nothing checked, so a replaced release asset would have run
+      # unnoticed. The hash is pinned HERE rather than read from the release's
+      # checksums.txt, because a file fetched alongside the download can be
+      # replaced alongside it. Cross-checked against the published
+      # gitleaks_8.21.2_checksums.txt and the downloaded asset when pinned.
       - name: Install gitleaks
         run: |
+          set -euo pipefail
           VER=8.21.2
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
+          SHA256=5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+          T="gitleaks_${VER}_linux_x64.tar.gz"
+          curl -sSLf -o "$RUNNER_TEMP/$T" "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/$T"
+          echo "$SHA256  $RUNNER_TEMP/$T" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$T" -C /usr/local/bin gitleaks
           gitleaks version
       - name: gitleaks detect
         run: gitleaks detect --source . --redact --verbose --exit-code 1
@@ -89,8 +101,14 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
+    # Pinned by digest (#707): the untagged image ran whatever `latest` was
+    # that day, inside the job that gates merges. This is the multi-arch index
+    # for semgrep 1.185.0, read from registry-1.docker.io when pinned. Dependabot
+    # does not update a workflow's container image, so bump it by hand. The
+    # rules (--config=auto) are fetched at run time either way, so a stale
+    # engine misses no new rule.
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep@sha256:67518c174185a2043fdbed16c70631b79209499b3671178e7194379b48295a0d # 1.185.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
