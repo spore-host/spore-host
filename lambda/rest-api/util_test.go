@@ -148,23 +148,6 @@ func TestBuildOptionsHint(t *testing.T) {
 	}
 }
 
-func TestIsProd(t *testing.T) {
-	cases := map[string]bool{
-		"production": true,
-		"PROD":       true,
-		"prod":       true,
-		"integ":      false,
-		"":           false,
-		"dev":        false,
-	}
-	for val, want := range cases {
-		t.Setenv("SPORE_ENV", val)
-		if got := isProd(); got != want {
-			t.Errorf("isProd() with SPORE_ENV=%q = %v, want %v", val, got, want)
-		}
-	}
-}
-
 func TestOwnsInstance(t *testing.T) {
 	tests := []struct {
 		name    string

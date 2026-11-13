@@ -375,6 +375,13 @@ REST_API_URL=$(aws lambda get-function-url-config \
 echo "REST API URL: $REST_API_URL"
 ```
 
+> **SMS replies need `TWILIO_AUTH_TOKEN`.** `POST /v1/sms/incoming` is the one
+> route without an API key: Twilio's request signature authenticates it, and
+> that signature is checked in every environment. Without `TWILIO_AUTH_TOKEN`
+> the route answers 503 and acts on nothing. To take SMS replies, add the
+> Twilio account's auth token to the function's environment. `SPORE_ENV` no
+> longer changes this (#696).
+
 ---
 
 ## Step 7 — Create an API key for the CLI
@@ -404,7 +411,15 @@ echo "Save this — it will not be shown again (only its hash is stored)."
 
 > Legacy keys inserted with the plaintext as the partition key still work: the
 > rest-api looks up by hash first, then falls back to plaintext and rewrites the
-> row to its hashed form on first use.
+> row to its hashed form (marked `key_format=sha256`) on first use. Only a value
+> shaped like a key (`sk_…`) takes that fallback, so a hash read out of the
+> table is not a key (#697).
+
+To let a key register a phone for SMS notifications
+(`POST /v1/notifications/register`), bind it to its owner's chat identity with
+a `user_key` attribute on the key's row, e.g. `"user_key": {"S": "slack#T…#U…"}`.
+The endpoint writes only that identity's registration; a key with no
+`user_key` can register nothing (#698).
 
 ---
 

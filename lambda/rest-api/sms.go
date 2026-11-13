@@ -6,9 +6,11 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -45,19 +47,8 @@ func smsPendingKey(twilioNumber, userPhone string) string {
 // handleSMSIncoming processes a Twilio webhook for an inbound SMS reply.
 // The To field identifies the project; the From field identifies the user.
 func handleSMSIncoming(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
-	// Twilio signature enforcement (2026-06 audit, M-sec). In production the auth
-	// token is REQUIRED and the skip flag is ignored — otherwise an unset token or
-	// a stray SKIP_TWILIO_SIGNATURE=true would silently accept forged webhooks
-	// (which can start instances and reset idle timers). The skip escape hatch is
-	// honored only outside production.
-	authToken := os.Getenv("TWILIO_AUTH_TOKEN")
-	prod := isProd()
-	if prod && authToken == "" {
-		return errResp(http.StatusServiceUnavailable, "SMS not configured"), nil
-	}
-	skipSig := !prod && os.Getenv("SKIP_TWILIO_SIGNATURE") == "true"
-	if authToken != "" && !skipSig && !validateTwilioSignature(req, authToken) {
-		return errResp(http.StatusForbidden, "invalid Twilio signature"), nil
+	if resp, ok := checkTwilioRequest(req); !ok {
+		return resp, nil
 	}
 
 	rawBody := req.Body
@@ -94,7 +85,11 @@ func handleSMSIncoming(ctx context.Context, req events.APIGatewayV2HTTPRequest) 
 		return twilioResp("Dismissed.")
 	}
 
-	reply, err := executeAction(ctx, pending, action)
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(pending.Region))
+	if err != nil {
+		return twilioResp("Error: AWS config")
+	}
+	reply, err := executeAction(ctx, spawnclient.NewClientFromConfig(cfg), pending, action)
 	if err != nil {
 		return twilioResp(fmt.Sprintf("Error: %v", err))
 	}
@@ -103,12 +98,57 @@ func handleSMSIncoming(ctx context.Context, req events.APIGatewayV2HTTPRequest) 
 	return twilioResp(reply)
 }
 
-func executeAction(ctx context.Context, p *smsPendingNotification, action string) (string, error) {
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(p.Region))
-	if err != nil {
-		return "", fmt.Errorf("AWS config: %w", err)
+// checkTwilioRequest authenticates a Twilio webhook. ok=false means refuse it
+// with resp.
+//
+// The auth token is required in every environment (#696). It used to be
+// required only when SPORE_ENV was production, so a deployment following
+// infra/DEPLOY.md (SPORE_ENV=integ, no token, a public Function URL) checked no
+// signature at all, and anyone could start instances or extend TTLs by
+// posting a reply. Unset now means 503, never "accept". SKIP_TWILIO_SIGNATURE
+// is honoured only in a binary built with the twilio_unsigned tag, which
+// nothing deploys (see twilio_unsigned.go).
+func checkTwilioRequest(req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, bool) {
+	if unsignedTwilioAllowed && os.Getenv("SKIP_TWILIO_SIGNATURE") == "true" {
+		return events.APIGatewayV2HTTPResponse{}, true
 	}
-	client := spawnclient.NewClientFromConfig(cfg)
+	authToken := os.Getenv("TWILIO_AUTH_TOKEN")
+	if authToken == "" {
+		return errResp(http.StatusServiceUnavailable, "SMS not configured"), false
+	}
+	if !validateTwilioSignature(req, authToken) {
+		return errResp(http.StatusForbidden, "invalid Twilio signature"), false
+	}
+	return events.APIGatewayV2HTTPResponse{}, true
+}
+
+// instanceOps is the part of spawn's client an SMS reply can drive.
+type instanceOps interface {
+	ListInstances(ctx context.Context, region, stateFilter string) ([]spawnclient.InstanceInfo, error)
+	StartInstance(ctx context.Context, region, instanceID string) error
+	GetInstanceState(ctx context.Context, region, instanceID string) (string, error)
+	UpdateInstanceTags(ctx context.Context, region, instanceID string, tags map[string]string) error
+}
+
+func executeAction(ctx context.Context, client instanceOps, p *smsPendingNotification, action string) (string, error) {
+	// Re-resolve the instance before acting on it (#698). ListInstances returns
+	// only spawn:managed=true instances, so a pending row naming any other
+	// instance (a stale row, or one written by whoever can write the table)
+	// acts on nothing.
+	insts, err := client.ListInstances(ctx, p.Region, "")
+	if err != nil {
+		return "", fmt.Errorf("look up instance: %w", err)
+	}
+	var target *spawnclient.InstanceInfo
+	for i := range insts {
+		if insts[i].InstanceID == p.InstanceID {
+			target = &insts[i]
+			break
+		}
+	}
+	if target == nil {
+		return "", fmt.Errorf("instance %s is not a spore.host instance", p.InstanceID)
+	}
 
 	switch {
 	case action == "start":
@@ -137,20 +177,12 @@ func executeAction(ctx context.Context, p *smsPendingNotification, action string
 		// spawn:ttl is a silent no-op — spored honors spawn:ttl-deadline
 		// (same bug class as spore-host#371 / spore-host-mcp#11).
 		var newDeadline time.Time
-		if insts, lerr := client.ListInstances(ctx, p.Region, ""); lerr == nil {
-			for _, inst := range insts {
-				if inst.InstanceID != p.InstanceID {
-					continue
-				}
-				if dl, ok := inst.Tags["spawn:ttl-deadline"]; ok {
-					if parsed, perr := time.Parse(time.RFC3339, dl); perr == nil {
-						newDeadline = parsed.Add(extendDuration)
-					}
-				} else if cur, cerr := time.ParseDuration(inst.TTL); cerr == nil {
-					newDeadline = time.Now().Add(cur).Add(extendDuration)
-				}
-				break
+		if dl, ok := target.Tags["spawn:ttl-deadline"]; ok {
+			if parsed, perr := time.Parse(time.RFC3339, dl); perr == nil {
+				newDeadline = parsed.Add(extendDuration)
 			}
+		} else if cur, cerr := time.ParseDuration(target.TTL); cerr == nil {
+			newDeadline = time.Now().Add(cur).Add(extendDuration)
 		}
 		if newDeadline.IsZero() {
 			newDeadline = time.Now().Add(extendDuration)
@@ -182,16 +214,17 @@ func executeAction(ctx context.Context, p *smsPendingNotification, action string
 	}
 }
 
+// e164Pattern is an E.164 phone number: "+", a non-zero digit, 7 to 15 digits.
+var e164Pattern = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
+
+// registryWriter is the part of the DynamoDB client registration uses.
+type registryWriter interface {
+	PutItem(ctx context.Context, in *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+	UpdateItem(ctx context.Context, in *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
+}
+
 // handleNotificationRegister saves or removes a phone number for a user.
 func handleNotificationRegister(ctx context.Context, method string, req events.APIGatewayV2HTTPRequest, p *Principal) (events.APIGatewayV2HTTPResponse, error) {
-	var body struct {
-		Phone   string `json:"phone"`
-		UserKey string `json:"user_key"`
-	}
-	if err := parseJSON(req.Body, &body); err != nil || body.Phone == "" || body.UserKey == "" {
-		return errResp(http.StatusBadRequest, "phone and user_key required"), nil
-	}
-
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
 	if err != nil {
 		return errResp(http.StatusInternalServerError, "AWS config error"), nil
@@ -200,36 +233,69 @@ func handleNotificationRegister(ctx context.Context, method string, req events.A
 	if table == "" {
 		table = "spore-bot-registry"
 	}
-	client := dynamodb.NewFromConfig(cfg)
+	return registerPhone(ctx, dynamodb.NewFromConfig(cfg), table, method, req, p), nil
+}
 
+// registerPhone writes or removes the caller's own _phone row.
+//
+// The row's user_key comes from the API key, never from the request (#698).
+// It used to be taken from the body, so any key holder could point another
+// user's SMS notifications (and the replies that start instances and extend
+// TTLs) at their own phone, or delete that user's registration. A key whose
+// row carries no user_key can register nothing; a body user_key, if sent,
+// must equal the key's.
+func registerPhone(ctx context.Context, client registryWriter, table, method string, req events.APIGatewayV2HTTPRequest, p *Principal) events.APIGatewayV2HTTPResponse {
+	var body struct {
+		Phone   string `json:"phone"`
+		UserKey string `json:"user_key"`
+	}
+	if err := parseJSON(req.Body, &body); err != nil || body.Phone == "" {
+		return errResp(http.StatusBadRequest, "phone required")
+	}
+	if !e164Pattern.MatchString(body.Phone) {
+		return errResp(http.StatusBadRequest, "phone must be in E.164 form, e.g. +15555550100")
+	}
+	if p == nil || p.UserKey == "" {
+		return errResp(http.StatusForbidden, "this API key is not bound to a chat identity, so it cannot register a phone")
+	}
+	if body.UserKey != "" && body.UserKey != p.UserKey {
+		return errResp(http.StatusForbidden, "user_key does not match this API key")
+	}
+
+	key := map[string]dynamodbtypes.AttributeValue{
+		"user_key": &dynamodbtypes.AttributeValueMemberS{Value: p.UserKey},
+		"nickname": &dynamodbtypes.AttributeValueMemberS{Value: "_phone"},
+	}
+	var err error
 	if method == "DELETE" {
 		_, err = client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-			TableName: aws.String(table),
-			Key: map[string]dynamodbtypes.AttributeValue{
-				"user_key": &dynamodbtypes.AttributeValueMemberS{Value: body.UserKey},
-				"nickname": &dynamodbtypes.AttributeValueMemberS{Value: "_phone"},
-			},
+			TableName:        aws.String(table),
+			Key:              key,
 			UpdateExpression: aws.String("REMOVE phone"),
 		})
 	} else {
+		item := map[string]dynamodbtypes.AttributeValue{
+			"phone":         &dynamodbtypes.AttributeValueMemberS{Value: body.Phone},
+			"project":       &dynamodbtypes.AttributeValueMemberS{Value: p.Project},
+			"registered_by": &dynamodbtypes.AttributeValueMemberS{Value: p.KeyID},
+		}
+		for k, v := range key {
+			item[k] = v
+		}
 		_, err = client.PutItem(ctx, &dynamodb.PutItemInput{
 			TableName: aws.String(table),
-			Item: map[string]dynamodbtypes.AttributeValue{
-				"user_key": &dynamodbtypes.AttributeValueMemberS{Value: body.UserKey},
-				"nickname": &dynamodbtypes.AttributeValueMemberS{Value: "_phone"},
-				"phone":    &dynamodbtypes.AttributeValueMemberS{Value: body.Phone},
-				"project":  &dynamodbtypes.AttributeValueMemberS{Value: p.Project},
-			},
+			Item:      item,
 		})
 	}
 	if err != nil {
-		return errResp(http.StatusInternalServerError, fmt.Sprintf("DynamoDB: %v", err)), nil
+		log.Printf("notifications/register: %s failed for keyid=%s: %v", method, p.KeyID, err)
+		return errResp(http.StatusInternalServerError, "registry write failed")
 	}
 	verb := "registered"
 	if method == "DELETE" {
 		verb = "deregistered"
 	}
-	return jsonResp(http.StatusOK, map[string]string{"status": verb, "phone": body.Phone}), nil
+	return jsonResp(http.StatusOK, map[string]string{"status": verb, "phone": body.Phone})
 }
 
 func twilioResp(msg string) (events.APIGatewayV2HTTPResponse, error) {
@@ -246,9 +312,32 @@ func twilioResp(msg string) (events.APIGatewayV2HTTPResponse, error) {
 	}, nil
 }
 
+// validateTwilioSignature checks X-Twilio-Signature: base64 HMAC-SHA1, keyed
+// by the auth token, of the full request URL followed by every POST
+// parameter's name and value, sorted by name. It reads the decoded body (a
+// Function URL may base64-encode it) and includes the query string, as Twilio
+// does when it signs.
 func validateTwilioSignature(req events.APIGatewayV2HTTPRequest, authToken string) bool {
+	sig := req.Headers["x-twilio-signature"]
+	if sig == "" || authToken == "" {
+		return false
+	}
 	urlStr := "https://" + req.RequestContext.DomainName + req.RequestContext.HTTP.Path
-	params, _ := url.ParseQuery(req.Body)
+	if req.RawQueryString != "" {
+		urlStr += "?" + req.RawQueryString
+	}
+	rawBody := req.Body
+	if req.IsBase64Encoded {
+		decoded, err := base64.StdEncoding.DecodeString(rawBody)
+		if err != nil {
+			return false
+		}
+		rawBody = string(decoded)
+	}
+	params, err := url.ParseQuery(rawBody)
+	if err != nil {
+		return false
+	}
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		keys = append(keys, k)
@@ -256,13 +345,15 @@ func validateTwilioSignature(req events.APIGatewayV2HTTPRequest, authToken strin
 	sort.Strings(keys)
 	var sb strings.Builder
 	for _, k := range keys {
-		sb.WriteString(k)
-		sb.WriteString(params.Get(k))
+		for _, v := range params[k] {
+			sb.WriteString(k)
+			sb.WriteString(v)
+		}
 	}
 	mac := hmac.New(sha1.New, []byte(authToken))
 	mac.Write([]byte(urlStr + sb.String()))
 	expected := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(expected), []byte(req.Headers["x-twilio-signature"]))
+	return hmac.Equal([]byte(expected), []byte(sig))
 }
 
 func fetchPending(ctx context.Context, key string) (*smsPendingNotification, error) {

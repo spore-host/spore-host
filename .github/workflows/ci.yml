@@ -138,7 +138,7 @@ jobs:
       matrix:
         include:
           - module: lambda/rest-api
-            min_coverage: '10'   # target 60% (CLAUDE.md); current ~10.8%
+            min_coverage: '38'   # target 60% (CLAUDE.md); current ~41%
           - module: lambda/spore-bot
             min_coverage: '12'   # current ~13.8%
           - module: lambda/portal-phone-home
