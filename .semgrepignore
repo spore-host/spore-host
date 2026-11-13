@@ -6,3 +6,11 @@ spawn/examples/genomics/
 spawn/examples/genomics-cwl/
 spawn/examples/genomics-nextflow/
 spawn/examples/genomics-wdl/
+
+# Vendored third-party runtimes (Rive, asciinema-player): unmodified upstream
+# builds, pinned by hash (web/scripts/vendor.test.mjs, provenance in each
+# directory's LICENSE*.txt). They can't carry a nosemgrep comment without
+# being modified, and a finding in them belongs upstream. asciinema-player's
+# bundle has an unencrypted-WebSocket URL for live streams, which the
+# homepage never uses (#700).
+web/assets/vendor/
