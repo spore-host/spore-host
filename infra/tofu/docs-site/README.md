@@ -30,6 +30,23 @@ diff, and `tofu apply` publishes it — corruption cannot silently ship.
 | `aws_cloudfront_origin_access_control.docs` | `E3KJVACTARMGFR` (S3 SigV4, signing always). |
 | `aws_s3_bucket.docs` + policy + public-access-block | `spore-host-docs`. OAC-scoped read only. |
 | `aws_route53_record.docs` | `docs.spore.host` A-alias → the distribution. |
+| `aws_cloudfront_response_headers_policy.docs` | `spore-host-docs-security-headers` on the default behavior (#703): CSP from `csp.txt`, HSTS (2 years, subdomains, no preload), `nosniff`, `X-Frame-Options: DENY`, `strict-origin-when-cross-origin`, a restrictive `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin`. New, so it is created rather than imported. |
+
+## Changing the CSP
+
+The policy is the one line in `csp.txt`; `main.tf` explains each directive.
+CI builds the docs and runs `scripts/check_docs_csp.py` against that file, so a
+page that starts loading from a new origin fails its PR instead of rendering
+broken after deploy. Changing `csp.txt` changes nothing live until `tofu apply`.
+
+After an apply, check the headers and that a page still renders:
+
+```bash
+curl -sI https://docs.spore.host/quickstart | grep -iE 'content-security|strict-transport|x-frame|x-content|referrer|permissions'
+```
+
+Then open the site with the browser console open: there should be no
+`Content-Security-Policy` errors. Try search (Ctrl-K) and the dark-mode toggle.
 
 ## Deliberately NOT managed here
 

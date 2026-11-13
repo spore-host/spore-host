@@ -94,6 +94,73 @@ resource "aws_cloudfront_function" "url_rewrite" {
   code    = file("${path.module}/url-rewrite.js")
 }
 
+# ── Response headers (#703) ───────────────────────────────────────────────────
+# Security headers on every docs.spore.host response, error pages included.
+#
+# The CSP is in csp.txt, one line, so that scripts/check_docs_csp.py (run by the
+# docs-build CI job against the real build) reads the same text CloudFront
+# serves and fails a PR that adds a resource the policy would block. What it
+# allows, and why:
+#   script-src 'self' 'unsafe-inline'
+#       VitePress puts three inline scripts in every page: the dark-mode and
+#       macOS checks, and window.__VP_HASH_MAP__, whose content changes with
+#       every build, so a hash cannot be pinned here. No script loads from
+#       any other origin. No 'unsafe-eval' or 'wasm-unsafe-eval': the build
+#       has no eval and no WebAssembly (Rive is on spore.host, not here).
+#   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com
+#       Vue writes style="" attributes (about 9,600 in a build), and the
+#       Atkinson Hyperlegible stylesheet comes from Google Fonts.
+#   font-src 'self' https://fonts.gstatic.com    the font files themselves.
+#   img-src 'self' data:      vp-icons.css draws its icons as data: SVG masks.
+#   connect-src 'self'        hashmap.json and the local search index.
+#   frame-ancestors 'none', object-src 'none', frame-src 'none',
+#   worker-src 'none', base-uri 'self', form-action 'self'
+#       nothing frames, embeds or posts.
+resource "aws_cloudfront_response_headers_policy" "docs" {
+  name    = "spore-host-docs-security-headers"
+  comment = "Security headers for docs.spore.host (spore-host#703)"
+
+  security_headers_config {
+    content_security_policy {
+      content_security_policy = trimspace(file("${path.module}/csp.txt"))
+      override                = true
+    }
+    # Two years, subdomains included. No `preload`: it means something only on
+    # the apex (spore.host), and a preload-list entry is a commitment for every
+    # subdomain at once, which is that distribution's decision.
+    strict_transport_security {
+      access_control_max_age_sec = 63072000
+      include_subdomains         = true
+      preload                    = false
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+  }
+
+  custom_headers_config {
+    items {
+      header   = "Permissions-Policy"
+      value    = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+      override = true
+    }
+    items {
+      header   = "Cross-Origin-Opener-Policy"
+      value    = "same-origin"
+      override = true
+    }
+  }
+}
+
 # ── Origin Access Control ─────────────────────────────────────────────────────
 resource "aws_cloudfront_origin_access_control" "docs" {
   name                              = "spore-host-docs-oac"
@@ -167,12 +234,13 @@ resource "aws_cloudfront_distribution" "docs" {
   }
 
   default_cache_behavior {
-    target_origin_id       = "s3-spore-host-docs"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    cache_policy_id        = local.caching_optimized_policy_id
+    target_origin_id           = "s3-spore-host-docs"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = local.caching_optimized_policy_id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.docs.id
 
     function_association {
       event_type   = "viewer-request"
@@ -221,6 +289,11 @@ output "distribution_id" {
 
 output "distribution_domain" {
   value = aws_cloudfront_distribution.docs.domain_name
+}
+
+output "response_headers_policy_id" {
+  value       = aws_cloudfront_response_headers_policy.docs.id
+  description = "Security-headers policy on the default behavior (CSP in csp.txt)."
 }
 
 output "function_arn" {
