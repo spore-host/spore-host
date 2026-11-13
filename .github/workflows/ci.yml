@@ -130,6 +130,18 @@ jobs:
       - name: Run scripts/check-deploy-paths.sh
         run: scripts/check-deploy-paths.sh
 
+  # infra/certs/provision-wildcard-cert.sh merges its statement into a live
+  # bucket policy that carries statements it does not own (#695). Prove the
+  # merge keeps them, and that the account guard refuses before any write,
+  # against a stub `aws`: no network, no credentials.
+  cert-script-tests:
+    name: Wildcard-cert script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run infra/certs/test-provision-wildcard-cert.sh
+        run: infra/certs/test-provision-wildcard-cert.sh
+
   lambda-tests:
     name: Lambda module tests
     runs-on: ubuntu-latest
