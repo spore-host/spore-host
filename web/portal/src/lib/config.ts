@@ -1,6 +1,8 @@
-// Portal configuration: Vite build-time values, overridable per visit by URL
-// params, persisted in sessionStorage so they survive the sign-in redirect
-// (which replaces the query string).
+// Portal configuration: Vite build-time values, persisted in sessionStorage so
+// they survive the sign-in redirect (which replaces the query string). Only
+// the region may be overridden per visit by a URL param. In the dev server and
+// the gate build, client_id and role_arn may be too; in a production build they
+// are build-time only (#704).
 //
 // Ported from legacy-app/config.ts (brief §9 reuse table). Changes:
 // - Pure: env, URL, origin and storage are parameters, so it is testable
@@ -39,6 +41,30 @@ export interface ResolveInput {
   /** `location.origin + location.pathname`: the default redirect URI. */
   pageUrl: string;
   store: SessionStore | null;
+  /**
+   * Whether `client_id` and `role_arn` may come from the URL or from stored
+   * config. True only in the dev server and the gate build (see
+   * identityOverridesAllowed). In production a link must not choose the
+   * Globus app the user signs in to or the AWS account they are federated
+   * into (#704). Defaults to false.
+   */
+  allowIdentityOverrides?: boolean;
+}
+
+/** The build-time switch for allowIdentityOverrides, from import.meta.env. */
+export interface OverrideEnv {
+  DEV?: boolean;
+  VITE_PORTAL_CONFIG_OVERRIDES?: string;
+}
+
+/**
+ * True in `vite` dev and in a build whose mode sets
+ * VITE_PORTAL_CONFIG_OVERRIDES=1 (portal/.env.gate). Vite inlines both at
+ * build time, so in a production build this is false and nothing on the page
+ * can change that.
+ */
+export function identityOverridesAllowed(env: OverrideEnv): boolean {
+  return env.DEV === true || env.VITE_PORTAL_CONFIG_OVERRIDES === "1";
 }
 
 export function defaults(env: ConfigEnv, pageUrl: string): PortalConfig {
@@ -64,16 +90,27 @@ function readStored(store: SessionStore | null): Partial<PortalConfig> | null {
  * Build-time defaults, then stored values, then URL overrides, persisted.
  * apiBase and redirectUri are never taken from the URL: a link must not be
  * able to send credentials elsewhere or redirect sign-in off this page.
+ * globusClientId and roleArn are taken from the URL or storage only when
+ * allowIdentityOverrides is set. Otherwise a phishing link to the genuine page
+ * could sign the user in to an attacker's Globus app and federate them into
+ * the attacker's AWS account, and the override would then stick for the tab
+ * (#704). Storage is ignored for them too, so a value persisted by a build
+ * that did allow overrides doesn't carry over.
  */
-export function resolveConfig({ env, search, pageUrl, store }: ResolveInput): PortalConfig {
+export function resolveConfig({ env, search, pageUrl, store, allowIdentityOverrides = false }: ResolveInput): PortalConfig {
   const base = defaults(env, pageUrl);
   const stored = readStored(store);
   const params = new URLSearchParams(search);
+  const identity = allowIdentityOverrides
+    ? {
+        globusClientId: params.get("client_id") ?? stored?.globusClientId ?? base.globusClientId,
+        roleArn: params.get("role_arn") ?? stored?.roleArn ?? base.roleArn,
+      }
+    : { globusClientId: base.globusClientId, roleArn: base.roleArn };
   const merged: PortalConfig = {
     region: params.get("region") ?? stored?.region ?? base.region,
     apiBase: base.apiBase,
-    globusClientId: params.get("client_id") ?? stored?.globusClientId ?? base.globusClientId,
-    roleArn: params.get("role_arn") ?? stored?.roleArn ?? base.roleArn,
+    ...identity,
     redirectUri: base.redirectUri,
   };
   try {
