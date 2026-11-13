@@ -43,6 +43,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # pin-check: unverified-ok -- the download is the thing under test: spore.host's own latest release, fetched exactly as docs/quickstart.md tells users to. It installs into this throwaway runner and holds no secret beyond a read-only token.
           # Same normalization the docs snippet uses: assets are named with
           # lowercase GOOS/GOARCH (darwin|linux, amd64|arm64).
           OS=$(uname -s | tr '[:upper:]' '[:lower:]')
