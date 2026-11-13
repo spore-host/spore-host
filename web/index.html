@@ -358,19 +358,28 @@ done</code></pre>
     hamburger.setAttribute('aria-expanded', open);
   });
 
-  // Auto-load asciinema player on page load
+  // Auto-load asciinema player on page load.
+  //
+  // Vendored under assets/vendor/asciinema-player/, like Rive, rather than
+  // loaded from jsdelivr: a script from another origin runs with this origin's
+  // authority, which the portal will share (#700). The integrity values pin
+  // the vendored files, and scripts/vendor.test.mjs keeps them in step.
   (function loadDemo() {
     const player = document.getElementById('demo-player');
-    const cdnBase = 'https://cdn.jsdelivr.net/npm/asciinema-player@3.14.0/dist/bundle';
+    const vendor = 'assets/vendor/asciinema-player';
     const castUrl = window.location.origin + '/assets/demo.cast?v=8';
 
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = cdnBase + '/asciinema-player.min.css';
+    link.href = vendor + '/asciinema-player.css';
+    link.integrity = 'sha384-f1DbuDwpDOQaJnXSCANILedR75vGWPBXA6aXjQbjmqXyba+UIPhVjrJoY6RinQ1c';
+    link.crossOrigin = 'anonymous';
     document.head.appendChild(link);
 
     const script = document.createElement('script');
-    script.src = cdnBase + '/asciinema-player.min.js';
+    script.src = vendor + '/asciinema-player.min.js';
+    script.integrity = 'sha384-JbH7GXOgTVQWRkK8kGQLlQvC5t1LfMzW/FjQFVQaNndtkyvQMBHHLLSu+/MT5eVr';
+    script.crossOrigin = 'anonymous';
     script.onload = function() {
       const p = AsciinemaPlayer.create(castUrl, player, {
         autoPlay: true,
