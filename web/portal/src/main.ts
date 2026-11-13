@@ -7,7 +7,7 @@
 import "./styles/tokens.css";
 import "./styles/components.css";
 import "./styles/layout.css";
-import { missingConfig, resolveConfig } from "./lib/config.js";
+import { identityOverridesAllowed, missingConfig, resolveConfig } from "./lib/config.js";
 import { SessionController, type SessionOptions } from "./lib/session.js";
 import { announce } from "./shell/announce.js";
 import { createShell } from "./shell/shell.js";
@@ -18,6 +18,11 @@ async function main(): Promise<void> {
     search: location.search,
     pageUrl: `${location.origin}${location.pathname}`,
     store: sessionStorage,
+    // false in a production build: a link can't pick the role or Globus app (#704).
+    allowIdentityOverrides: identityOverridesAllowed({
+      DEV: import.meta.env.DEV,
+      VITE_PORTAL_CONFIG_OVERRIDES: import.meta.env.VITE_PORTAL_CONFIG_OVERRIDES,
+    }),
   });
   const missing = missingConfig(config);
   // Build variables are for the operator, never the page (#681).

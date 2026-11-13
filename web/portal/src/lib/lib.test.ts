@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appliedLevel, atLeast, DEFAULT_LEVEL, isLevel, levelForNavigation, loadLevel, saveLevel, STORAGE_KEY } from "./disclosure.js";
 import { expiryPhase, minutesLeft, SessionController, WARN_BEFORE_MS, type ExpiryEvent } from "./session.js";
 import { hashPath, readHashParam, readHashParams, writeHashParams } from "./hashstate.js";
-import { missingConfig, resolveConfig, SS_CONFIG } from "./config.js";
+import { identityOverridesAllowed, missingConfig, resolveConfig, SS_CONFIG } from "./config.js";
 import { COST_LIMIT_HEADROOM, costLimitFor, maxCostFor } from "./cost.js";
 import { accountLabel, formatAgo, formatClock, formatDuration, formatMoney, formatRate, plural } from "./format.js";
 import { regionName } from "./regions.js";
@@ -178,11 +178,32 @@ describe("config", () => {
   const env = { VITE_AWS_REGION: "us-west-2", VITE_GLOBUS_CLIENT_ID: "cid", VITE_ROLE_ARN: "arn:aws:iam::111122223333:role/r" };
   const pageUrl = "https://spore.host/app/";
 
-  it("layers defaults, storage and URL, and persists the result", () => {
+  it("layers defaults, storage and URL, and persists the result (overrides allowed)", () => {
     const store = fakeStorage({ [SS_CONFIG]: JSON.stringify({ region: "eu-west-1" }) });
-    const cfg = resolveConfig({ env, search: "?client_id=override", pageUrl, store });
+    const cfg = resolveConfig({ env, search: "?client_id=override", pageUrl, store, allowIdentityOverrides: true });
     expect(cfg).toEqual({ region: "eu-west-1", apiBase: "https://api.spore.host", globusClientId: "override", roleArn: env.VITE_ROLE_ARN, redirectUri: pageUrl });
     expect(JSON.parse(store.map.get(SS_CONFIG)!)).toEqual(cfg);
+  });
+
+  // #704: a phishing link to the real page must not choose the Globus app or
+  // the AWS role, and nothing a link or an earlier build stored may either.
+  it("never takes client_id or role_arn from the URL or storage by default", () => {
+    const attacker = { client_id: "attacker-app", role_arn: "arn:aws:iam::444455556666:role/x" };
+    const store = fakeStorage({ [SS_CONFIG]: JSON.stringify({ globusClientId: "stored-app", roleArn: "arn:aws:iam::777788889999:role/y" }) });
+    const cfg = resolveConfig({ env, search: `?${new URLSearchParams(attacker)}&region=eu-west-1`, pageUrl, store });
+    expect(cfg.globusClientId).toBe(env.VITE_GLOBUS_CLIENT_ID);
+    expect(cfg.roleArn).toBe(env.VITE_ROLE_ARN);
+    expect(cfg.region).toBe("eu-west-1");
+    // What is persisted is the build's identity, so a later visit can't inherit an override.
+    expect(JSON.parse(store.map.get(SS_CONFIG)!)).toMatchObject({ globusClientId: "cid", roleArn: env.VITE_ROLE_ARN });
+  });
+
+  it("allows identity overrides only in dev or a build that opts in", () => {
+    expect(identityOverridesAllowed({})).toBe(false);
+    expect(identityOverridesAllowed({ DEV: false, VITE_PORTAL_CONFIG_OVERRIDES: "" })).toBe(false);
+    expect(identityOverridesAllowed({ DEV: false, VITE_PORTAL_CONFIG_OVERRIDES: "true" })).toBe(false);
+    expect(identityOverridesAllowed({ DEV: true })).toBe(true);
+    expect(identityOverridesAllowed({ VITE_PORTAL_CONFIG_OVERRIDES: "1" })).toBe(true);
   });
 
   it("never takes apiBase or redirectUri from the URL", () => {
