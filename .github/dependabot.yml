@@ -3,9 +3,19 @@
 
 version: 2
 updates:
-  # Go modules for spawn
+  # Go modules: the five Lambda modules, the only go.mod files in this repo.
+  # The old "/spawn" and "/truffle" entries named directories that left with
+  # the CLIs' own repos, so the operated Lambdas (rest-api, accountlifecycle,
+  # spore-bot, the portal phone-home and prober) got no update PRs at all
+  # (#706). scripts/check_dependabot_coverage.py fails CI if a manifest
+  # directory has no entry here, or an entry names a directory without one.
   - package-ecosystem: "gomod"
-    directory: "/spawn"
+    directories:
+      - "/lambda/accountlifecycle"
+      - "/lambda/portal-account-prober"
+      - "/lambda/portal-phone-home"
+      - "/lambda/rest-api"
+      - "/lambda/spore-bot"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -16,26 +26,31 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "component:spawn"
+      - "component:infrastructure"
       - "type:security"
     commit-message:
-      prefix: "deps(spawn)"
+      prefix: "deps(lambda)"
       include: "scope"
     reviewers:
       - "scttfrdmn"
-    # Group minor and patch updates
     groups:
       aws-sdk:
         patterns:
           - "github.com/aws/aws-sdk-go-v2*"
+          - "github.com/aws/aws-lambda-go"
       minor-and-patch:
         update-types:
           - "minor"
           - "patch"
 
-  # Go modules for truffle
-  - package-ecosystem: "gomod"
-    directory: "/truffle"
+  # npm: the website (web/, which also holds the portal rebuild) and the docs
+  # site (docs/). Both deploy on merge, so their toolchains (vite, vitest,
+  # happy-dom, playwright, vitepress, the spawn/truffle/lagotto-ts SDKs) are
+  # production supply chain (#699, #706).
+  - package-ecosystem: "npm"
+    directories:
+      - "/web"
+      - "/docs"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -46,17 +61,20 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "component:truffle"
+      - "component:web-dashboard"
       - "type:security"
     commit-message:
-      prefix: "deps(truffle)"
+      prefix: "deps(npm)"
       include: "scope"
     reviewers:
       - "scttfrdmn"
     groups:
       aws-sdk:
         patterns:
-          - "github.com/aws/aws-sdk-go-v2*"
+          - "@aws-sdk/*"
+      spore-host-sdks:
+        patterns:
+          - "@spore-host/*"
       minor-and-patch:
         update-types:
           - "minor"

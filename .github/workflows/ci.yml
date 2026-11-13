@@ -116,6 +116,19 @@ jobs:
       - name: Run scripts/test-branch-preflight.sh
         run: scripts/test-branch-preflight.sh
 
+  # dependabot.yml once pointed gomod at /spawn and /truffle, which no longer
+  # exist here, while the operated Lambdas and web/docs had no entry; nothing
+  # noticed (#706). Fail when a manifest has no entry or an entry no manifest.
+  dependabot-coverage:
+    name: Dependabot covers every manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run scripts/check_dependabot_coverage.py
+        run: |
+          python3 -I scripts/test_check_dependabot_coverage.py
+          python3 -I scripts/check_dependabot_coverage.py
+
   # lambda/spore-bot's `make deploy` ran `aws cloudformation deploy` against a
   # template that did not exist, so every deploy uploaded the zip and then failed
   # without updating the function (#570). Check every deploy target's commands
