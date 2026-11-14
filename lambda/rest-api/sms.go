@@ -70,7 +70,7 @@ func handleSMSIncoming(ctx context.Context, req events.APIGatewayV2HTTPRequest) 
 		return twilioResp("")
 	}
 
-	pending, err := fetchPending(ctx, nil, smsPendingKey(to, from))
+	pending, err := fetchPending(ctx, pendingStore, smsPendingKey(to, from))
 	if err != nil {
 		// A failed lookup is not "no row" (#727): a table created with the wrong
 		// key schema failed every GetItem, and each reply was told nothing was
@@ -367,6 +367,10 @@ func validateTwilioSignature(req events.APIGatewayV2HTTPRequest, authToken strin
 type pendingGetter interface {
 	GetItem(ctx context.Context, in *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
 }
+
+// pendingStore is the pending-reply table handleSMSIncoming reads; nil means
+// DynamoDB through the default AWS config. Tests replace it.
+var pendingStore pendingGetter
 
 // fetchPending reads the pending reply stored under key. (nil, nil) means no
 // row; an error means the lookup itself failed (AWS config, permissions, or a

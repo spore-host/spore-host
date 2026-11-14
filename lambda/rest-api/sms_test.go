@@ -305,3 +305,40 @@ func TestFetchPending(t *testing.T) {
 		t.Errorf("decoded %+v", p)
 	}
 }
+
+// #727: through the webhook, a failed lookup gets its own reply (and a log
+// line), and only a missing row reads "No pending notification".
+func TestHandleSMSIncoming_PendingLookup(t *testing.T) {
+	t.Setenv("TWILIO_AUTH_TOKEN", testTwilioToken)
+	t.Setenv("SPORE_ENV", "")
+	t.Setenv("SKIP_TWILIO_SIGNATURE", "")
+	form := url.Values{"To": {"+15550100000"}, "From": {"+15550100001"}, "Body": {"1"}}
+	cases := []struct {
+		name  string
+		store *fakePending
+		want  string
+	}{
+		{"lookup fails", &fakePending{err: errors.New("ValidationException: The provided key element does not match the schema")}, "Could not look up your notification"},
+		{"no row", &fakePending{}, "No pending notification"},
+		{"reply not offered", &fakePending{item: map[string]dynamodbtypes.AttributeValue{"options": &dynamodbtypes.AttributeValueMemberS{Value: "0=dismiss"}}}, "not recognised"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := pendingStore
+			t.Cleanup(func() { pendingStore = orig })
+			pendingStore = tc.store
+			req := twilioRequest(form)
+			signTwilio(&req, form, testTwilioToken)
+			resp, err := handler(context.Background(), req)
+			if err != nil || resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, err = %v", resp.StatusCode, err)
+			}
+			if !strings.Contains(resp.Body, tc.want) {
+				t.Errorf("reply %q does not contain %q", resp.Body, tc.want)
+			}
+			if tc.store.key != "+15550100000#+15550100001" {
+				t.Errorf("looked up %q", tc.store.key)
+			}
+		})
+	}
+}
