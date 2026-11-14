@@ -104,10 +104,10 @@ func setupPlatformFixture(t *testing.T, rec *platformRecorder) (aws.Config, *Reg
 		"workspace_key": s("teams#TEN1"), "platform": s("teams"), "bot_token": s(teamsBotTokenFixture),
 	})
 	put(testRegistryTable, map[string]dynamodbtypes.AttributeValue{
-		"user_key": s("slack#T1#U1"), "nickname": s("gpu1"), "instance_id": s("i-0abc"),
+		"user_key": s("slack#T1#U1"), "nickname": s("gpu1"), "instance_id": s(testNotifyInstance), "aws_account_id": s(testNotifyAccount),
 	})
 	put(testRegistryTable, map[string]dynamodbtypes.AttributeValue{
-		"user_key": s("teams#TEN1#29:teams-user"), "nickname": s("gpu1"), "instance_id": s("i-0abc"),
+		"user_key": s("teams#TEN1#29:teams-user"), "nickname": s("gpu1"), "instance_id": s(testNotifyInstance), "aws_account_id": s(testNotifyAccount),
 	})
 	put(testRegistryTable, map[string]dynamodbtypes.AttributeValue{
 		"user_key": s("teams#TEN1#29:teams-user"), "nickname": s("teams_ref"),
@@ -153,9 +153,9 @@ func TestHandleNotifyDispatchesDMsPerPlatform(t *testing.T) {
 			rec := &platformRecorder{}
 			awsCfg, r := setupPlatformFixture(t, rec)
 			body, _ := json.Marshal(NotifyRequest{Platform: tc.platform, WorkspaceID: tc.workspace,
-				EventType: "ttl_warning", InstanceName: "gpu1", InstanceID: "i-0abc", Detail: "5m"})
+				EventType: "ttl_warning", InstanceName: "gpu1", InstanceID: testNotifyInstance, Detail: "5m"})
 			resp, err := handleNotify(context.Background(), awsCfg, r,
-				events.APIGatewayProxyRequest{HTTPMethod: "POST", Path: "/notify", Body: string(body)})
+				events.APIGatewayProxyRequest{HTTPMethod: "POST", Path: "/notify", Body: string(body)}, testNotifyCaller())
 			if err != nil || resp.StatusCode != 200 {
 				t.Fatalf("handleNotify = %d, %v", resp.StatusCode, err)
 			}
