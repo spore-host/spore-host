@@ -209,9 +209,9 @@
         <p class="section-sub">Install the tools that fit your workflow. Truffle and spawn are the core pair. Add the others as needed.</p>
 
         <div class="install-tabs" role="tablist" aria-label="Installation method">
-          <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-homebrew" id="btn-homebrew" onclick="showTab('homebrew', event)">macOS / Linux</button>
-          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-scoop" id="btn-scoop" onclick="showTab('scoop', event)">Windows</button>
-          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-manual" id="btn-manual" onclick="showTab('manual', event)">Manual</button>
+          <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-homebrew" id="btn-homebrew" data-tab="homebrew">macOS / Linux</button>
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-scoop" id="btn-scoop" data-tab="scoop">Windows</button>
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-manual" id="btn-manual" data-tab="manual">Manual</button>
         </div>
 
         <div id="tab-homebrew" class="tab-content active" role="tabpanel" aria-labelledby="btn-homebrew">
@@ -349,6 +349,11 @@ done</code></pre>
     e.currentTarget.classList.add('active');
     e.currentTarget.setAttribute('aria-selected','true');
   }
+  // Bound here, not with onclick="": the spore.host CSP check
+  // (scripts/check_docs_csp.py, #717) refuses inline event handlers.
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+    btn.addEventListener('click', e => showTab(btn.dataset.tab, e));
+  });
 
   // Hamburger
   const hamburger = document.getElementById('hamburger-btn');
