@@ -27,7 +27,10 @@ teardown stops before deleting any table.
 
 --iam-roles also deletes the two IAM roles 'lagotto setup' and 'lagotto deploy'
 create (lagotto-capacity-poller-role and lagotto-capacity-poller-scheduler-invoke),
-with their policies. The roles are account-global and shared by the poller in every
+with their policies, and the instance role 'lagotto setup' creates for launches
+(lagotto-instance-role, with its instance profile), plus the instance profile setup
+created for each role authorized with --instance-role (the role itself is yours and
+is left in place). The roles are account-global and shared by the poller in every
 region, so this first checks every region enabled in the account and refuses, before
 deleting anything, while a poller still exists in any of them (remove each with
 'lagotto deploy --teardown --region &lt;region&gt;') or when a region cannot be checked.
@@ -49,5 +52,5 @@ lagotto teardown [flags]
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--force` |  | bool |  | Delete even if the tables still contain records |
-| `--iam-roles` |  | bool |  | Also delete lagotto's two account-global IAM roles and the lagotto-cli-user policy (detached from everyone first); refused while a poller exists in any region |
+| `--iam-roles` |  | bool |  | Also delete lagotto's account-global IAM roles (the poller's two and its instance role) and the lagotto-cli-user policy (detached from everyone first); refused while a poller exists in any region |
 
