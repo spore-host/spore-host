@@ -53,3 +53,16 @@ export function classifyStartSession(result: { ok: true; sessionId?: string } | 
   if (code === "TargetNotConnected") return { decision: "inconclusive", evidence: code, retry: true };
   return { decision: "inconclusive", evidence: code, retry: false };
 }
+
+/**
+ * A list as the portal (DescribeInstances through spawn-ts). Allowed only when
+ * the run's instance is in the answer: a list that succeeds without it proves
+ * nothing about the read grant the portal needs, so it is inconclusive.
+ * UnauthorizedOperation is denied.
+ */
+export function classifyList(result: { ok: true; found: boolean } | { ok: false; err: unknown }): Outcome {
+  if (result.ok) return result.found ? { decision: "allowed", evidence: "the run's instance was listed" } : { decision: "inconclusive", evidence: "the list succeeded without the run's instance" };
+  const code = errorCode(result.err);
+  if (code === "UnauthorizedOperation") return { decision: "denied", evidence: code };
+  return { decision: "inconclusive", evidence: code };
+}

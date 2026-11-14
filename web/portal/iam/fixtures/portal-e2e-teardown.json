@@ -1,5 +1,5 @@
 {
-  "$comment": "SimulateCustomPolicy cases for the e2e teardown role's PortalE2ETeardown policy (iam/policies/portal-e2e-roles.json, role spore-portal-e2e-teardown). Run offline by gates/iam-e2e-teardown.test.ts through the offline evaluator, and live by iam/live.test.ts through aws iam simulate-custom-policy. The terminate grant needs BOTH the run tag and ec2:InstanceType=t4g.nano: ec2:CreateTags on * (the #678 gap) lets a portal or e2e session forge the tag on any instance, and the type limits what a forged tag can reach to the one type the harness launches. The allowed terminate is also exercised for real by every e2e teardown; the denials cannot be, because the harness never launches anything but a t4g.nano. 111122223333 is AWS's documentation account id; the live job substitutes the caller's.",
+  "$comment": "SimulateCustomPolicy cases for the e2e teardown role's PortalE2ETeardown policy (iam/policies/portal-e2e-roles.json, role spore-portal-e2e-teardown). Run offline by gates/iam-e2e-teardown.test.ts through the offline evaluator, and live by iam/live.test.ts through aws iam simulate-custom-policy. The terminate grant needs BOTH the run tag and ec2:InstanceType=t4g.nano: the type limits what a tag forged by any other principal can reach to the one type the harness launches. The setup grants (the role launches the run's test instances, since the read-only portal role can't) need the same two, in us-east-1, from an Amazon image, tagged only within the launch, with only spored-instance-role passed, to EC2 only. The allowed terminate is also exercised for real by every e2e teardown; the denials cannot be, because the harness never launches anything but a t4g.nano. 111122223333 is AWS's documentation account id; the live job substitutes the caller's.",
   "policyFile": "portal-e2e-roles.json#spore-portal-e2e-teardown",
   "account": "111122223333",
   "sporedInstanceRole": "spored-instance-role",
@@ -84,19 +84,118 @@
       "expect": "allowed"
     },
     {
-      "name": "never launch",
+      "name": "launch a tagged t4g.nano e2e instance (setup)",
       "action": "ec2:RunInstances",
       "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*",
+      "context": {
+        "aws:RequestTag/spore-host:e2e-run": "r1abc",
+        "ec2:InstanceType": "t4g.nano"
+      },
+      "expect": "allowed"
+    },
+    {
+      "name": "launch a t4g.nano without the run tag",
+      "action": "ec2:RunInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*",
+      "context": {
+        "ec2:InstanceType": "t4g.nano"
+      },
       "expect": "denied"
     },
     {
-      "name": "never pass a role",
+      "name": "launch a tagged instance that is not a t4g.nano",
+      "action": "ec2:RunInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*",
+      "context": {
+        "aws:RequestTag/spore-host:e2e-run": "r1abc",
+        "ec2:InstanceType": "p5.48xlarge"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "launch a tagged t4g.nano in another region",
+      "action": "ec2:RunInstances",
+      "resource": "arn:aws:ec2:us-west-2:${ACCOUNT_ID}:instance/*",
+      "context": {
+        "aws:RequestTag/spore-host:e2e-run": "r1abc",
+        "ec2:InstanceType": "t4g.nano"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "launch into the default subnet (setup)",
+      "action": "ec2:RunInstances",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:subnet/subnet-0123456789abcdef0",
+      "expect": "allowed"
+    },
+    {
+      "name": "launch from an Amazon AL2023 image (setup)",
+      "action": "ec2:RunInstances",
+      "resource": "arn:aws:ec2:us-east-1::image/ami-0123456789abcdef0",
+      "context": {
+        "ec2:Owner": "amazon"
+      },
+      "expect": "allowed"
+    },
+    {
+      "name": "launch from a community image",
+      "action": "ec2:RunInstances",
+      "resource": "arn:aws:ec2:us-east-1::image/ami-0123456789abcdef0",
+      "context": {
+        "ec2:Owner": "999988887777"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "tag the e2e instance at launch (setup)",
+      "action": "ec2:CreateTags",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": {
+        "ec2:CreateAction": "RunInstances"
+      },
+      "expect": "allowed"
+    },
+    {
+      "name": "tag an existing instance",
+      "action": "ec2:CreateTags",
+      "resource": "arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/i-0123456789abcdef0",
+      "context": {
+        "aws:ResourceTag/spore-host:e2e-run": "r1abc"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "pass spored's role to EC2 (setup)",
       "action": "iam:PassRole",
       "resource": "arn:aws:iam::${ACCOUNT_ID}:role/spored-instance-role",
       "context": {
         "iam:PassedToService": "ec2.amazonaws.com"
       },
+      "expect": "allowed"
+    },
+    {
+      "name": "pass spored's role to another service",
+      "action": "iam:PassRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/spored-instance-role",
+      "context": {
+        "iam:PassedToService": "lambda.amazonaws.com"
+      },
       "expect": "denied"
+    },
+    {
+      "name": "never pass any other role",
+      "action": "iam:PassRole",
+      "resource": "arn:aws:iam::${ACCOUNT_ID}:role/AdminRole",
+      "context": {
+        "iam:PassedToService": "ec2.amazonaws.com"
+      },
+      "expect": "denied"
+    },
+    {
+      "name": "read images for the setup launch",
+      "action": "ec2:DescribeImages",
+      "resource": "*",
+      "expect": "allowed"
     }
   ]
 }

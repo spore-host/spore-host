@@ -1,9 +1,10 @@
 // @vitest-environment node
 //
 // The REAL-AWS e2e harness (spore-host#683). It launches two t4g.nano
-// On-Demand instances in the dev account as the portal would, proves each
-// tag-gated grant with one real call in both directions, tears down, and
-// checks independently that nothing is left. Design: e2e-aws/harness.ts.
+// On-Demand instances in the dev account as the observer (the 1.0 portal role
+// is read-only, #645), proves with real calls that the portal role can list
+// them and is denied launch, tag, session, stop, start and terminate, tears
+// down, and checks independently that nothing is left. Design: e2e-aws/harness.ts.
 //
 // Runs ONLY with PORTAL_E2E_AWS=1, which .github/workflows/portal-e2e-aws.yml
 // sets after assuming the teardown role, and `make portal-e2e-aws` sets
@@ -41,7 +42,7 @@ function print(r: HarnessReport): string {
 
 describe.skipIf(!live)("portal real-AWS e2e (credential-gated)", () => {
   it(
-    "launches as the portal, proves every tag-gated grant both ways, tears down, and leaves nothing",
+    "launches as the observer, proves the read-only portal role for real, tears down, and leaves nothing",
     async () => {
       // Imported here so the default test run never loads the AWS adapters.
       const { assumeE2ERole, e2eApi, observerApi, observerCredentials } = await import("./aws.js");
@@ -51,7 +52,7 @@ describe.skipIf(!live)("portal real-AWS e2e (credential-gated)", () => {
       const roleArn = process.env.PORTAL_E2E_ROLE_ARN || `arn:aws:iam::${EXPECTED_ACCOUNT}:role/${E2E_ROLE_NAME}`;
       const report = await runHarness({
         runId,
-        observer: observerApi(observerCreds),
+        observer: observerApi(observerCreds, { runId }),
         e2e: async () => e2eApi(await assumeE2ERole(observerCreds, roleArn, runId), runId),
         clock: { now: () => Date.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
         log: (line) => console.log(`portal e2e: ${line}`),

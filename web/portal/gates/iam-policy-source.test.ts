@@ -32,12 +32,22 @@ describe("IAM policy fixture matches the tofu source", () => {
     });
   }
 
+  it("is read-only: only Describe and quota reads, no condition anywhere (#645)", () => {
+    for (const doc of Object.values(policy.policies))
+      for (const st of doc.Statement) {
+        expect(st.Effect).toBe("Allow");
+        expect(st.Condition).toBeUndefined();
+        for (const a of Array.isArray(st.Action) ? st.Action : [st.Action]) expect(a, a).toMatch(/^(ec2:Describe[A-Za-z]+|servicequotas:(Get|List)[A-Za-z]+)$/);
+      }
+  });
+
   it("names the role main.tf creates", () => {
     expect(tf).toContain(`role_name     = "${policy.role}"`);
   });
 
   it("fails when main.tf grants an action the fixture does not have", () => {
-    const changed = tf.replace('"ec2:DescribeKeyPairs",', '"ec2:DescribeKeyPairs",\n          "ec2:ModifyInstanceAttribute",');
-    expect(jsonActions("PortalEC2Launch")).not.toEqual(tfActions(tfPolicyBlock(changed, "PortalEC2Launch")!));
+    const changed = tf.replace('"ec2:DescribeTags",', '"ec2:DescribeTags",\n          "ec2:ModifyInstanceAttribute",');
+    expect(changed).not.toBe(tf);
+    expect(jsonActions("PortalReadOnly")).not.toEqual(tfActions(tfPolicyBlock(changed, "PortalReadOnly")!));
   });
 });

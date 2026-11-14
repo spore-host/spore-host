@@ -4,20 +4,22 @@ name: Portal e2e (real AWS, credential-gated)
 # (spore-host#683), web/portal/e2e-aws/. Per run, in the dev account
 # (435415984226), us-east-1:
 #   1. refuse to start if any instance from an earlier e2e run is still live;
-#   2. launch two t4g.nano On-Demand instances (the cap) AS THE PORTAL, through
-#      spawn-ts, with a 15-minute spawn:ttl: one spawn:managed=true, one
-#      otherwise identical without it. This proves RunInstances, CreateTags
-#      and PassRole;
-#   3. one real call per tag-gated grant in web/portal/iam/policies/, both ways
-#      (StartSession allowed on the managed instance, denied on the control),
-#      and Stop, Start and Terminate denied on the managed instance (#678),
-#      via EC2 DryRun;
+#   2. launch two t4g.nano On-Demand instances (the cap) AS THE OBSERVER,
+#      through spawn-ts, with a 15-minute spawn:ttl: one spawn:managed=true,
+#      one otherwise identical without it. The 1.0 portal role is read-only
+#      (#645), so it can't launch them;
+#   3. real calls as the portal (the e2e role): it lists the managed instance,
+#      and is denied a launch, a tag and a session on it (#701, #678), and
+#      Stop, Start and Terminate, via EC2 DryRun where a call would change
+#      something; plus one real call per tag-gated grant, both ways (none
+#      while the portal is read-only);
 #   4. teardown, always, terminating only this run's tagged instances;
 #   5. the leak check: no instance, volume, network interface, Elastic IP,
 #      security group, key pair or SSM session of the run is left.
 #
 # CREDENTIAL-GATED. It signs in over GitHub OIDC as spore-portal-e2e-teardown
-# (the observer: leak-check reads, terminate e2e-tagged instances only) and
+# (setup and observer: launch and terminate e2e-tagged t4g.nano only,
+# leak-check reads) and
 # the harness assumes spore-portal-e2e from there, whose inline policies are
 # the portal role's (portal-iam-live.yml checks that nightly). Both roles are
 # in infra/tofu/portal-oidc/main.tf, their named deleter, and both trust only

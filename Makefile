@@ -46,6 +46,7 @@ portal-gates:
 
 # portal-e2e-aws: the REAL-AWS e2e harness (web/portal/e2e-aws/). Launches two
 # t4g.nano On-Demand instances in the dev account with a 15m TTL, proves the
+# read-only portal role (lists them, denied launch, tag and session) and any
 # tag-gated grants, tears down and leak-checks, then sweeps the run whatever
 # happened. Needs credentials for 435415984226 that may assume
 # spore-portal-e2e, e.g. AWS_PROFILE=spore-host-dev. Costs well under a cent.

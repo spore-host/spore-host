@@ -2,14 +2,15 @@
 //
 // The real e2e adapter (aws.ts) against a LOCAL capture server, never AWS:
 // proves the run middleware really reaches the wire request spawn-ts's
-// EC2Provider sends (run tags on the instance, its volumes and interfaces, the
-// ClientToken, spawn:managed dropped for the control only) and that the cost
-// guard stops a third launch before anything is sent.
+// EC2Provider sends for the observer's setup launch (run tags on the instance,
+// its volumes and interfaces, the ClientToken, spawn:managed dropped for the
+// control only), that the cost guard stops a third launch before anything is
+// sent, and that the e2e role's denied calls are DryRun only.
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ROLE_TAG, RUN_TAG } from "./config.js";
-import { e2eApi } from "./aws.js";
+import { e2eApi, observerApi } from "./aws.js";
 import { LaunchBudget } from "./run.js";
 
 const NS = 'xmlns="http://ec2.amazonaws.com/doc/2016-11-15/"';
@@ -39,6 +40,12 @@ beforeAll(async () => {
       const p = new URLSearchParams(data);
       bodies.push(p);
       const action = p.get("Action");
+      if (p.get("DryRun") === "true") {
+        // What EC2 answers a permitted DryRun with.
+        res.writeHead(412, { "content-type": "text/xml" });
+        res.end(`<Response><Errors><Error><Code>DryRunOperation</Code><Message>dry run</Message></Error></Errors><RequestID>r</RequestID></Response>`);
+        return;
+      }
       if (action === "RunInstances") runs += 1;
       res.writeHead(action && ["DescribeImages", "RunInstances", "DescribeInstances"].includes(action) ? 200 : 400, { "content-type": "text/xml" });
       res.end(reply(action, runs));
@@ -63,13 +70,13 @@ function tagSpec(p: URLSearchParams, type: string): Record<string, string> | nul
   return null;
 }
 
-describe("e2e adapter: the run middleware on spawn-ts's own EC2 client", () => {
+describe("e2e adapter: the setup launch's run middleware on spawn-ts's own EC2 client", () => {
   const creds = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "not-a-secret", sessionToken: "t" };
 
-  it("sends the portal's launch with the run tags, a ClientToken and the instance profile", async () => {
+  it("sends the setup launch with the run tags, a ClientToken and the instance profile", async () => {
     bodies.length = 0;
     const budget = new LaunchBudget();
-    const api = e2eApi(creds, "r1abc", { budget, endpoint });
+    const api = observerApi(creds, { runId: "r1abc", budget, endpoint });
     const managed = await api.launch("managed");
     const control = await api.launch("control");
     expect([managed, control]).toEqual(["i-0e2e000000000001", "i-0e2e000000000002"]);
@@ -98,10 +105,31 @@ describe("e2e adapter: the run middleware on spawn-ts's own EC2 client", () => {
 
   it("refuses a third launch before sending it", async () => {
     bodies.length = 0;
-    const api = e2eApi(creds, "r2abc", { budget: new LaunchBudget(), endpoint });
+    const api = observerApi(creds, { runId: "r2abc", budget: new LaunchBudget(), endpoint });
     await api.launch("managed");
     await api.launch("control");
     await expect(api.launch("managed")).rejects.toThrow(/cost guard: this run has already launched 2 instance\(s\), the cap is 2/);
     expect(bodies.filter((b) => b.get("Action") === "RunInstances")).toHaveLength(2);
+  });
+
+  it("refuses a launch without the run id (the sweep's observer)", async () => {
+    await expect(observerApi(creds, { endpoint }).launch("managed")).rejects.toThrow(/needs the run id/);
+  });
+
+  it("makes the e2e role's launch and tag only as DryRun requests", async () => {
+    bodies.length = 0;
+    const api = e2eApi(creds, "r3abc", { endpoint });
+    const launch = await api.dryRunLaunch("ami-0e2e");
+    const tag = await api.dryRun("ec2:CreateTags", "i-0e2e000000000001");
+    // The capture server answers DryRunOperation, as EC2 does when IAM allows it.
+    expect(launch).toMatchObject({ ok: false, err: { name: "DryRunOperation" } });
+    expect(tag).toMatchObject({ ok: false, err: { name: "DryRunOperation" } });
+    const run = bodies.find((b) => b.get("Action") === "RunInstances")!;
+    expect(run.get("DryRun")).toBe("true");
+    expect(run.get("ImageId")).toBe("ami-0e2e");
+    expect(tagSpec(run, "instance")).toMatchObject({ "spawn:managed": "true", [RUN_TAG]: "r3abc" });
+    const ct = bodies.find((b) => b.get("Action") === "CreateTags")!;
+    expect(ct.get("DryRun")).toBe("true");
+    expect(ct.get("ResourceId.1")).toBe("i-0e2e000000000001");
   });
 });

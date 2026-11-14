@@ -259,16 +259,21 @@ The rebuilt portal (`web/portal/`) has a credential-gated harness in
 (435415984226), us-east-1, and does the following:
 
 1. It refuses to start if an earlier run left an instance live.
-2. It launches two t4g.nano On-Demand instances as the portal would, through
-   spawn-ts, with `spawn:ttl=15m`. One is `spawn:managed=true`; the other is
-   identical but without that tag.
-3. It proves every tag-gated grant with a real call in both directions.
+2. It launches two t4g.nano On-Demand instances through spawn-ts, with
+   `spawn:ttl=15m`, using the observer's credentials (the 1.0 portal role is
+   read-only and can't launch, #645). One is `spawn:managed=true`; the other
+   is identical but without that tag.
+3. As the portal, it proves with real calls that the role can list the
+   managed instance and is denied a launch, a tag, a session, and Stop, Start
+   and Terminate (DryRun where a call would change something). It also proves
+   every tag-gated grant both ways; there are none while the portal is
+   read-only.
 4. It tears down whatever happens, then checks independently that nothing is
    left.
 
-It acts as `spore-portal-e2e`, whose inline policies are the portal role's own
-(`infra/tofu/portal-oidc`). Your own credentials do the teardown and the leak
-check. Run it locally:
+It acts as `spore-portal-e2e`, whose inline policy is the portal role's own
+(`infra/tofu/portal-oidc`). Your own credentials do the setup launch, the
+teardown and the leak check. Run it locally:
 
 ```bash
 AWS_PROFILE=spore-host-dev make portal-e2e-aws

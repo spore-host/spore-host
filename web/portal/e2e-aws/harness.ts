@@ -4,20 +4,21 @@
 //
 // Two credentials, never mixed:
 // - e2e: the spore-portal-e2e role, whose inline policies ARE the portal
-//   role's (iam/live.test.ts fails nightly when they differ). Every launch and
-//   every proof uses it, and nothing else does.
+//   role's (iam/live.test.ts fails nightly when they differ). Every proof uses
+//   it, and nothing else does.
 // - observer: the operator's own credentials locally, or the
-//   spore-portal-e2e-teardown role in CI. The guard, the snapshots, the SSM
-//   online wait, teardown and the leak check use it, so neither teardown nor
-//   the leak check depends on what the portal role can see or do.
+//   spore-portal-e2e-teardown role in CI. The guard, the setup launch of the
+//   run's two test instances (the 1.0 portal role is read-only, #645, so it
+//   can't launch them), the snapshots, the waits, teardown and the leak check
+//   use it, so none of them depends on what the portal role can see or do.
 import type { Fixture, PolicyFile } from "../iam/simulate.js";
 import { E2E_ROLE_NAME, EXPECTED_ACCOUNT, LIVE_STATES, WAIT } from "./config.js";
-import { EXECUTORS, plan, planProblems, type PlannedCall } from "./grants.js";
+import { EXECUTORS, plan, planProblems, type CallTarget, type PlannedCall } from "./grants.js";
 import { detectLeaks, formatLeaks, teardownTargets, type LeakReport, type RunContext, type Snapshot } from "./leaks.js";
-import { classifyDryRun, classifyStartSession, errorCode, type Outcome } from "./outcomes.js";
+import { classifyDryRun, classifyList, classifyStartSession, errorCode, type Outcome } from "./outcomes.js";
 import { preflightRefusal, sessionName, type GuardInstance, type InstanceRole } from "./run.js";
 
-export type DryRunAction = "ec2:StopInstances" | "ec2:StartInstances" | "ec2:TerminateInstances";
+export type DryRunAction = "ec2:StopInstances" | "ec2:StartInstances" | "ec2:TerminateInstances" | "ec2:CreateTags";
 export type CallResult = { ok: true } | { ok: false; err: unknown };
 export type SessionResult = { ok: true; sessionId?: string } | { ok: false; err: unknown };
 
@@ -26,14 +27,16 @@ export interface Identity {
   arn: string;
 }
 
+export type ListResult = { ok: true; found: boolean } | { ok: false; err: unknown };
+
 /** What the harness does as the portal (the e2e role). */
 export interface E2EApi {
   identity(): Promise<Identity>;
-  /** SpawnClient.launch over EC2Provider, the portal's path. Returns the instance id. */
-  launch(role: InstanceRole): Promise<string>;
-  /** EC2Provider.get: the instance's state as the portal sees it, or null. */
-  state(id: string): Promise<string | null>;
+  /** EC2Provider.get, the portal's read path: whether the portal can see instance `id`. */
+  list(id: string): Promise<ListResult>;
   dryRun(action: DryRunAction, id: string): Promise<CallResult>;
+  /** RunInstances with DryRun: one t4g.nano from `imageId`, tagged as spawn-ts tags a launch. */
+  dryRunLaunch(imageId: string): Promise<CallResult>;
   startSession(id: string): Promise<SessionResult>;
   terminateSession(sessionId: string): Promise<void>;
 }
@@ -41,6 +44,12 @@ export interface E2EApi {
 /** What the harness does as the observer. */
 export interface ObserverApi {
   identity(): Promise<Identity>;
+  /**
+   * The setup launch: SpawnClient.launch over EC2Provider, with spored's
+   * instance profile and the run's tags (run.ts transformRunInstances), as
+   * spawn launches. Returns the instance id.
+   */
+  launch(role: InstanceRole): Promise<string>;
   /** Every instance carrying the run tag (any run), in any state but terminated. */
   e2eInstances(): Promise<GuardInstance[]>;
   /** This run's instances by its tag, in every state. */
@@ -71,7 +80,7 @@ export interface HarnessDeps {
 export interface ProofResult {
   name: string;
   action: string;
-  target: InstanceRole | "launch";
+  target: CallTarget;
   instanceId?: string;
   expect: "allowed" | "denied";
   outcome: Outcome;
@@ -93,7 +102,7 @@ export interface HarnessReport {
 export function problems(r: HarnessReport): string[] {
   return [
     ...r.errors,
-    ...r.proofs.filter((p) => !p.ok).map((p) => `proof "${p.name}": ${p.action} on the ${p.target} instance${p.instanceId ? ` ${p.instanceId}` : ""} was ${p.outcome.decision} (${p.outcome.evidence}), expected ${p.expect}`),
+    ...r.proofs.filter((p) => !p.ok).map((p) => `proof "${p.name}": ${p.action} ${p.target === "account" ? "in the account" : `on the ${p.target} instance`}${p.instanceId ? ` ${p.instanceId}` : ""} was ${p.outcome.decision} (${p.outcome.evidence}), expected ${p.expect}`),
     ...(r.teardown.remaining.length ? [`teardown: ${r.teardown.remaining.join(", ")} did not reach terminated`] : []),
     ...(r.leaks.leaks.length ? [formatLeaks(r.leaks)] : []),
   ];
@@ -135,7 +144,7 @@ export async function runHarness(d: HarnessDeps): Promise<HarnessReport> {
   const before = await observer.snapshot();
   const windowStartMs = clock.now();
   const sessionIds: string[] = [];
-  log(`run ${runId}: observer ${who.arn}; launching up to 2 instances`);
+  log(`run ${runId}: observer ${who.arn}; launching 2 test instances as the observer`);
 
   try {
     const e2e = await d.e2e();
@@ -143,48 +152,33 @@ export async function runHarness(d: HarnessDeps): Promise<HarnessReport> {
     const expectedArn = `arn:aws:sts::${EXPECTED_ACCOUNT}:assumed-role/${E2E_ROLE_NAME}/${sessionName(runId)}`;
     if (me.arn !== expectedArn) throw new Error(`refusing to prove anything: the e2e credentials are ${me.arn}, not ${expectedArn}`);
 
-    // ── Launch, as the portal: RunInstances + CreateTags + PassRole ────────
+    // ── Setup: the run's two instances, launched as the observer ──────────
+    // The read-only portal role can't launch (#645), so the observer does,
+    // through spawn-ts as spawn launches. That the portal role is DENIED a
+    // launch is one of the proofs below (a DryRun RunInstances).
     for (const role of ["managed", "control"] as const) {
-      let outcome: Outcome;
       try {
-        const id = await e2e.launch(role);
-        report.launched.push({ role, id });
-        outcome = { decision: "allowed", evidence: `launched ${id}` };
+        report.launched.push({ role, id: await observer.launch(role) });
       } catch (e) {
-        const code = errorCode(e);
-        outcome = { decision: /Unauthorized|AccessDenied/.test(code) ? "denied" : "inconclusive", evidence: `${code}: ${msg(e)}` };
+        throw new Error(`setup launch of the ${role} instance failed: ${msg(e)}`);
       }
-      report.proofs.push({
-        name: `launch the ${role} instance through spawn-ts`,
-        action: "ec2:RunInstances+ec2:CreateTags+iam:PassRole",
-        target: "launch",
-        instanceId: report.launched.find((l) => l.role === role)?.id,
-        expect: "allowed",
-        outcome,
-        ok: outcome.decision === "allowed",
-        how: "SpawnClient.launch over EC2Provider with spored-instance-profile and tags at launch",
-      });
-      if (outcome.decision !== "allowed") throw new Error(`launch of the ${role} instance failed: ${outcome.evidence}`);
     }
     const idOf = (role: InstanceRole) => report.launched.find((l) => l.role === role)!.id;
 
-    // ── Wait until both run, as the portal sees them ───────────────────────
-    for (const { id } of report.launched) {
-      const s = await until(clock, WAIT.running, async () => {
-        try {
-          return (await e2e.state(id)) === "running" ? "running" : null;
-        } catch (e) {
-          // EC2 is eventually consistent: a describe right after RunInstances can miss the new id.
-          if (errorCode(e) === "InvalidInstanceID.NotFound") return null;
-          throw e;
-        }
-      });
-      if (!s) throw new Error(`${id} did not reach running within ${WAIT.running / 60_000} min`);
-    }
+    // ── Wait until both run, as the observer sees them ─────────────────────
+    const ids = report.launched.map((l) => l.id);
+    const running = await until(clock, WAIT.running, async () => {
+      const mine = (await observer.runInstances(runId)).filter((i) => ids.includes(i.id));
+      return ids.every((id) => mine.find((i) => i.id === id)?.state === "running") ? mine : null;
+    });
+    if (!running) throw new Error(`${ids.join(", ")} did not reach running within ${WAIT.running / 60_000} min`);
+    const imageId = running.find((i) => i.id === idOf("managed"))?.imageId;
 
     const calls = plan(d.fixture);
-    if (calls.some((c) => c.action === "ssm:StartSession")) {
-      const ids = report.launched.map((l) => l.id);
+    // A session can only be ALLOWED once the agent is online. A denial needs
+    // no agent: IAM refuses first. While the portal is read-only no session is
+    // expected allowed, so the run doesn't wait for SSM.
+    if (calls.some((c) => c.action === "ssm:StartSession" && c.expect === "allowed")) {
       const online = await until(clock, WAIT.ssmOnline, async () => {
         const up = await observer.ssmOnline(ids);
         return ids.every((i) => up.includes(i)) ? up : null;
@@ -193,7 +187,11 @@ export async function runHarness(d: HarnessDeps): Promise<HarnessReport> {
     }
 
     // ── One real call per planned case ─────────────────────────────────────
-    for (const c of calls) report.proofs.push(await prove(c, idOf(c.target), e2e, d, sessionIds));
+    for (const c of calls) {
+      // An account-scoped call names no instance; the list proof looks for the managed one.
+      const instanceId = c.target === "account" ? (c.action === "ec2:DescribeInstances" ? idOf("managed") : undefined) : idOf(c.target);
+      report.proofs.push(await prove(c, { instanceId, imageId }, e2e, d, sessionIds));
+    }
   } catch (e) {
     report.errors.push(msg(e));
   } finally {
@@ -204,13 +202,19 @@ export async function runHarness(d: HarnessDeps): Promise<HarnessReport> {
   return report;
 }
 
-async function prove(c: PlannedCall, instanceId: string, e2e: E2EApi, d: HarnessDeps, sessionIds: string[]): Promise<ProofResult> {
+async function prove(c: PlannedCall, at: { instanceId?: string; imageId?: string }, e2e: E2EApi, d: HarnessDeps, sessionIds: string[]): Promise<ProofResult> {
+  const { instanceId, imageId } = at;
+  const need = <T>(v: T | undefined, what: string): T => {
+    if (v === undefined) throw new Error(`proof "${c.name}" needs ${what}, which the setup launch did not provide`);
+    return v;
+  };
   let outcome: Outcome;
   if (c.action === "ssm:StartSession") {
+    const id = need(instanceId, "an instance");
     outcome = await (async () => {
       const deadline = d.clock.now() + WAIT.ssmOnline;
       for (;;) {
-        const r = await e2e.startSession(instanceId);
+        const r = await e2e.startSession(id);
         if (r.ok && r.sessionId) {
           sessionIds.push(r.sessionId);
           await closeSession(r.sessionId, e2e, d);
@@ -220,11 +224,24 @@ async function prove(c: PlannedCall, instanceId: string, e2e: E2EApi, d: Harness
         await d.clock.sleep(WAIT.poll);
       }
     })();
+  } else if (c.action === "ec2:DescribeInstances") {
+    const id = need(instanceId, "an instance");
+    // EC2 is eventually consistent: a new instance can be missing from a
+    // describe for a while after another principal sees it running.
+    let last: Outcome = { decision: "inconclusive", evidence: "not listed yet" };
+    const found = await until(d.clock, WAIT.running, async () => {
+      last = classifyList(await e2e.list(id));
+      return last.evidence === "the list succeeded without the run's instance" ? null : last;
+    });
+    outcome = found ?? last;
+  } else if (c.action === "ec2:RunInstances") {
+    outcome = classifyDryRun(await e2e.dryRunLaunch(need(imageId, "the setup launch's image id")));
   } else {
-    outcome = classifyDryRun(await e2e.dryRun(c.action as DryRunAction, instanceId));
+    outcome = classifyDryRun(await e2e.dryRun(c.action as DryRunAction, need(instanceId, "an instance")));
   }
   const ok = outcome.decision === c.expect;
-  d.log(`${ok ? "PASS" : "FAIL"} ${c.action} on ${c.target} ${instanceId}: ${outcome.decision} (${outcome.evidence}), expected ${c.expect} — "${c.name}"`);
+  const where = c.target === "account" ? "in the account" : `on ${c.target} ${instanceId}`;
+  d.log(`${ok ? "PASS" : "FAIL"} ${c.action} ${where}: ${outcome.decision} (${outcome.evidence}), expected ${c.expect} — "${c.name}"`);
   return { name: c.name, action: c.action, target: c.target, instanceId, expect: c.expect, outcome, ok, how: EXECUTORS[c.action].how };
 }
 

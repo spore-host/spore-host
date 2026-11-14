@@ -1,5 +1,11 @@
 // Which grants need one real call, and the plan of real calls. Pure.
 //
+// The 1.0 portal role is READ-ONLY (#645): it has no tag-gated grant today, so
+// what the harness proves for real is REQUIRED_PROOFS below, the read-only
+// posture itself: it can list the run's spawn-managed instance, and is denied
+// launch, tag and session on it (#701, #678). The tag-gated machinery stays for
+// the action slices after 1.0 (#686, #687, #689).
+//
 // The simulator misjudges some tag conditions (ssm:resourceTag/ on
 // StartSession, iam:ResourceTag on instance-profile actions), so every
 // tag-gated grant in iam/policies/ is proven against real AWS, in both
@@ -52,13 +58,44 @@ export function tagGatedGrants(file: PolicyFile): TagGatedGrant[] {
   return out;
 }
 
-/** The actions the harness can make a real call for, and how it decides. */
-export const EXECUTORS: Readonly<Record<string, { how: string }>> = {
-  "ssm:StartSession": { how: "StartSession on the instance; a SessionId is allowed (closed at once with TerminateSession), AccessDeniedException is denied" },
-  "ec2:StopInstances": { how: "StopInstances with DryRun: DryRunOperation is allowed, UnauthorizedOperation is denied" },
-  "ec2:StartInstances": { how: "StartInstances with DryRun: DryRunOperation is allowed, UnauthorizedOperation is denied" },
-  "ec2:TerminateInstances": { how: "TerminateInstances with DryRun: DryRunOperation is allowed, UnauthorizedOperation is denied" },
+/**
+ * The actions the harness can make a real call for, and how it decides.
+ * "instance" calls target one of the run's instances, chosen by the case's tag
+ * context; "account" calls name no existing instance, so only a case with no
+ * context can be made for real.
+ */
+export const EXECUTORS: Readonly<Record<string, { how: string; scope: "instance" | "account" }>> = {
+  "ec2:DescribeInstances": {
+    how: "list as the portal does (spawn-ts EC2Provider.get): the run's spawn-managed instance returned is allowed, UnauthorizedOperation is denied",
+    scope: "account",
+  },
+  "ec2:RunInstances": {
+    how: "RunInstances with DryRun, one t4g.nano tagged spawn:managed=true from the setup launch's image: DryRunOperation is allowed, UnauthorizedOperation is denied",
+    scope: "account",
+  },
+  "ec2:CreateTags": { how: "CreateTags with DryRun on the instance: DryRunOperation is allowed, UnauthorizedOperation is denied", scope: "instance" },
+  "ssm:StartSession": { how: "StartSession on the instance; a SessionId is allowed (closed at once with TerminateSession), AccessDeniedException is denied", scope: "instance" },
+  "ec2:StopInstances": { how: "StopInstances with DryRun: DryRunOperation is allowed, UnauthorizedOperation is denied", scope: "instance" },
+  "ec2:StartInstances": { how: "StartInstances with DryRun: DryRunOperation is allowed, UnauthorizedOperation is denied", scope: "instance" },
+  "ec2:TerminateInstances": { how: "TerminateInstances with DryRun: DryRunOperation is allowed, UnauthorizedOperation is denied", scope: "instance" },
 };
+
+/** Where a planned call is made: one of the run's instances, or the account. */
+export type CallTarget = InstanceRole | "account";
+
+/**
+ * The real calls the read-only portal role must pass (#645): list the run's
+ * spawn-managed instance, and be denied a launch, a tag and a session on it
+ * (#701, #678). planProblems fails a plan that lacks any of them, so the
+ * posture can't silently stop being proven. A slice that grants one of these
+ * after 1.0 changes this list in the same PR.
+ */
+export const REQUIRED_PROOFS: readonly { action: string; target: CallTarget; expect: "allowed" | "denied" }[] = [
+  { action: "ec2:DescribeInstances", target: "account", expect: "allowed" },
+  { action: "ec2:RunInstances", target: "account", expect: "denied" },
+  { action: "ec2:CreateTags", target: "managed", expect: "denied" },
+  { action: "ssm:StartSession", target: "managed", expect: "denied" },
+];
 
 /** The tags each of the run's instances carries that a tag condition can read. */
 export const INSTANCE_TAGS: Readonly<Record<InstanceRole, Record<string, string>>> = {
@@ -69,10 +106,10 @@ export const INSTANCE_TAGS: Readonly<Record<InstanceRole, Record<string, string>
 export interface PlannedCall {
   name: string;
   action: string;
-  target: InstanceRole;
+  target: CallTarget;
   expect: "allowed" | "denied";
   /** Why it is in the plan. */
-  reason: "realCall" | "tag-gated denial" | "untagged control";
+  reason: "realCall" | "tag-gated denial" | "untagged control" | "account";
 }
 
 const INSTANCE_ARN = /^arn:aws:ec2:[^:]*:[^:]*:instance\//;
@@ -100,11 +137,18 @@ export function targetFor(c: SimCase): InstanceRole | null {
   return null;
 }
 
-/** The real calls for a run: every executable, instance-scoped fixture case that matches one of its instances. */
+/**
+ * The real calls for a run: every executable fixture case, instance-scoped
+ * ones that match one of its instances, account-scoped ones with no context.
+ */
 export function plan(fixture: Fixture): PlannedCall[] {
   const out: PlannedCall[] = [];
   for (const c of fixture.cases) {
     if (!(c.action in EXECUTORS)) continue;
+    if (EXECUTORS[c.action].scope === "account") {
+      if (Object.keys(c.context ?? {}).length === 0) out.push({ name: c.name, action: c.action, target: "account", expect: c.expect, reason: c.realCall ? "realCall" : "account" });
+      continue;
+    }
     const target = targetFor(c);
     if (!target) continue;
     const reason = c.realCall ? "realCall" : target === "managed" ? "tag-gated denial" : "untagged control";
@@ -114,14 +158,20 @@ export function plan(fixture: Fixture): PlannedCall[] {
 }
 
 /**
- * Everything that would leave a grant unproven. Empty means each tag-gated
- * grant has a real allowed call and a real denied call in the plan, each
- * realCall case is executable, and each denial on a spawn-managed instance
- * (the ones #678 requires) is made for real.
+ * Everything that would leave a grant unproven. Empty means every one of
+ * `required` (REQUIRED_PROOFS: the read-only posture) is planned, each
+ * tag-gated grant has a real allowed call and a real denied call in the plan,
+ * each realCall case is executable, and each denial on a spawn-managed
+ * instance (the ones #678 requires) is made for real.
  */
-export function planProblems(file: PolicyFile, fixture: Fixture): string[] {
+export function planProblems(file: PolicyFile, fixture: Fixture, required: readonly { action: string; target: CallTarget; expect: "allowed" | "denied" }[] = REQUIRED_PROOFS): string[] {
   const out: string[] = [];
   const calls = plan(fixture);
+  for (const r of required) {
+    if (!calls.some((c) => c.action === r.action && c.target === r.target && c.expect === r.expect)) {
+      out.push(`the read-only portal role must be proven, for real, ${r.expect} ${r.action}${r.target === "account" ? "" : ` on the run's ${r.target} instance`}, but no fixture case plans that call (#645)`);
+    }
+  }
   for (const g of tagGatedGrants(file)) {
     const at = `${g.policy}/${g.sid} grants ${g.action} on ${g.key}`;
     if (!(g.action in EXECUTORS)) out.push(`${at}, but the e2e harness has no executor for ${g.action}: add one to e2e-aws/grants.ts EXECUTORS and e2e-aws/aws.ts`);
