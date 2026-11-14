@@ -66,7 +66,7 @@ so it all lands in **CloudTrail** under their principal: `RunInstances`,
 `TerminateInstances`, `CreateRole`/`CreateInstanceProfile` (first launch),
 `ImportKeyPair`, `CreateSecurityGroup`, and the tagging calls. You can build a
 Cost Allocation report from the `spawn:*` tags. See the
-[Security Overview](https://github.com/spore-host/spore-host/blob/main/SECURITY.md#5-audit-and-compliance)
+[Security Overview](https://github.com/spore-host/spore-host/blob/main/SECURITY.md#audit-and-compliance)
 for example CloudTrail queries.
 
 ## 4. What leaves the account
