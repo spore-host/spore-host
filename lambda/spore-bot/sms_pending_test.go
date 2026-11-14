@@ -24,7 +24,7 @@ func captureLog(t *testing.T) *bytes.Buffer {
 
 func ttlWarning() NotifyRequest {
 	return NotifyRequest{Platform: "slack", WorkspaceID: "T1", EventType: "ttl_warning",
-		InstanceName: "gpu1", InstanceID: "i-0abc", Region: "us-east-1"}
+		InstanceName: "gpu1", InstanceID: testNotifyInstance, Region: "us-east-1"}
 }
 
 // TestSendUserSMSLogsAPendingStoreFailure is #576: a failed write to
@@ -36,7 +36,7 @@ func TestSendUserSMSLogsAPendingStoreFailure(t *testing.T) {
 	_, reg := setupNotifyFixture(t, rec) // no spore-sms-pending table
 	logs := captureLog(t)
 
-	sendUserSMS(context.Background(), reg, ttlWarning(), "i-0abc")
+	sendUserSMS(context.Background(), reg, ttlWarning(), testNotifyInstance)
 
 	out := logs.String()
 	if n := strings.Count(out, "replies to this SMS will not be matched"); n != 2 {
@@ -76,7 +76,7 @@ func TestSendUserSMSStoresPendingReplies(t *testing.T) {
 	}
 	logs := captureLog(t)
 
-	sendUserSMS(ctx, reg, ttlWarning(), "i-0abc")
+	sendUserSMS(ctx, reg, ttlWarning(), testNotifyInstance)
 
 	if strings.Contains(logs.String(), "ERROR") {
 		t.Errorf("unexpected error log:\n%s", logs.String())
@@ -89,7 +89,7 @@ func TestSendUserSMSStoresPendingReplies(t *testing.T) {
 		if err != nil || got.Item == nil {
 			t.Fatalf("no pending record for %s: %v", to, err)
 		}
-		if v := got.Item["instance_id"].(*dynamodbtypes.AttributeValueMemberS).Value; v != "i-0abc" {
+		if v := got.Item["instance_id"].(*dynamodbtypes.AttributeValueMemberS).Value; v != testNotifyInstance {
 			t.Errorf("pending record for %s has instance_id %q", to, v)
 		}
 	}

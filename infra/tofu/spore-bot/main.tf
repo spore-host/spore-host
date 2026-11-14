@@ -372,6 +372,48 @@ resource "aws_lambda_permission" "url_public" {
   function_url_auth_type = "NONE"
 }
 
+# ── Notify URL (AWS_IAM; the only route /notify accepts, #702) ──────────────
+# POST /notify must be SigV4-signed by the instance it names: the handler
+# refuses it without the IAM identity Lambda attaches to an AWS_IAM Function
+# URL request, so through the NONE-auth URL above every /notify is a 401. The
+# chat platforms cannot sign, so the notify route gets its own URL, on an alias
+# (a function has one URL per qualifier). The alias follows $LATEST, so a code
+# deploy (make deploy) updates both URLs at once.
+#
+# Principal "*" as in infra/tofu/dns-updater: AWS_IAM means every caller must
+# present a valid signature, the instance role must grant itself
+# lambda:InvokeFunctionUrl on this function (a cross-account call needs both
+# sides), and the handler accepts only the named instance's own role session,
+# from the account its registrations name (lambda/spore-bot/notify_auth.go).
+#
+# Present only with the public endpoint. Before re-enabling, spawn must
+# sign spored's notify request and point spawn:notify-url at notify_url.
+
+resource "aws_lambda_alias" "notify" {
+  count            = var.public_endpoint_enabled ? 1 : 0
+  name             = "notify"
+  description      = "Target of the AWS_IAM notify Function URL (#702); follows $LATEST."
+  function_name    = aws_lambda_function.spore_bot.function_name
+  function_version = "$LATEST"
+}
+
+resource "aws_lambda_function_url" "notify" {
+  count              = var.public_endpoint_enabled ? 1 : 0
+  function_name      = aws_lambda_function.spore_bot.function_name
+  qualifier          = aws_lambda_alias.notify[0].name
+  authorization_type = "AWS_IAM"
+}
+
+resource "aws_lambda_permission" "notify_url_iam" {
+  count                  = var.public_endpoint_enabled ? 1 : 0
+  statement_id           = "NotifyURLAllowIAMAccess"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.spore_bot.function_name
+  qualifier              = aws_lambda_alias.notify[0].name
+  principal              = "*"
+  function_url_auth_type = "AWS_IAM"
+}
+
 # Both were single resources before public_endpoint_enabled; keep their state
 # addresses stable.
 moved {
@@ -386,7 +428,12 @@ moved {
 
 output "function_url" {
   value       = one(aws_lambda_function_url.spore_bot[*].function_url)
-  description = "spore-bot Function URL (interactions endpoint base; append /discord, /slack, /teams, /notify). null while var.public_endpoint_enabled is false."
+  description = "spore-bot Function URL (interactions endpoint base; append /discord, /slack, /teams). /notify here is always refused: use notify_url. null while var.public_endpoint_enabled is false."
+}
+
+output "notify_url" {
+  value       = one(aws_lambda_function_url.notify[*].function_url)
+  description = "The AWS_IAM Function URL for spored's signed POST /notify (#702). null while var.public_endpoint_enabled is false."
 }
 
 output "role_arn" {

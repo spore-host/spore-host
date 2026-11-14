@@ -65,7 +65,9 @@ func handler(ctx context.Context, rawEvent json.RawMessage) (interface{}, error)
 	if err := json.Unmarshal(rawEvent, &fnURLReq); err == nil && fnURLReq.RequestContext.HTTP.Method != "" {
 		apiReq := funcURLToAPIGW(fnURLReq)
 		if apiReq.Path == "/notify" && apiReq.HTTPMethod == "POST" {
-			return handleNotify(ctx, cfg, reg, apiReq)
+			// Signed only through the AWS_IAM notify URL; nil (refused) through
+			// the public NONE-auth URL the chat platforms use (#702).
+			return handleNotify(ctx, cfg, reg, apiReq, callerFromFunctionURL(fnURLReq))
 		}
 		// /{platform}/oauth and /{platform}/oauth/callback — pre-auth OAuth flow
 		if platform, ok := oauthPlatform(apiReq.Path); ok {
@@ -86,7 +88,7 @@ func handler(ctx context.Context, rawEvent json.RawMessage) (interface{}, error)
 			return handleAdminV1(ctx, reg, apiReq)
 		}
 		if apiReq.Path == "/notify" && apiReq.HTTPMethod == "POST" {
-			return handleNotify(ctx, cfg, reg, apiReq)
+			return handleNotify(ctx, cfg, reg, apiReq, callerFromAPIGateway(apiReq))
 		}
 		return handleWebhook(ctx, cfg, reg, apiReq)
 	}

@@ -25,10 +25,16 @@ is still imperative `setup-*.sh`; this is the start of migrating off that.
 - `aws_lambda_function.spore_bot` — the function's **shape** (role, runtime,
   arm64, memory, timeout).
 - `aws_lambda_function_url.spore_bot` + public invoke permission — the Function
-  URL that Slack, Teams, Discord's interactions endpoint and instances'
-  `spawn:notify-url` depend on. **Only while `public_endpoint_enabled` is
-  true**, which it is not by default: see
+  URL that Slack, Teams and Discord's interactions endpoint depend on. **Only
+  while `public_endpoint_enabled` is true**, which it is not by default: see
   [Decommissioned for 1.0](#decommissioned-for-10).
+- `aws_lambda_alias.notify` + `aws_lambda_function_url.notify` (AWS_IAM) +
+  `NotifyURLAllowIAMAccess` — the only way in for `POST /notify` (#702). The
+  handler refuses a notification unless Lambda verified a SigV4 signature from
+  the named instance's own role session (`assumed-role/<role>/<instance-id>`),
+  and sends DMs and SMS only when the instance's registrations place it in the
+  signer's account. A `/notify` through the public URL above is a 401. Same
+  `public_endpoint_enabled` switch.
 
 ## What it deliberately does NOT manage
 
@@ -133,6 +139,7 @@ and the hosted spore-bot is decommissioned (#611). The runbook is on #611.
 | | `false` (decommissioned) | `true` (in service) |
 |---|---|---|
 | Function URL + `FunctionURLAllowPublicAccess` | removed | present |
+| `notify` alias, its AWS_IAM URL + `NotifyURLAllowIAMAccess` | removed | present |
 | hourly sweep (rule, target, `AllowSealLegacyCredentialsSchedule`) | removed | present if `seal_workspace_credentials` |
 | function, role, policy, KMS key, `alias/spore-bot-secrets` | kept | kept |
 
@@ -178,7 +185,11 @@ closed.
 **To bring the bot back after 1.0:** redeploy its credentials (env vars, a
 Slack app install), set `public_endpoint_enabled = true`, `tofu apply`, and
 point each platform at the URL the apply outputs (`function_url`). It may
-differ from the old one.
+differ from the old one. Instance notifications go to `notify_url` instead, and
+must be SigV4-signed (service `lambda`) with the instance's role credentials,
+whose policy must allow `lambda:InvokeFunctionUrl` on `spore-bot`. spored sent
+them unsigned to `function_url` when the bot was decommissioned, so spawn has
+to change first (#702).
 
 ## State
 

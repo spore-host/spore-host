@@ -65,7 +65,7 @@ func (d *deliveryRecorder) snapshot() ([]string, []error) {
 }
 
 // setupNotifyFixture starts a DynamoDB emulator holding a Slack workspace with
-// a bot token, two users registered for instance i-0abc, and a phone number
+// a bot token, two users registered for instance testNotifyInstance, and a phone number
 // for each; points httpClient at rec; and configures Twilio for project
 // "spore". It returns the AWS config and Registry for handleNotify.
 func setupNotifyFixture(t *testing.T, rec *deliveryRecorder) (aws.Config, *Registry) {
@@ -117,7 +117,7 @@ func setupNotifyFixture(t *testing.T, rec *deliveryRecorder) (aws.Config, *Regis
 	})
 	for _, u := range []string{"U1", "U2"} {
 		put(testRegistryTable, map[string]dynamodbtypes.AttributeValue{
-			"user_key": s("slack#T1#" + u), "nickname": s("gpu1"), "instance_id": s("i-0abc"),
+			"user_key": s("slack#T1#" + u), "nickname": s("gpu1"), "instance_id": s(testNotifyInstance), "aws_account_id": s(testNotifyAccount),
 		})
 		put(testRegistryTable, map[string]dynamodbtypes.AttributeValue{
 			"user_key": s("slack#T1#" + u), "nickname": s("_phone"), "phone": s("+1555010000" + u[1:]),
@@ -139,7 +139,7 @@ func setupNotifyFixture(t *testing.T, rec *deliveryRecorder) (aws.Config, *Regis
 func notifyRequest(t *testing.T) events.APIGatewayProxyRequest {
 	t.Helper()
 	b, err := json.Marshal(NotifyRequest{Platform: "slack", WorkspaceID: "T1", EventType: "idle_stop_failed",
-		InstanceName: "gpu1", InstanceID: "i-0abc", Region: "us-east-1", Detail: "UnsupportedOperation"})
+		InstanceName: "gpu1", InstanceID: testNotifyInstance, Region: "us-east-1", Detail: "UnsupportedOperation"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestHandleNotifyDeliversBeforeReturning(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // a Lambda invocation's deadline
 	defer cancel()
-	resp, err := handleNotify(ctx, awsCfg, r, notifyRequest(t))
+	resp, err := handleNotify(ctx, awsCfg, r, notifyRequest(t), testNotifyCaller())
 	done, ctxErrs := rec.snapshot() // as of the moment the handler returned
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("handleNotify = %d, %v", resp.StatusCode, err)
@@ -199,7 +199,7 @@ func TestHandleNotifyBoundedUnderLambdaDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), left)
 	defer cancel()
 	start := time.Now()
-	resp, err := handleNotify(ctx, awsCfg, r, notifyRequest(t))
+	resp, err := handleNotify(ctx, awsCfg, r, notifyRequest(t), testNotifyCaller())
 	elapsed := time.Since(start)
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("handleNotify = %d, %v", resp.StatusCode, err)

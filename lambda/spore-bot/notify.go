@@ -18,10 +18,10 @@ import (
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// NotifyRequest is sent by spored when a lifecycle event fires.
-// Authentication is the registry-membership gate in handleNotify (#374); the
-// former PKCS#7/identity-document fields were removed with the log-only cert
-// path. Unknown JSON fields from older senders are ignored on decode.
+// NotifyRequest is sent by spored when a lifecycle event fires. It must arrive
+// SigV4-signed by the instance it names (authorizeNotifier, #702); the former
+// PKCS#7/identity-document fields were removed with the log-only cert path
+// (#374). Unknown JSON fields from older senders are ignored on decode.
 type NotifyRequest struct {
 	Command      string `json:"command,omitempty"` // e.g. "/spore" — routes to correct workspace config
 	Platform     string `json:"platform"`          // "slack"
@@ -67,8 +67,10 @@ func notifyTargetInstance(nr NotifyRequest) string {
 }
 
 // handleNotify receives lifecycle events from spored and routes them to Slack.
-// POST /notify — authentication via EC2 instance identity (no user credentials needed).
-func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+// POST /notify. caller is the SigV4-verified identity Lambda attached to the
+// request (callerFromFunctionURL, callerFromAPIGateway), nil when it came
+// unsigned; it must be the named instance's own role session (#702).
+func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request events.APIGatewayProxyRequest, caller *notifyCaller) (events.APIGatewayProxyResponse, error) {
 	var nr NotifyRequest
 	if err := json.Unmarshal([]byte(request.Body), &nr); err != nil {
 		return errorResp(400, "Invalid request body"), nil
@@ -77,6 +79,14 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 	if nr.WorkspaceID == "" || nr.InstanceID == "" {
 		return errorResp(400, "workspace_id and instance_id are required"), nil
 	}
+
+	// Authentication, before any lookup (#702): the request is signed by the
+	// instance it names. Refused requests touch neither DynamoDB nor a platform.
+	if status, msg, ok := authorizeNotifier(caller, nr.InstanceID); !ok {
+		logf("notify: refused (%d) for instance_id %q: %s", status, nr.InstanceID, msg)
+		return errorResp(status, msg), nil
+	}
+	nr = sanitizeNotify(nr)
 
 	// AuthZ (spore-host/spawn#2 audit, C2): only fan out to per-user DMs / SMS
 	// when this instance is actually REGISTERED in the workspace. Without this,
@@ -87,19 +97,22 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 	//
 	// The registrations checked, and DMed, are notifyTargetInstance's: the
 	// sender's own, except for a Spot replacement, which names its original.
+	//
+	// The registration must also place the instance in the caller's verified
+	// account (#702): a session name is chosen by whoever assumes a role, so
+	// "named after the instance" alone proves nothing across accounts. An
+	// instance registered only under other accounts is refused outright.
 	target := notifyTargetInstance(nr)
-	registered, err := reg.InstanceRegisteredInWorkspace(ctx, nr.Platform, nr.WorkspaceID, target)
+	check, err := reg.InstanceRegisteredInWorkspace(ctx, nr.Platform, nr.WorkspaceID, target, caller.AccountID)
 	if err != nil {
 		logf("notify: registration check failed for %s in %s#%s: %v", target, nr.Platform, nr.WorkspaceID, err)
 		return errorResp(500, "registration check failed"), nil
 	}
-
-	// Authentication is the registry-membership gate above (a notification is
-	// only delivered for an instance registered in the target workspace). The
-	// former PKCS#7/embedded-cert identity check was log-only — it never rejected
-	// anything and its embedded certs were unreliable across regions/rotations
-	// (mirrors the dns-updater #294 retirement) — so it misrepresented the crypto
-	// posture and has been removed (#374). Membership is the enforced control.
+	if check.ForeignAccount {
+		logf("notify: refused: %s is registered under another account than caller %s", target, caller.AccountID)
+		return errorResp(403, "instance is not registered to the calling account"), nil
+	}
+	registered := check.Registered
 
 	msg := formatNotification(nr)
 
@@ -146,8 +159,9 @@ func handleNotify(ctx context.Context, cfg aws.Config, reg *Registry, request ev
 	var wg sync.WaitGroup
 	for i := range workspaces {
 		ws := &workspaces[i]
-		// Pattern A: channel webhook — ungated (workspace opted in; no per-user
-		// targeting or SMS cost).
+		// Pattern A: channel webhook — not registration-gated (workspace opted
+		// in; no per-user targeting or SMS cost), but only for a signed request
+		// from the instance itself, with its text bounded and escaped (#702).
 		if url := webhookURL(dctx, reg, ws); url != "" {
 			postIncomingWebhook(url, msg)
 		}
@@ -373,6 +387,11 @@ func replacementSubject(nr NotifyRequest) string {
 
 // formatNotification builds the Slack message text for a lifecycle event.
 func formatNotification(nr NotifyRequest) string {
+	// Caller-written text reaches Slack and Teams as mrkdwn; escape it so it
+	// cannot form a link or a mention such as <!channel> (#702).
+	nr.InstanceName = slackEscape(nr.InstanceName)
+	nr.Detail = slackEscape(nr.Detail)
+	nr.EventType = slackEscape(nr.EventType)
 	name := nr.InstanceName
 	if name == "" {
 		name = nr.InstanceID
