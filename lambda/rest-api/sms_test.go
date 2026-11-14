@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/url"
 	"sort"
@@ -255,5 +256,89 @@ func TestHandler_RegisterNeedsAPIKey(t *testing.T) {
 	resp, err := handler(context.Background(), req)
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status = %d, err = %v; want 401", resp.StatusCode, err)
+	}
+}
+
+// fakePending answers GetItem with a fixed item or error.
+type fakePending struct {
+	item map[string]dynamodbtypes.AttributeValue
+	err  error
+	key  string
+}
+
+func (f *fakePending) GetItem(_ context.Context, in *dynamodb.GetItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error) {
+	f.key = sAttr(in.Key, "pending_key")
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &dynamodb.GetItemOutput{Item: f.item}, nil
+}
+
+// #727: a failed lookup is an error, not "nothing pending", and the key
+// attribute is pending_key (what spore-bot writes).
+func TestFetchPending(t *testing.T) {
+	key := smsPendingKey("+15550100000", "+15550100001")
+
+	f := &fakePending{err: errors.New("ValidationException: The provided key element does not match the schema")}
+	if p, err := fetchPending(context.Background(), f, key); err == nil || p != nil {
+		t.Errorf("lookup error: got (%v, %v), want an error", p, err)
+	}
+	if f.key != key {
+		t.Errorf("looked up pending_key %q, want %q", f.key, key)
+	}
+
+	if p, err := fetchPending(context.Background(), &fakePending{}, key); err != nil || p != nil {
+		t.Errorf("no row: got (%v, %v), want (nil, nil)", p, err)
+	}
+
+	item := map[string]dynamodbtypes.AttributeValue{
+		"pending_key": &dynamodbtypes.AttributeValueMemberS{Value: key},
+		"instance_id": &dynamodbtypes.AttributeValueMemberS{Value: "i-0aaa"},
+		"region":      &dynamodbtypes.AttributeValueMemberS{Value: "us-east-1"},
+		"options":     &dynamodbtypes.AttributeValueMemberS{Value: "1=extend:1h,0=dismiss"},
+	}
+	p, err := fetchPending(context.Background(), &fakePending{item: item}, key)
+	if err != nil || p == nil {
+		t.Fatalf("row: got (%v, %v)", p, err)
+	}
+	if p.InstanceID != "i-0aaa" || p.UserPhone != "+15550100001" || p.Options["1"] != "extend:1h" {
+		t.Errorf("decoded %+v", p)
+	}
+}
+
+// #727: through the webhook, a failed lookup gets its own reply (and a log
+// line), and only a missing row reads "No pending notification".
+func TestHandleSMSIncoming_PendingLookup(t *testing.T) {
+	t.Setenv("TWILIO_AUTH_TOKEN", testTwilioToken)
+	t.Setenv("SPORE_ENV", "")
+	t.Setenv("SKIP_TWILIO_SIGNATURE", "")
+	form := url.Values{"To": {"+15550100000"}, "From": {"+15550100001"}, "Body": {"1"}}
+	cases := []struct {
+		name  string
+		store *fakePending
+		want  string
+	}{
+		{"lookup fails", &fakePending{err: errors.New("ValidationException: The provided key element does not match the schema")}, "Could not look up your notification"},
+		{"no row", &fakePending{}, "No pending notification"},
+		{"reply not offered", &fakePending{item: map[string]dynamodbtypes.AttributeValue{"options": &dynamodbtypes.AttributeValueMemberS{Value: "0=dismiss"}}}, "not recognised"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := pendingStore
+			t.Cleanup(func() { pendingStore = orig })
+			pendingStore = tc.store
+			req := twilioRequest(form)
+			signTwilio(&req, form, testTwilioToken)
+			resp, err := handler(context.Background(), req)
+			if err != nil || resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, err = %v", resp.StatusCode, err)
+			}
+			if !strings.Contains(resp.Body, tc.want) {
+				t.Errorf("reply %q does not contain %q", resp.Body, tc.want)
+			}
+			if tc.store.key != "+15550100000#+15550100001" {
+				t.Errorf("looked up %q", tc.store.key)
+			}
+		})
 	}
 }

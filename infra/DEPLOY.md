@@ -311,20 +311,42 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region us-east-1
 
-# SMS pending notifications table
+# SMS pending notifications table. The partition key must be `pending_key`:
+# spore-bot writes it (lambda/spore-bot/sms_notify.go) and rest-api reads and
+# deletes by it (lambda/rest-api/sms.go). Any other key name makes every call
+# fail with "The provided key element does not match the schema".
 aws dynamodb create-table \
   --table-name spore-sms-pending \
-  --attribute-definitions AttributeName=pk,AttributeType=S \
-  --key-schema AttributeName=pk,KeyType=HASH \
+  --attribute-definitions AttributeName=pending_key,AttributeType=S \
+  --key-schema AttributeName=pending_key,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
-  --time-to-live-specification AttributeName=ttl,Enabled=true \
   --region us-east-1
 
 echo "Waiting for tables to be active..."
 aws dynamodb wait table-exists --table-name spore-api-keys --region us-east-1
 aws dynamodb wait table-exists --table-name spore-sms-pending --region us-east-1
+
+# Expire pending replies (spore-bot writes `ttl`, 15 minutes out). TTL is set
+# after creation: `create-table` has no TTL option.
+aws dynamodb update-time-to-live \
+  --table-name spore-sms-pending \
+  --time-to-live-specification Enabled=true,AttributeName=ttl \
+  --region us-east-1
 echo "Tables ready."
 ```
+
+If `spore-sms-pending` already exists, check its key before relying on SMS
+replies:
+
+```sh
+aws dynamodb describe-table --table-name spore-sms-pending --region us-east-1 \
+  --query 'Table.KeySchema'
+```
+
+It must be `[{"AttributeName": "pending_key", "KeyType": "HASH"}]`. A table's key
+can't be changed, so a table with any other key has to be deleted and created
+again as above (its rows are 15-minute pending replies, so nothing durable is
+lost).
 
 ---
 
