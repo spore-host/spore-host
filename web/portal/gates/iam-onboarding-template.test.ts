@@ -1,23 +1,25 @@
-// Gate: the BYOA onboarding template's SSM session grants match the portal
-// role's (#726). deployment/cloudformation/portal-onboarding-role.yaml carried
-// the account-less SSM-SessionManagerRunShell ARN, which denies every
+// Gate: the BYOA onboarding template's SSM session grants (#726).
+// deployment/cloudformation/portal-onboarding-role.yaml carried the
+// account-less SSM-SessionManagerRunShell ARN, which denies every
 // StartSession, for weeks after infra/tofu/portal-oidc fixed the same bug on
-// the live role. Both roles open sessions the same way, so they must grant the
-// same session documents, and the template must gate the instance target on
-// spawn:managed as the portal role does.
+// the live portal role (2026-11-10). The template must grant exactly the
+// session documents a Session Manager shell needs, with RunShell in the
+// stack's own account, and gate the instance target on spawn:managed.
 //
-// Statement-level only, and only these statements: the template's EC2 grants
-// differ from the portal role's by design (tag-at-launch, no Globus identity),
-// and the portal role's per-caller scoping has no counterpart in a role the
-// phone-home Lambda assumes.
+// The documents are pinned here rather than read from the portal role's
+// policy: the 1.0 portal role is read-only and grants no SSM at all (#645,
+// #701, PR #741), so there is nothing left there to mirror.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { PolicyFile } from "../iam/simulate.js";
 
-const here = import.meta.dirname;
-const TEMPLATE = resolve(here, "../../../deployment/cloudformation/portal-onboarding-role.yaml");
-const portal = JSON.parse(readFileSync(resolve(here, "../iam/policies/portal-launch-role.json"), "utf8")) as PolicyFile;
+const TEMPLATE = resolve(import.meta.dirname, "../../../deployment/cloudformation/portal-onboarding-role.yaml");
+
+/** What a Session Manager shell needs, as infra/tofu/portal-oidc granted it while the portal opened sessions. */
+const SESSION_DOCUMENTS = [
+  "arn:aws:ssm:*:${ACCOUNT_ID}:document/SSM-SessionManagerRunShell",
+  "arn:aws:ssm:*:*:document/AWS-StartInteractiveCommand",
+].sort();
 
 interface TemplateStatement {
   sid: string;
@@ -75,13 +77,6 @@ function templateStatements(text: string): TemplateStatement[] {
 const startSession = (actions: string[]) => actions.includes("ssm:StartSession");
 const isDocument = (r: string) => r.startsWith("arn:aws:ssm:") && r.includes(":document/");
 const isInstance = (r: string) => r.startsWith("arn:aws:ec2:") && r.includes(":instance/");
-const list = (v: string | string[]) => (Array.isArray(v) ? v : [v]);
-
-function portalSessionStatements() {
-  return Object.values(portal.policies)
-    .flatMap((p) => p.Statement)
-    .filter((s) => s.Effect === "Allow" && startSession(list(s.Action)));
-}
 
 function templateDocuments(text: string): string[] {
   return templateStatements(text)
@@ -90,17 +85,11 @@ function templateDocuments(text: string): string[] {
     .sort();
 }
 
-const portalDocuments = () =>
-  portalSessionStatements()
-    .flatMap((s) => list(s.Resource).filter(isDocument))
-    .sort();
-
-describe("onboarding template: SSM session grants match the portal role", () => {
+describe("onboarding template: SSM session grants", () => {
   const text = readFileSync(TEMPLATE, "utf8");
 
-  it("grants StartSession on the same session documents", () => {
-    expect(portalDocuments().length).toBeGreaterThan(0);
-    expect(templateDocuments(text)).toEqual(portalDocuments());
+  it("grants StartSession on exactly the session documents a shell needs", () => {
+    expect(templateDocuments(text)).toEqual(SESSION_DOCUMENTS);
   });
 
   it("scopes SSM-SessionManagerRunShell to the account (the account-less form names only AWS-owned documents)", () => {
@@ -113,9 +102,6 @@ describe("onboarding template: SSM session grants match the portal role", () => 
     const targets = templateStatements(text).filter((s) => startSession(s.actions) && s.resources.some(isInstance));
     expect(targets.length).toBeGreaterThan(0);
     for (const s of targets) expect(s.conditionKeys, s.sid).toContain("ssm:resourceTag/spawn:managed");
-    for (const s of portalSessionStatements().filter((p) => list(p.Resource).some(isInstance))) {
-      expect(Object.values(s.Condition ?? {}).flatMap((kv) => Object.keys(kv))).toContain("ssm:resourceTag/spawn:managed");
-    }
   });
 
   it("fails on the account-less document ARN this gate exists for", () => {
@@ -124,12 +110,12 @@ describe("onboarding template: SSM session grants match the portal role", () => 
       "'arn:aws:ssm:*::document/SSM-SessionManagerRunShell'",
     );
     expect(broken).not.toBe(text);
-    expect(templateDocuments(broken)).not.toEqual(portalDocuments());
+    expect(templateDocuments(broken)).not.toEqual(SESSION_DOCUMENTS);
   });
 
-  it("fails when the template drops a document the portal role grants", () => {
+  it("fails when the template drops a document", () => {
     const broken = text.replace("                  - 'arn:aws:ssm:*:*:document/AWS-StartInteractiveCommand'\n", "");
     expect(broken).not.toBe(text);
-    expect(templateDocuments(broken)).not.toEqual(portalDocuments());
+    expect(templateDocuments(broken)).not.toEqual(SESSION_DOCUMENTS);
   });
 });
