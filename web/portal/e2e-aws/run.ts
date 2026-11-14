@@ -111,6 +111,8 @@ export interface GuardInstance {
   id: string;
   state: string;
   tags: Record<string, string>;
+  /** The AMI it was launched from, when known (the read-only proofs' DryRun launch uses it). */
+  imageId?: string;
 }
 
 /**

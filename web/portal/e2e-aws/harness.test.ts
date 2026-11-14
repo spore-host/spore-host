@@ -54,6 +54,8 @@ class FakeAccount {
   describeLags = false;
   private described = new Set<string>();
   e2eCreated = 0;
+  /** The run's cost guard, shared by every observer the fake hands out. */
+  budget = new LaunchBudget();
   /** The policy the fake's IAM evaluates the e2e role's calls against. */
   decisionPolicy: PolicyFile;
   constructor(readonly policy: PolicyFile = realPolicy) {
@@ -89,41 +91,28 @@ class FakeAccount {
 
   e2e(): E2EApi {
     this.e2eCreated += 1;
-    const budget = new LaunchBudget();
     return {
       identity: async () => ({ account: EXPECTED_ACCOUNT, arn: this.e2eArn }),
-      launch: async (role) => {
-        this.calls.push(`launch ${role}`);
-        if (this.failLaunchOf === role) throw new AwsError("InsufficientInstanceCapacity");
-        // What spawn-ts sends, through the harness's transform, as aws.ts wires it.
-        const input = transformRunInstances(
-          {
-            InstanceType: "t4g.nano",
-            MinCount: 1,
-            MaxCount: 1,
-            TagSpecifications: [{ ResourceType: "instance", Tags: [{ Key: "spawn:managed", Value: "true" }, { Key: "spawn:ttl", Value: "15m" }] }],
-          },
-          { runId: RUN, role, n: budget.take() },
-        );
-        const id = `i-0${(++this.seq).toString(16).padStart(16, "0")}`;
-        const tags = Object.fromEntries((input.TagSpecifications![0].Tags ?? []).map((t) => [t.Key!, t.Value!]));
-        const sub = Object.fromEntries((input.TagSpecifications![1].Tags ?? []).map((t) => [t.Key!, t.Value!]));
-        this.instances.push({ id, state: "pending", tags, launchTimeMs: this.now, clientToken: input.ClientToken });
-        this.volumes.push({ id: `vol-${id}`, state: "in-use", createTimeMs: this.now, tags: sub, attachedTo: [id] });
-        this.enis.push({ id: `eni-${id}`, status: "in-use", tags: sub, attachedTo: id });
-        return id;
-      },
-      state: async (id) => {
+      list: async (id) => {
+        this.calls.push(`list ${id}`);
+        const inst = this.find(id);
+        if (!(await this.decide("ec2:DescribeInstances", inst, "aws:ResourceTag/"))) return { ok: false, err: new AwsError("UnauthorizedOperation") };
         if (this.describeLags && !this.described.has(id)) {
           this.described.add(id);
-          throw new AwsError("InvalidInstanceID.NotFound");
+          return { ok: true, found: false };
         }
-        return this.find(id).state;
+        return { ok: true, found: true };
       },
       dryRun: async (action: DryRunAction, id) => {
         this.calls.push(`dryRun ${action} ${id}`);
         const ok = await this.decide(action, this.find(id), "aws:ResourceTag/");
         return { ok: false, err: new AwsError(ok ? "DryRunOperation" : "UnauthorizedOperation") };
+      },
+      dryRunLaunch: async (imageId) => {
+        this.calls.push(`dryRunLaunch ${imageId}`);
+        const docs = Object.values(renderPolicies(this.decisionPolicy, { account: EXPECTED_ACCOUNT, sporedInstanceRole: "spored-instance-role" })).map((d) => JSON.stringify(d));
+        const d = await offlineSimulator()({ policies: docs, action: "ec2:RunInstances", resource: `arn:aws:ec2:us-east-1:${EXPECTED_ACCOUNT}:instance/*`, context: {} });
+        return { ok: false, err: new AwsError(d === "allowed" ? "DryRunOperation" : "UnauthorizedOperation") };
       },
       startSession: async (id) => {
         this.calls.push(`startSession ${id}`);
@@ -141,10 +130,33 @@ class FakeAccount {
     };
   }
 
+  /** The observer's setup launch: what spawn-ts sends, through the harness's transform, as aws.ts wires it. */
+  private async setupLaunch(role: InstanceRole): Promise<string> {
+    this.calls.push(`launch ${role}`);
+    if (this.failLaunchOf === role) throw new AwsError("InsufficientInstanceCapacity");
+    const input = transformRunInstances(
+      {
+        InstanceType: "t4g.nano",
+        MinCount: 1,
+        MaxCount: 1,
+        TagSpecifications: [{ ResourceType: "instance", Tags: [{ Key: "spawn:managed", Value: "true" }, { Key: "spawn:ttl", Value: "15m" }] }],
+      },
+      { runId: RUN, role, n: this.budget.take() },
+    );
+    const id = `i-0${(++this.seq).toString(16).padStart(16, "0")}`;
+    const tags = Object.fromEntries((input.TagSpecifications![0].Tags ?? []).map((t) => [t.Key!, t.Value!]));
+    const sub = Object.fromEntries((input.TagSpecifications![1].Tags ?? []).map((t) => [t.Key!, t.Value!]));
+    this.instances.push({ id, state: "pending", tags, launchTimeMs: this.now, clientToken: input.ClientToken });
+    this.volumes.push({ id: `vol-${id}`, state: "in-use", createTimeMs: this.now, tags: sub, attachedTo: [id] });
+    this.enis.push({ id: `eni-${id}`, status: "in-use", tags: sub, attachedTo: id });
+    return id;
+  }
+
   observer(account = EXPECTED_ACCOUNT): ObserverApi {
-    const guard = (i: FakeInstance) => ({ id: i.id, state: i.state, tags: i.tags });
+    const guard = (i: FakeInstance) => ({ id: i.id, state: i.state, tags: i.tags, imageId: "ami-0fake" });
     return {
       identity: async () => ({ account, arn: `arn:aws:sts::${account}:assumed-role/OrganizationAccountAccessRole/op` }),
+      launch: (role) => this.setupLaunch(role),
       e2eInstances: async () => this.instances.filter((i) => RUN_TAG in i.tags && i.state !== "terminated").map(guard),
       runInstances: async (runId) => this.instances.filter((i) => i.tags[RUN_TAG] === runId).map(guard),
       snapshot: async () => ({
@@ -180,7 +192,7 @@ class FakeAccount {
 }
 
 describe("e2e harness flow (offline, fake account)", () => {
-  it("passes against the checked-in policy: every proof as expected, both instances terminated, nothing left", async () => {
+  it("passes against the checked-in policy: listed, denied launch, tag, session and lifecycle, both instances terminated, nothing left", async () => {
     const aws = new FakeAccount();
     const r = await runHarness(aws.deps());
     expect(problems(r)).toEqual([]);
@@ -188,8 +200,10 @@ describe("e2e harness flow (offline, fake account)", () => {
     const proofs = r.proofs.map((p) => `${p.action} ${p.target} ${p.outcome.decision}`);
     expect(proofs).toEqual(
       expect.arrayContaining([
-        "ec2:RunInstances+ec2:CreateTags+iam:PassRole launch allowed",
-        "ssm:StartSession managed allowed",
+        "ec2:DescribeInstances account allowed",
+        "ec2:RunInstances account denied",
+        "ec2:CreateTags managed denied",
+        "ssm:StartSession managed denied",
         "ssm:StartSession control denied",
         "ec2:StopInstances managed denied",
         "ec2:StartInstances managed denied",
@@ -197,26 +211,51 @@ describe("e2e harness flow (offline, fake account)", () => {
         "ec2:TerminateInstances control denied",
       ]),
     );
+    // The setup launch is the observer's; the e2e role only reads and dry-runs.
+    expect(aws.calls.filter((c) => c.startsWith("launch "))).toEqual(["launch managed", "launch control"]);
+    expect(aws.calls).toContain("dryRunLaunch ami-0fake");
     expect(r.teardown.terminated).toHaveLength(2);
     expect(aws.instances.every((i) => i.state === "terminated")).toBe(true);
     expect(aws.sessions).toEqual([]);
     expect(r.leaks).toEqual({ leaks: [], notices: [] });
   });
 
-  it("fails a proof when the policy changes, and still tears down", async () => {
+  it("fails when the portal role can open a session again (#701), and still tears down", async () => {
     const loose = structuredClone(realPolicy);
-    delete loose.policies.PortalSSMSession.Statement[0].Condition; // StartSession on ANY instance
+    loose.policies.PortalReadOnly.Statement.push({ Sid: "Shell", Effect: "Allow", Action: "ssm:StartSession", Resource: "*" });
     const aws = new FakeAccount(loose);
     const r = await runHarness(aws.deps({ policy: loose, fixture }));
-    // The plan gate passes (the fixture still has its cases), so the real calls run and catch it.
-    expect(problems(r)).toEqual(['proof "open a command line on any other instance": ssm:StartSession on the control instance i-00000000000000002 was allowed (SessionId spore-e2e-r1abc-02), expected denied']);
+    // Unconditioned, so not a tag-gated grant: the plan gate passes and the real calls catch it.
+    expect(problems(r)).toEqual([
+      'proof "never open a command line, even on a spawn-managed instance (#701)": ssm:StartSession on the managed instance i-00000000000000001 was allowed (SessionId spore-e2e-r1abc-01), expected denied',
+      'proof "never open a command line on any other instance": ssm:StartSession on the control instance i-00000000000000002 was allowed (SessionId spore-e2e-r1abc-02), expected denied',
+    ]);
     expect(aws.instances.every((i) => i.state === "terminated")).toBe(true);
     expect(aws.sessions).toEqual([]);
   });
 
+  it("fails when the portal role can launch or tag again (#678)", async () => {
+    const loose = structuredClone(realPolicy);
+    loose.policies.PortalReadOnly.Statement.push({ Sid: "RunAndTag", Effect: "Allow", Action: ["ec2:RunInstances", "ec2:CreateTags"], Resource: "*" });
+    const aws = new FakeAccount(loose);
+    const p = problems(await runHarness(aws.deps({ policy: loose })));
+    expect(p).toContain('proof "never launch from the browser (read-only portal, #645)": ec2:RunInstances in the account was allowed (DryRunOperation), expected denied');
+    expect(p).toContain('proof "never tag a spawn-managed instance (#678)": ec2:CreateTags on the managed instance i-00000000000000001 was allowed (DryRunOperation), expected denied');
+    expect(aws.instances.every((i) => i.state === "terminated")).toBe(true);
+  });
+
+  it("fails when the portal role can no longer list instances", async () => {
+    const blind = structuredClone(realPolicy);
+    blind.policies.PortalReadOnly.Statement = blind.policies.PortalReadOnly.Statement.filter((st) => st.Sid !== "ReadInstances");
+    const aws = new FakeAccount(blind);
+    expect(problems(await runHarness(aws.deps({ policy: blind })))).toEqual([
+      'proof "list instances": ec2:DescribeInstances in the account i-00000000000000001 was denied (UnauthorizedOperation), expected allowed',
+    ]);
+  });
+
   it("fails when Stop, Start or Terminate come back on a spawn-managed instance (#678), and still tears down", async () => {
     const lifecycle = structuredClone(realPolicy);
-    lifecycle.policies.PortalEC2Launch.Statement.push({
+    lifecycle.policies.PortalReadOnly.Statement.push({
       Sid: "Lifecycle",
       Effect: "Allow",
       Action: ["ec2:StopInstances", "ec2:StartInstances", "ec2:TerminateInstances"],
@@ -228,7 +267,7 @@ describe("e2e harness flow (offline, fake account)", () => {
     // grants with no realCall allowed case. Nothing is launched.
     const gated = await runHarness(aws.deps({ policy: lifecycle }));
     expect(gated.launched).toEqual([]);
-    expect(problems(gated).some((p) => /^plan: PortalEC2Launch\/Lifecycle grants ec2:StopInstances/.test(p))).toBe(true);
+    expect(problems(gated).some((p) => /^plan: PortalReadOnly\/Lifecycle grants ec2:StopInstances/.test(p))).toBe(true);
     expect(aws.e2eCreated).toBe(0);
     // And if the plan were bypassed, the real calls catch it too.
     const bypassed = new FakeAccount(realPolicy);
@@ -262,31 +301,28 @@ describe("e2e harness flow (offline, fake account)", () => {
     expect(aws.calls).toEqual([]);
   });
 
-  it("tears down the first instance when the second launch fails", async () => {
+  it("tears down the first instance when the second setup launch fails", async () => {
     const aws = new FakeAccount();
     aws.failLaunchOf = "control";
     const r = await runHarness(aws.deps());
-    expect(problems(r)).toEqual([
-      "launch of the control instance failed: InsufficientInstanceCapacity: InsufficientInstanceCapacity",
-      'proof "launch the control instance through spawn-ts": ec2:RunInstances+ec2:CreateTags+iam:PassRole on the launch instance was inconclusive (InsufficientInstanceCapacity: InsufficientInstanceCapacity), expected allowed',
-    ]);
+    expect(problems(r)).toEqual(["setup launch of the control instance failed: InsufficientInstanceCapacity"]);
+    expect(r.proofs).toEqual([]);
     expect(r.teardown.terminated).toEqual([r.launched[0].id]);
     expect(aws.instances.every((i) => i.state === "terminated")).toBe(true);
     expect(r.leaks.leaks).toEqual([]);
   });
 
-  it("waits out EC2's eventual consistency on a new instance id", async () => {
+  it("waits out EC2's eventual consistency before the list proof", async () => {
     const aws = new FakeAccount();
     aws.describeLags = true;
     expect(problems(await runHarness(aws.deps()))).toEqual([]);
+    expect(aws.calls.filter((c) => c.startsWith("list "))).toHaveLength(2);
   });
 
-  it("fails, and tears down, when the SSM agent never comes online", async () => {
+  it("doesn't wait for the SSM agent while no session is expected allowed", async () => {
     const aws = new FakeAccount();
     aws.ssmComesOnline = false;
-    const r = await runHarness(aws.deps());
-    expect(problems(r)[0]).toMatch(/did not come online within 8 min/);
-    expect(aws.instances.every((i) => i.state === "terminated")).toBe(true);
+    expect(problems(await runHarness(aws.deps()))).toEqual([]);
   });
 
   it("reports a teardown that did not take, and the leaked instances, volumes and interfaces by id", async () => {
@@ -301,23 +337,29 @@ describe("e2e harness flow (offline, fake account)", () => {
     );
   });
 
-  it("closes a session as the observer when the e2e role cannot, and fails when nobody can", async () => {
-    const a = new FakeAccount();
+  it("closes a wrongly opened session as the observer, and reports it as a leak when nobody can", async () => {
+    // Only a policy that wrongly allows StartSession opens one; the portal role
+    // has no TerminateSession, so the observer closes it.
+    const loose = structuredClone(realPolicy);
+    loose.policies.PortalReadOnly.Statement.push({ Sid: "Shell", Effect: "Allow", Action: "ssm:StartSession", Resource: "*" });
+    const a = new FakeAccount(loose);
     a.e2eCanCloseSessions = false;
-    expect(problems(await runHarness(a.deps()))).toEqual([]);
+    const ra = await runHarness(a.deps({ policy: loose }));
+    expect(a.sessions).toEqual([]);
+    expect(ra.leaks.leaks).toEqual([]);
 
-    const b = new FakeAccount();
+    const b = new FakeAccount(loose);
     b.e2eCanCloseSessions = false;
     b.observerCanCloseSessions = false;
-    const r = await runHarness(b.deps());
-    expect(r.leaks.leaks.map((l) => l.kind)).toEqual(["ssm-session"]);
+    const r = await runHarness(b.deps({ policy: loose }));
+    expect(r.leaks.leaks.map((l) => l.kind)).toEqual(["ssm-session", "ssm-session"]);
   });
 
   it("sweeps a run idempotently: terminates by tag, then finds nothing to do", async () => {
     const aws = new FakeAccount();
-    const e2e = aws.e2e();
-    await e2e.launch("managed");
-    await e2e.launch("control");
+    const observer = aws.observer();
+    await observer.launch("managed");
+    await observer.launch("control");
     aws.instances.push({ id: "i-0ffff0000000other", state: "running", tags: { [RUN_TAG]: "another-run" }, launchTimeMs: aws.now });
     const first = await sweep({ runId: RUN, observer: aws.observer(), clock: aws.clock, log: () => {} });
     expect(problems(first)).toEqual([]);

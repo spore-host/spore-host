@@ -11,9 +11,13 @@
 // - e2e: sts:AssumeRole on spore-portal-e2e from the observer, with the run's
 //   session name. Its trust admits only same-account operator roles and the
 //   teardown role, and only session names starting with spore-e2e-.
+//
+// The observer also makes the setup launch of the run's test instances: the
+// 1.0 portal role is read-only (#645), so the e2e role can't launch them.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
+  CreateTagsCommand,
   DescribeAddressesCommand,
   DescribeKeyPairsCommand,
   EC2Client,
@@ -21,6 +25,7 @@ import {
   paginateDescribeNetworkInterfaces,
   paginateDescribeSecurityGroups,
   paginateDescribeVolumes,
+  RunInstancesCommand,
   StartInstancesCommand,
   StopInstancesCommand,
   TerminateInstancesCommand,
@@ -31,8 +36,9 @@ import { paginateDescribeInstanceInformation, paginateDescribeSessions, SSMClien
 import { AssumeRoleCommand, GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 import { EC2Provider, SpawnClient } from "@spore-host/spawn-ts";
 import { INSTANCE_PROFILE, INSTANCE_TYPE, REGION, RUN_TAG, TTL } from "./config.js";
-import type { CallResult, DryRunAction, E2EApi, Identity, ObserverApi, SessionResult } from "./harness.js";
+import type { CallResult, DryRunAction, E2EApi, Identity, ListResult, ObserverApi, SessionResult } from "./harness.js";
 import type { Snapshot } from "./leaks.js";
+import { errorCode } from "./outcomes.js";
 import { LaunchBudget, sessionName, transformRunInstances, type InstanceRole, type RunInstancesInputLike } from "./run.js";
 
 const run = promisify(execFile);
@@ -70,18 +76,28 @@ async function collect<T>(pages: AsyncIterable<T>): Promise<T[]> {
   return out;
 }
 
-export function observerApi(creds: Creds): ObserverApi {
+/**
+ * The observer. `launch` needs the run id (the sweep's observer has none and
+ * never launches); `budget` and `endpoint` are for aws.test.ts.
+ */
+export function observerApi(creds: Creds, opts: { runId?: string; budget?: LaunchBudget; endpoint?: string } = {}): ObserverApi {
   const ec2 = new EC2Client({ region: REGION, credentials: creds });
   const ssm = new SSMClient({ region: REGION, credentials: creds });
   const sts = new STSClient({ region: REGION, credentials: creds });
 
   const instances = async (filters: { Name: string; Values: string[] }[]): Promise<Instance[]> =>
     (await collect(paginateDescribeInstances({ client: ec2 }, { Filters: filters }))).flatMap((p) => (p.Reservations ?? []).flatMap((r) => r.Instances ?? []));
-  const guard = (i: Instance) => ({ id: i.InstanceId ?? "", state: i.State?.Name ?? "", tags: tagMap(i.Tags) });
+  const guard = (i: Instance) => ({ id: i.InstanceId ?? "", state: i.State?.Name ?? "", tags: tagMap(i.Tags), imageId: i.ImageId });
+  let launcher: ((role: InstanceRole) => Promise<string>) | null = null;
   const notTerminated = { Name: "instance-state-name", Values: ["pending", "running", "shutting-down", "stopping", "stopped"] };
 
   return {
     identity: () => callerIdentity(sts),
+    launch: async (role) => {
+      if (!opts.runId) throw new Error("observerApi: launch needs the run id");
+      launcher ??= setupLauncher(creds, opts.runId, { budget: opts.budget, endpoint: opts.endpoint });
+      return launcher(role);
+    },
     e2eInstances: async () => (await instances([{ Name: "tag-key", Values: [RUN_TAG] }, notTerminated])).map(guard),
     runInstances: async (runId) => (await instances([{ Name: `tag:${RUN_TAG}`, Values: [runId] }])).map(guard),
 
@@ -149,14 +165,13 @@ export async function assumeE2ERole(observer: Creds, roleArn: string, runId: str
 type Stack = { add: (mw: unknown, opts: { step: string; name: string }) => void };
 
 /**
- * The portal's launch path (legacy-app/surfaces/instances.ts): a SpawnClient
- * over an EC2Provider holding the session's credentials and
- * spored-instance-profile. The harness adds one initialize-step middleware to
- * the provider's own EC2Client, which applies transformRunInstances to each
- * RunInstances request (run tags, ClientToken, the cost guard) and changes
- * nothing else about the call.
+ * The setup launch, as spawn launches (spawn-ts SpawnClient over an
+ * EC2Provider holding the observer's credentials and
+ * spored-instance-profile). One initialize-step middleware on the provider's
+ * own EC2Client applies transformRunInstances to each RunInstances request
+ * (run tags, ClientToken, the cost guard) and changes nothing else.
  */
-export function e2eApi(creds: Creds, runId: string, opts: { budget?: LaunchBudget; endpoint?: string } = {}): E2EApi {
+export function setupLauncher(creds: Creds, runId: string, opts: { budget?: LaunchBudget; endpoint?: string } = {}): (role: InstanceRole) => Promise<string> {
   const budget = opts.budget ?? new LaunchBudget();
   // `endpoint` is for aws.test.ts only (a local capture server); live runs never set it.
   const endpoint = opts.endpoint;
@@ -176,6 +191,29 @@ export function e2eApi(creds: Creds, runId: string, opts: { budget?: LaunchBudge
     { step: "initialize", name: "sporeE2eRunTags" },
   );
   const client = new SpawnClient({ provider });
+  return async (role) => {
+    current = role;
+    try {
+      // DNS is off (dnsName ""): spored would register a spore.host record,
+      // which is outside what the leak check can see. Everything else is a
+      // plain spawn launch with a 15-minute TTL.
+      const inst = await client.launch({ name: `spore-e2e-${runId}-${role}`, instanceType: INSTANCE_TYPE, region: REGION, spot: false, ttl: TTL, dnsName: "" });
+      return inst.instanceId;
+    } finally {
+      current = null;
+    }
+  };
+}
+
+/**
+ * The portal's side, as the e2e role (the portal role's policy). Reads go
+ * through spawn-ts's EC2Provider, as the portal's do; the denied actions are
+ * DryRun calls, so a wrongly allowed one changes nothing.
+ */
+export function e2eApi(creds: Creds, runId: string, opts: { endpoint?: string } = {}): E2EApi {
+  const endpoint = opts.endpoint;
+  // No instance profile: the portal's viewer reads, it never launches.
+  const provider = new EC2Provider({ region: REGION, ...creds, ...(endpoint ? { endpoint } : {}) });
   const ec2 = new EC2Client({ region: REGION, credentials: creds, endpoint });
   const ssm = new SSMClient({ region: REGION, credentials: creds, endpoint });
   const sts = new STSClient({ region: REGION, credentials: creds, endpoint });
@@ -185,6 +223,7 @@ export function e2eApi(creds: Creds, runId: string, opts: { budget?: LaunchBudge
     try {
       if (action === "ec2:StopInstances") await ec2.send(new StopInstancesCommand(input));
       else if (action === "ec2:StartInstances") await ec2.send(new StartInstancesCommand(input));
+      else if (action === "ec2:CreateTags") await ec2.send(new CreateTagsCommand({ Resources: [id], Tags: [{ Key: "spore-host:e2e-probe", Value: runId }], DryRun: true }));
       else await ec2.send(new TerminateInstancesCommand(input));
       return { ok: true };
     } catch (err) {
@@ -194,20 +233,33 @@ export function e2eApi(creds: Creds, runId: string, opts: { budget?: LaunchBudge
 
   return {
     identity: () => callerIdentity(sts),
-    async launch(role) {
-      current = role;
+    async list(id): Promise<ListResult> {
       try {
-        // DNS is off (dnsName ""): spored would register a spore.host record,
-        // which is outside what the leak check can see. Everything else is a
-        // plain portal launch with a 15-minute TTL.
-        const inst = await client.launch({ name: `spore-e2e-${runId}-${role}`, instanceType: INSTANCE_TYPE, region: REGION, spot: false, ttl: TTL, dnsName: "" });
-        return inst.instanceId;
-      } finally {
-        current = null;
+        return { ok: true, found: (await provider.get(id)) !== null };
+      } catch (err) {
+        // A describe by id that EC2 hasn't caught up with yet: not found, retried.
+        if (errorCode(err) === "InvalidInstanceID.NotFound") return { ok: true, found: false };
+        return { ok: false, err };
       }
     },
-    state: async (id) => (await provider.get(id))?.state ?? null,
     dryRun: dry,
+    async dryRunLaunch(imageId): Promise<CallResult> {
+      try {
+        await ec2.send(
+          new RunInstancesCommand({
+            ImageId: imageId,
+            InstanceType: INSTANCE_TYPE,
+            MinCount: 1,
+            MaxCount: 1,
+            DryRun: true,
+            TagSpecifications: [{ ResourceType: "instance", Tags: [{ Key: "spawn:managed", Value: "true" }, { Key: "spawn:ttl", Value: TTL }, { Key: RUN_TAG, Value: runId }] }],
+          }),
+        );
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, err };
+      }
+    },
     async startSession(id): Promise<SessionResult> {
       try {
         const r = await ssm.send(new StartSessionCommand({ Target: id }));

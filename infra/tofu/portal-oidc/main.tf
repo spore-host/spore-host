@@ -11,7 +11,9 @@
 #   2. a role that trust-scopes AssumeRoleWithWebIdentity to
 #        - aud == the portal's Globus client-ID   (the app users log into)
 #        - sub == an allow-list of Globus identity UUIDs (who may launch)
-#      and grants exactly the EC2 launch + iam:PassRole perms a spawn launch needs.
+#      and grants reads only: the 1.0 portal is read-only (#645; #701, #678).
+#      The role keeps its name, spore-portal-launch, because the portal build
+#      (VITE_ROLE_ARN), the trust and the drift jobs all name it.
 #   3. a read-only audit role for the portal's nightly IAM simulate + drift
 #      check (.github/workflows/portal-iam-live.yml), with the GitHub Actions
 #      OIDC provider it trusts. This module is their named deleter.
@@ -102,8 +104,9 @@ variable "allowed_globus_subs" {
   }
 }
 
-# The instance profile launched instances get (spored self-terminate + DNS
-# invoke). Already exists in dev; the role's iam:PassRole is scoped to it.
+# The instance profile the e2e harness's setup launch attaches (spored
+# self-terminate + DNS invoke), so its test instance has spored's TTL backstop.
+# The portal role itself passes no role: it is read-only.
 variable "spored_instance_profile" {
   type    = string
   default = "spored-instance-profile"
@@ -111,8 +114,8 @@ variable "spored_instance_profile" {
 
 # The IAM ROLE inside that instance profile. iam:PassRole is evaluated against
 # the role's ARN, not the profile's name: granting role/<profile-name> passes a
-# role that does not exist, and every portal launch fails with AccessDenied on
-# iam:PassRole (seen 2026-11-10). spored-instance-profile contains this role.
+# role that does not exist (seen 2026-11-10). spored-instance-profile contains
+# this role. The e2e teardown role's setup grant passes it to EC2.
 variable "spored_instance_role" {
   type    = string
   default = "spored-instance-role"
@@ -192,133 +195,48 @@ resource "aws_iam_role" "portal_launch" {
   tags = local.common_tags
 }
 
-# EC2 launch: the surface a spawn launch needs (RunInstances, tag, describe).
+# The portal is READ-ONLY for 1.0 (spore-host#645, re-scoped 2026-11-14): sign
+# in, list what's running, show prices and quotas, and build CLI commands to
+# copy. Its one inline policy grants reads and nothing else.
 #
-# No Stop, Start or Terminate. The "Lifecycle" statement that granted them
-# (tag-gated on spawn:managed) and the separate PortalEC2Manage policy were
-# removed from the live role on 2026-11-10 by the owner (spore-host#678): a
-# browser tab must not be able to stop or terminate instances (spawn-ts#126).
-# Slice 3 (#686) brings them back under the scoped policy of #678 and the
-# portal's IAM coverage gate, not by restoring the old statement.
-resource "aws_iam_role_policy" "ec2_launch" {
-  name = "PortalEC2Launch"
+# No RunInstances, CreateTags, iam:PassRole or SSM. This closes, by design:
+# - #701: StartSession on every spawn:managed instance in the account, for
+#   every identity in allowed_globus_subs, not only on the caller's own;
+# - #678: unconditioned ec2:CreateTags on "*", which let a session tag any
+#   instance spawn:managed=true and so widen every grant scoped by that tag.
+# Actions (launch, extend, stop, terminate, connect) come back after 1.0
+# (#686, #687, #689), each behind the portal's IAM coverage gate.
+#
+# Each action is a read with no resource-level scope in IAM, so "*" is the
+# narrowest grant. Deliberately absent: ec2:DescribeInstanceTypeOfferings,
+# which answers "is this type offered here", not "is one free" (#679; see
+# web/portal/iam/command-actions.ts).
+resource "aws_iam_role_policy" "read_only" {
+  name = "PortalReadOnly"
   role = aws_iam_role.portal_launch.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "RunAndInspect"
+        # Slice 1 (#684): spawn list / spawn status, through spawn-ts's viewer.
+        Sid    = "ReadInstances"
         Effect = "Allow"
         Action = [
-          "ec2:RunInstances",
           "ec2:DescribeInstances",
-          "ec2:DescribeInstanceStatus",
-          "ec2:DescribeImages",
-          "ec2:DescribeSubnets",
-          "ec2:DescribeSecurityGroups",
-          "ec2:DescribeVpcs",
-          "ec2:DescribeKeyPairs",
-          "ec2:CreateTags",
+          "ec2:DescribeTags",
         ]
         Resource = "*"
       },
       {
-        Sid    = "ReadSpotAndQuotas"
+        # Slice 2 (#688), signed in: live Spot prices and quota headroom.
+        Sid    = "ReadPricesAndQuotas"
         Effect = "Allow"
         Action = [
           "ec2:DescribeSpotPriceHistory",
-          # AZ-level "is this type offered here right now?" — the capacity signal
-          # the lagotto surface polls. Read-only and account-agnostic (offerings
-          # are a property of the region, not of any resource), so there is
-          # nothing narrower to scope it to than "*".
-          "ec2:DescribeInstanceTypeOfferings",
           "servicequotas:GetServiceQuota",
           "servicequotas:ListServiceQuotas",
         ]
         Resource = "*"
-      },
-    ]
-  })
-}
-
-# iam:PassRole for the spored instance profile only — required to attach it at
-# RunInstances so the instance can self-terminate + call the DNS Lambda.
-resource "aws_iam_role_policy" "pass_spored_profile" {
-  name = "PortalPassSporedProfile"
-  role = aws_iam_role.portal_launch.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      # PassRole is REQUIRED to attach an instance profile at RunInstances, and it
-      # is already maximally scoped: a single named role ARN in THIS account (not a
-      # wildcard) plus iam:PassedToService=ec2, so it can only ever hand
-      # spored-instance-role (the role in spored-instance-profile) to EC2 — nothing else. The rule flags the action
-      # unconditionally; the scoping here is the mitigation. (Same inline-suppress
-      # convention as spore-bot/main.tf:111. Suppression reviewed + approved by the
-      # repo owner, 2026-07-26.)
-      # nosemgrep: terraform.lang.security.iam.no-iam-resource-exposure.no-iam-resource-exposure
-      Action   = "iam:PassRole"
-      Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.spored_instance_role}"
-      Condition = {
-        StringEquals = { "iam:PassedToService" = "ec2.amazonaws.com" }
-      }
-    }]
-  })
-}
-
-# SSM Session Manager — the browser terminal surface opens shells via
-# ssm:StartSession against portal-launched instances (no SSH).
-resource "aws_iam_role_policy" "ssm_session" {
-  name = "PortalSSMSession"
-  role = aws_iam_role.portal_launch.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        # Scoped to spawn-managed instances (tagged spawn:managed=true). It
-        # previously was not, and that was the widest grant in this role: a shell
-        # is at least as powerful as a terminate, so StartSession against
-        # `instance/*` let a portal session open a root-capable shell on ANY
-        # SSM-registered instance in the account, an unrelated production box the
-        # portal never launched, while the then tag-gated ec2:TerminateInstances
-        # on the same instance was denied.
-        #
-        # Still open (#678): ec2:CreateTags on "*" with no condition means a
-        # session can tag any instance spawn:managed=true and then open a shell on
-        # it. Only the owner's Globus identity can assume this role today. The
-        # scoped policy of #678 fixes this before any new tag-gated grant. The only thing narrowing it was a client-side
-        # `/^i-[0-9a-f]{8,}$/` on a text field, which is a syntax check, not authz.
-        #
-        # `ssm:resourceTag/`, not `aws:ResourceTag/`: SSM evaluates the target
-        # node's tags under its own service-specific key for StartSession.
-        Sid      = "StartSessionOnManagedInstances"
-        Effect   = "Allow"
-        Action   = ["ssm:StartSession"]
-        Resource = "arn:aws:ec2:*:*:instance/*"
-        Condition = {
-          StringEquals = { "ssm:resourceTag/spawn:managed" = "true" }
-        }
-      },
-      {
-        # The session documents, deliberately NOT tag-conditioned and therefore a
-        # separate statement. A document is not a tagged instance, so folding it in
-        # with the condition above would deny every session — the condition would be
-        # evaluated against a resource that carries no `spawn:managed` tag at all.
-        # This grants the right to use a shell document, not the right to reach any
-        # particular target; the statement above is what decides that.
-        Sid    = "StartSessionDocuments"
-        Effect = "Allow"
-        Action = ["ssm:StartSession"]
-        Resource = [
-          "arn:aws:ssm:*:*:document/AWS-StartInteractiveCommand",
-          "arn:aws:ssm:*:${data.aws_caller_identity.current.account_id}:document/SSM-SessionManagerRunShell",
-        ]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ssm:TerminateSession", "ssm:ResumeSession"]
-        Resource = "arn:aws:ssm:*:*:session/*"
       },
     ]
   })
@@ -428,8 +346,8 @@ resource "aws_iam_role_policy" "portal_iam_audit" {
 # itself only admits a browser's Globus id_token, so neither CI nor an operator
 # can assume it unattended. spore-portal-e2e is its twin for that purpose:
 #
-# - Its inline policies are the portal role's three policies, by name, taken
-#   from the resources above (no copy to drift). iam/live.test.ts fails nightly
+# - Its inline policy is the portal role's read-only policy, by name, taken
+#   from the resource above (no copy to drift). iam/live.test.ts fails nightly
 #   when the deployed e2e role's policies differ from the checked-in portal
 #   policy, which the same job proves equals the deployed portal role's.
 # - Its trust admits this account's root, narrowed by aws:PrincipalArn to the
@@ -440,11 +358,12 @@ resource "aws_iam_role_policy" "portal_iam_audit" {
 #   id, and the precondition re-checks it.
 #
 # The teardown role is what CI signs in as (GitHub OIDC, main only). It is the
-# harness's observer: the leak check's reads, terminate for t4g.nano instances carrying
-# spore-host:e2e-run only, close for spore-e2e-* sessions only, and
-# sts:AssumeRole on the e2e role. Locally the operator's own credentials play
-# this part. Neither role has anything the portal role lacks except the
-# teardown role's reads and its tag-gated terminate.
+# harness's setup, observer and teardown: launching the run's t4g.nano test
+# instances (the read-only portal role can't), the leak check's reads,
+# terminate for t4g.nano instances carrying spore-host:e2e-run only, close for
+# spore-e2e-* sessions only, and sts:AssumeRole on the e2e role. Locally the
+# operator's own credentials play this part. The e2e role has nothing the
+# portal role lacks.
 #
 # Created by hand from web/portal/iam/policies/portal-e2e-roles.json (which
 # gates/iam-e2e-roles.test.ts keeps identical to this), then imported (README).
@@ -504,12 +423,10 @@ resource "aws_iam_role" "portal_e2e" {
   }
 }
 
-# The portal role's three inline policies, by name, verbatim.
+# The portal role's inline policy, by name, verbatim.
 resource "aws_iam_role_policy" "portal_e2e" {
   for_each = {
-    PortalEC2Launch         = aws_iam_role_policy.ec2_launch.policy
-    PortalPassSporedProfile = aws_iam_role_policy.pass_spored_profile.policy
-    PortalSSMSession        = aws_iam_role_policy.ssm_session.policy
+    PortalReadOnly = aws_iam_role_policy.read_only.policy
   }
   name   = each.key
   role   = aws_iam_role.portal_e2e.id
@@ -556,7 +473,7 @@ resource "aws_iam_role_policy" "portal_e2e_teardown" {
         # credentials (the portal role's permissions) only through this grant.
         # It is scoped to that one role ARN, whose own trust also requires the
         # spore-e2e-* session name. Same inline-suppress convention as
-        # pass_spored_profile above. Suppression needs the owner's review
+        # spore-bot/main.tf. Suppression needs the owner's review
         # (spore-host#683).
         # nosemgrep: terraform.lang.security.iam.no-iam-creds-exposure.no-iam-creds-exposure
         Action   = "sts:AssumeRole"
@@ -564,10 +481,12 @@ resource "aws_iam_role_policy" "portal_e2e_teardown" {
       },
       {
         # Describe calls cannot be scoped to resources. Read-only.
+        # DescribeImages is the setup launch's AMI lookup (spawn-ts resolveAmi).
         Sid    = "ObserveForTheLeakCheck"
         Effect = "Allow"
         Action = [
           "ec2:DescribeAddresses",
+          "ec2:DescribeImages",
           "ec2:DescribeInstances",
           "ec2:DescribeKeyPairs",
           "ec2:DescribeNetworkInterfaces",
@@ -581,10 +500,10 @@ resource "aws_iam_role_policy" "portal_e2e_teardown" {
       {
         # Only t4g.nano instances that carry the run tag, whatever its value:
         # the harness narrows to its own run id (e2e-aws/leaks.ts
-        # teardownTargets). The instance type matters because ec2:CreateTags
-        # on "*" (the #678 gap) lets a portal or e2e session forge the run tag
-        # on any instance; the type limits what a forged tag can reach to the
-        # one type the harness launches (e2e-aws/config.ts INSTANCE_TYPE).
+        # teardownTargets). The instance type limits what a tag forged by
+        # some other principal can reach to the one type the harness launches
+        # (e2e-aws/config.ts INSTANCE_TYPE). The portal and e2e roles can no
+        # longer tag anything (#678).
         Sid      = "TerminateE2EInstancesOnly"
         Effect   = "Allow"
         Action   = "ec2:TerminateInstances"
@@ -601,6 +520,65 @@ resource "aws_iam_role_policy" "portal_e2e_teardown" {
         Effect   = "Allow"
         Action   = "ssm:TerminateSession"
         Resource = "arn:aws:ssm:us-east-1:${local.account_id}:session/spore-e2e-*"
+      },
+      # ── Setup: the run's test instances ───────────────────────────────────
+      # The read-only portal role (and so the e2e role) can't launch, so the
+      # harness launches its test instances as this role, through spawn-ts as
+      # spawn would (e2e-aws/aws.ts setupLaunch). Only t4g.nano, only with
+      # the run tag, only in us-east-1, only from an Amazon image, tagged only
+      # within the launch. The e2e role then proves it can list them and
+      # can't launch, tag or open a session (e2e-aws/grants.ts).
+      {
+        Sid      = "LaunchE2EInstancesOnly"
+        Effect   = "Allow"
+        Action   = "ec2:RunInstances"
+        Resource = "arn:aws:ec2:us-east-1:${local.account_id}:instance/*"
+        Condition = {
+          Null         = { "aws:RequestTag/${local.e2e_run_tag}" = "false" }
+          StringEquals = { "ec2:InstanceType" = "t4g.nano" }
+        }
+      },
+      {
+        # The resources a launch uses or creates alongside the instance.
+        Sid    = "LaunchE2EInstanceResources"
+        Effect = "Allow"
+        Action = "ec2:RunInstances"
+        Resource = [
+          "arn:aws:ec2:us-east-1:${local.account_id}:network-interface/*",
+          "arn:aws:ec2:us-east-1:${local.account_id}:security-group/*",
+          "arn:aws:ec2:us-east-1:${local.account_id}:subnet/*",
+          "arn:aws:ec2:us-east-1:${local.account_id}:volume/*",
+        ]
+      },
+      {
+        Sid       = "LaunchFromAmazonImages"
+        Effect    = "Allow"
+        Action    = "ec2:RunInstances"
+        Resource  = "arn:aws:ec2:us-east-1::image/*"
+        Condition = { StringEquals = { "ec2:Owner" = "amazon" } }
+      },
+      {
+        Sid    = "TagE2EInstancesAtLaunch"
+        Effect = "Allow"
+        Action = "ec2:CreateTags"
+        Resource = [
+          "arn:aws:ec2:us-east-1:${local.account_id}:instance/*",
+          "arn:aws:ec2:us-east-1:${local.account_id}:network-interface/*",
+          "arn:aws:ec2:us-east-1:${local.account_id}:volume/*",
+        ]
+        Condition = { StringEquals = { "ec2:CreateAction" = "RunInstances" } }
+      },
+      {
+        # spored's instance profile, so the test instance keeps spored's TTL
+        # backstop. One named role in this account, to EC2 only. The rule flags
+        # PassRole unconditionally; the scoping is the mitigation (same
+        # inline-suppress convention as spore-bot/main.tf).
+        Sid    = "PassSporedRoleToE2EInstances"
+        Effect = "Allow"
+        # nosemgrep: terraform.lang.security.iam.no-iam-resource-exposure.no-iam-resource-exposure
+        Action    = "iam:PassRole"
+        Resource  = "arn:aws:iam::${local.account_id}:role/${var.spored_instance_role}"
+        Condition = { StringEquals = { "iam:PassedToService" = "ec2.amazonaws.com" } }
       },
     ]
   })

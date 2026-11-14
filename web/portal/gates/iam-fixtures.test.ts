@@ -25,10 +25,10 @@ describe("IAM coverage gate: simulation fixtures", () => {
   });
 
   it("fail when a conditioned grant has no denied case", () => {
+    const gated = JSON.parse(JSON.stringify(policy)) as PolicyFile;
+    gated.policies.PortalReadOnly.Statement.push({ Sid: "Shell", Effect: "Allow", Action: "ssm:StartSession", Resource: "*", Condition: { StringEquals: { "ssm:resourceTag/spawn:managed": "true" } } });
     const broken = { ...fixture, cases: fixture.cases.filter((c) => !(c.action === "ssm:StartSession" && c.expect === "denied")) };
-    expect(fixtureProblems([broken], [policy], [])).toContain(
-      "PortalSSMSession/StartSessionOnManagedInstances grants ssm:StartSession under a condition, but no case tests it denied",
-    );
+    expect(fixtureProblems([broken], [gated], [])).toContain("PortalReadOnly/Shell grants ssm:StartSession under a condition, but no case tests it denied");
   });
 
   it("fail when an inventory action has no allowed case", () => {
@@ -47,10 +47,21 @@ describe("IAM coverage gate: simulation fixtures", () => {
     }
   });
 
+  it("require launch, tag, pass-role and session to be denied, and nothing but reads allowed (#645, #701, #678)", () => {
+    for (const action of ["ec2:RunInstances", "ec2:CreateTags", "iam:PassRole", "ssm:StartSession", "ssm:TerminateSession", "ssm:SendCommand"]) {
+      const cases = fixture.cases.filter((c) => c.action === action);
+      expect(cases.length, action).toBeGreaterThan(0);
+      expect(new Set(cases.map((c) => c.expect)), action).toEqual(new Set(["denied"]));
+    }
+    expect(fixture.cases.find((c) => c.action === "ssm:StartSession" && c.context?.["ssm:resourceTag/spawn:managed"] === "true")?.expect).toBe("denied");
+    expect(fixture.cases.find((c) => c.action === "ec2:CreateTags" && c.context?.["aws:ResourceTag/spawn:managed"] === "true")?.expect).toBe("denied");
+    for (const c of fixture.cases.filter((x) => x.expect === "allowed")) expect(c.action, c.name).toMatch(/^(ec2:Describe|servicequotas:(Get|List))/);
+  });
+
   it("fail when a lifecycle grant comes back, even tag-gated", async () => {
     // The pre-2026-11-10 Lifecycle statement, restored.
     const restored = JSON.parse(JSON.stringify(policy)) as PolicyFile;
-    restored.policies.PortalEC2Launch.Statement.push({
+    restored.policies.PortalReadOnly.Statement.push({
       Sid: "Lifecycle",
       Effect: "Allow",
       Action: ["ec2:TerminateInstances", "ec2:StopInstances", "ec2:StartInstances"],
@@ -62,10 +73,22 @@ describe("IAM coverage gate: simulation fixtures", () => {
     expect(f[0]).toMatch(/^"never terminate from the browser, even a spawn-managed instance \(#678\)": ec2:TerminateInstances on arn:aws:ec2:us-east-1:111122223333:instance\/i-0123456789abcdef0 was allowed, expected denied$/);
   });
 
-  it("fail when the command-line grant loses its tag gate", async () => {
-    const ungated = JSON.parse(JSON.stringify(policy)) as PolicyFile;
-    delete ungated.policies.PortalSSMSession.Statement[0].Condition;
-    const f = failures(await runFixtures([fixture], () => ungated, offlineSimulator()));
-    expect(f).toEqual([expect.stringMatching(/^"open a command line on any other instance": ssm:StartSession .* was allowed, expected denied$/)]);
+  it("fail when the old launch policy comes back: launch, tag, pass-role and session (#701, #678)", async () => {
+    // The shape of the pre-#701 PortalEC2Launch/RunAndInspect, PortalPassSporedProfile and PortalSSMSession.
+    const old = JSON.parse(JSON.stringify(policy)) as PolicyFile;
+    old.policies.PortalReadOnly.Statement.push(
+      { Sid: "RunAndInspect", Effect: "Allow", Action: ["ec2:RunInstances", "ec2:CreateTags"], Resource: "*" },
+      { Effect: "Allow", Action: "iam:PassRole", Resource: "arn:aws:iam::${ACCOUNT_ID}:role/${SPORED_INSTANCE_ROLE}", Condition: { StringEquals: { "iam:PassedToService": "ec2.amazonaws.com" } } },
+      { Sid: "StartSessionOnManagedInstances", Effect: "Allow", Action: "ssm:StartSession", Resource: "arn:aws:ec2:*:*:instance/*", Condition: { StringEquals: { "ssm:resourceTag/spawn:managed": "true" } } },
+    );
+    const f = failures(await runFixtures([fixture], () => old, offlineSimulator())).join("\n");
+    for (const name of [
+      "never launch from the browser (read-only portal, #645)",
+      "never tag a spawn-managed instance (#678)",
+      "never tag an instance spawn did not launch, e.g. spawn:managed=true onto it (#678)",
+      "never pass spored's role to EC2",
+      "never open a command line, even on a spawn-managed instance (#701)",
+    ])
+      expect(f, name).toContain(`"${name}"`);
   });
 });

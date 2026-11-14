@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { classifyDryRun, classifyStartSession, errorCode } from "./outcomes.js";
+import { classifyDryRun, classifyList, classifyStartSession, errorCode } from "./outcomes.js";
 
 const err = (name: string) => Object.assign(new Error(name), { name });
 
@@ -25,5 +25,12 @@ describe("real-call outcomes fail closed", () => {
     expect(classifyStartSession({ ok: false, err: err("AccessDeniedException") })).toEqual({ decision: "denied", evidence: "AccessDeniedException", retry: false });
     expect(classifyStartSession({ ok: false, err: err("TargetNotConnected") })).toEqual({ decision: "inconclusive", evidence: "TargetNotConnected", retry: true });
     expect(classifyStartSession({ ok: false, err: err("ThrottlingException") }).retry).toBe(false);
+  });
+
+  it("list: allowed only when the run's instance is listed, UnauthorizedOperation denied", () => {
+    expect(classifyList({ ok: true, found: true }).decision).toBe("allowed");
+    expect(classifyList({ ok: true, found: false }).decision).toBe("inconclusive");
+    expect(classifyList({ ok: false, err: err("UnauthorizedOperation") })).toEqual({ decision: "denied", evidence: "UnauthorizedOperation" });
+    expect(classifyList({ ok: false, err: err("RequestLimitExceeded") }).decision).toBe("inconclusive");
   });
 });

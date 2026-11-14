@@ -71,7 +71,8 @@ describe("e2e role: the portal role's policies, verbatim", () => {
   });
 
   it("fails when the for_each holds a literal policy instead of a copy", () => {
-    const changed = tf.replace("PortalSSMSession        = aws_iam_role_policy.ssm_session.policy", 'PortalSSMSession        = jsonencode({ Version = "2012-10-17", Statement = [] })');
+    const changed = tf.replace("PortalReadOnly = aws_iam_role_policy.read_only.policy", 'PortalReadOnly = jsonencode({ Version = "2012-10-17", Statement = [] })');
+    expect(changed).not.toBe(tf);
     expect(e2ePolicySources(changed)).toBeNull();
   });
 
@@ -135,7 +136,7 @@ describe("e2e teardown role", () => {
     expect(doc.Statement.flatMap((s) => list(s.Action)).sort()).toEqual(tfActions(block!));
     for (const s of doc.Statement) {
       expect(block!, `Sid ${s.Sid}`).toContain(`"${s.Sid}"`);
-      for (const kv of Object.values(s.Condition ?? {})) for (const k of Object.keys(kv)) expect(block!.replace("${local.e2e_run_tag}", RUN_TAG), k).toContain(`"${k}"`);
+      for (const kv of Object.values(s.Condition ?? {})) for (const k of Object.keys(kv)) expect(block!.replaceAll("${local.e2e_run_tag}", RUN_TAG), k).toContain(`"${k}"`);
     }
     expect(tf).toContain(`e2e_run_tag            = "${RUN_TAG}"`);
   });
@@ -148,14 +149,33 @@ describe("e2e teardown role", () => {
     expect(list(close.Resource)).toEqual([`arn:aws:ssm:us-east-1:\${ACCOUNT_ID}:session/${SESSION_PREFIX}*`]);
     const assume = doc.Statement.find((s) => list(s.Action).includes("sts:AssumeRole"))!;
     expect(list(assume.Resource)).toEqual([`arn:aws:iam::\${ACCOUNT_ID}:role/${E2E_ROLE_NAME}`]);
+    // The setup launch (the read-only portal role can't launch, #645): only
+    // t4g.nano with the run tag, in us-east-1, from an Amazon image, tagged
+    // only within the launch, passing only spored's role, to EC2 only.
+    const sid = (id: string) => doc.Statement.find((x) => x.Sid === id)!;
+    const launch = sid("LaunchE2EInstancesOnly");
+    expect(launch.Condition).toEqual({ Null: { [`aws:RequestTag/${RUN_TAG}`]: "false" }, StringEquals: { "ec2:InstanceType": INSTANCE_TYPE } });
+    expect(list(launch.Resource)).toEqual(["arn:aws:ec2:us-east-1:${ACCOUNT_ID}:instance/*"]);
+    const deps = sid("LaunchE2EInstanceResources");
+    expect(list(deps.Action)).toEqual(["ec2:RunInstances"]);
+    for (const r of list(deps.Resource)) expect(r, r).toMatch(/^arn:aws:ec2:us-east-1:\$\{ACCOUNT_ID\}:(network-interface|security-group|subnet|volume)\/\*$/);
+    expect(sid("LaunchFromAmazonImages").Condition).toEqual({ StringEquals: { "ec2:Owner": "amazon" } });
+    expect(sid("TagE2EInstancesAtLaunch").Condition).toEqual({ StringEquals: { "ec2:CreateAction": "RunInstances" } });
+    const pass = sid("PassSporedRoleToE2EInstances");
+    expect(list(pass.Resource)).toEqual(["arn:aws:iam::${ACCOUNT_ID}:role/spored-instance-role"]);
+    expect(pass.Condition).toEqual({ StringEquals: { "iam:PassedToService": "ec2.amazonaws.com" } });
+    const setup = new Set([launch, deps, sid("LaunchFromAmazonImages"), sid("TagE2EInstancesAtLaunch"), pass]);
     // Every other grant is a read.
-    for (const s of doc.Statement.filter((x) => x !== term && x !== close && x !== assume)) for (const a of list(s.Action)) expect(a, a).toMatch(/^(ec2|ssm):Describe/);
+    for (const s of doc.Statement.filter((x) => x !== term && x !== close && x !== assume && !setup.has(x))) for (const a of list(s.Action)) expect(a, a).toMatch(/^(ec2|ssm):Describe/);
     const block = tfPolicyBlock(tf, "PortalE2ETeardown")!;
     expect(block).toContain('Resource = "arn:aws:ec2:us-east-1:${local.account_id}:instance/*"');
     expect(block).toContain('Null         = { "aws:ResourceTag/${local.e2e_run_tag}" = "false" }');
     expect(block).toContain(`StringEquals = { "ec2:InstanceType" = "${INSTANCE_TYPE}" }`);
     expect(block).toContain(`Resource = "arn:aws:ssm:us-east-1:\${local.account_id}:session/${SESSION_PREFIX}*"`);
     expect(block).toContain("Resource = aws_iam_role.portal_e2e.arn");
+    expect(block).toContain('Resource  = "arn:aws:iam::${local.account_id}:role/${var.spored_instance_role}"');
+    expect(block).toContain('Null         = { "aws:RequestTag/${local.e2e_run_tag}" = "false" }');
+    expect(tf).toMatch(/variable "spored_instance_role" \{[^}]*default = "spored-instance-role"/);
   });
 
   it("the audit role can read both e2e roles, for the drift check", () => {

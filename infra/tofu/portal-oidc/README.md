@@ -16,21 +16,21 @@ It codifies the trust that spawn-ts's demo proved live (see
 - `aws_iam_role.portal_launch` (**`spore-portal-launch`**) — trusts
   `AssumeRoleWithWebIdentity` from that provider, gated on:
   - `auth.globus.org:aud == globus_client_id` (the portal app users log into), and
-  - `auth.globus.org:sub ∈ allowed_globus_subs` (who may launch).
-- Three inline policies:
-  - `PortalEC2Launch`: run, describe and tag (`RunAndInspect`), and Spot price
-    and quota reads (`ReadSpotAndQuotas`). **No Stop, Start or Terminate.** The
-    tag-gated `Lifecycle` statement and the separate `PortalEC2Manage` policy
-    were removed from the live role on 2026-11-10 (#678), so a browser tab can't
-    stop or terminate instances (spawn-ts#126). Slice 3 (#686) brings those
-    actions back under #678's scoped policy and the portal's IAM coverage gate.
-  - `PortalPassSporedProfile`: `iam:PassRole` for `spored-instance-role` (the
-    role inside `spored-instance-profile`), to EC2 only.
-  - `PortalSSMSession`: `ssm:StartSession` on `spawn:managed` instances, for the
-    browser terminal.
+  - `auth.globus.org:sub ∈ allowed_globus_subs` (who may sign in).
+- One inline policy, **`PortalReadOnly`**. The 1.0 portal is read-only (#645):
+  - `ReadInstances`: `ec2:DescribeInstances`, `ec2:DescribeTags` (slice 1, #684);
+  - `ReadPricesAndQuotas`: `ec2:DescribeSpotPriceHistory`,
+    `servicequotas:GetServiceQuota`, `servicequotas:ListServiceQuotas` (slice 2, #688).
+
+  **No RunInstances, CreateTags, iam:PassRole or SSM.** That closes #701
+  (`ssm:StartSession` on every `spawn:managed` instance, for every identity in
+  `allowed_globus_subs`) and #678's unconditioned `ec2:CreateTags` on `*`.
+  Actions come back after 1.0 (#686, #687, #689), each under the portal's IAM
+  coverage gate. The role keeps its name: the portal build (`VITE_ROLE_ARN`),
+  this trust and the drift jobs all name it.
 - The portal's **read-only IAM audit role**, used by the nightly
   `.github/workflows/portal-iam-live.yml` (SimulateCustomPolicy over
-  `web/portal/iam/fixtures/` and the drift check of the three policies above
+  `web/portal/iam/fixtures/` and the drift check of the policy above
   against `web/portal/iam/policies/portal-launch-role.json`):
   - `aws_iam_openid_connect_provider.github`: `https://token.actions.githubusercontent.com`,
     audience `sts.amazonaws.com`.
@@ -51,8 +51,8 @@ It codifies the trust that spawn-ts's demo proved live (see
   `web/portal/gates/iam-e2e-roles.test.ts` keeps that file identical to this
   root.
   - `aws_iam_role.portal_e2e` (**`spore-portal-e2e`**) has **no policy of its
-    own**. `aws_iam_role_policy.portal_e2e` gives it the three portal policies
-    above, by name, copied from those resources. The harness therefore proves
+    own**. `aws_iam_role_policy.portal_e2e` gives it the portal's
+    `PortalReadOnly`, by name, copied from that resource. The harness therefore proves
     the portal role's grants: its effective permissions equal the portal
     role's. The nightly drift job fails when the deployed e2e role's policies
     differ, or when either role gains a permissions boundary.
@@ -65,18 +65,24 @@ It codifies the trust that spawn-ts's demo proved live (see
   - `aws_iam_role.portal_e2e_teardown` (**`spore-portal-e2e-teardown`**) is
     what CI signs in as. It trusts GitHub OIDC for
     `repo:spore-host/spore-host:ref:refs/heads/main` only. Its
-    `PortalE2ETeardown` policy grants four things:
-    - the leak check's `Describe*` reads;
+    `PortalE2ETeardown` policy grants five things:
+    - the leak check's `Describe*` reads, and `ec2:DescribeImages` for the
+      setup launch's AMI;
+    - the **setup launch** of the run's two test instances, since the
+      read-only portal role can't launch: `ec2:RunInstances` only for a t4g.nano
+      carrying `spore-host:e2e-run`, in us-east-1, from an Amazon image;
+      `ec2:CreateTags` only within the launch; `iam:PassRole` on
+      `spored-instance-role`, to EC2 only;
     - `ec2:TerminateInstances` only on t4g.nano instances carrying
-      `spore-host:e2e-run`. The instance type bounds what a tag forged through
-      the `ec2:CreateTags`-on-`*` gap (#678) can reach;
+      `spore-host:e2e-run`. The instance type bounds what a tag forged by any
+      other principal can reach;
     - `ssm:TerminateSession` on `spore-e2e-*` sessions only;
     - `sts:AssumeRole` on `spore-portal-e2e`.
 
     Locally, the operator's own credentials play this part.
 
-Keep `web/portal/iam/policies/portal-launch-role.json` identical to the three
-portal policies here: `web/portal/gates/iam-policy-source.test.ts` fails on a
+Keep `web/portal/iam/policies/portal-launch-role.json` identical to the
+portal policy here: `web/portal/gates/iam-policy-source.test.ts` fails on a
 mismatch, and the nightly job fails when the deployed role differs from it.
 
 ## Where it deploys
@@ -137,9 +143,7 @@ in [`../README.md`](../README.md)):
 tofu import -var="globus_client_id=<portal-globus-client-uuid>" \
   aws_iam_openid_connect_provider.globus arn:aws:iam::435415984226:oidc-provider/auth.globus.org
 tofu import -var="globus_client_id=<uuid>" aws_iam_role.portal_launch spore-portal-launch
-tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.ec2_launch spore-portal-launch:PortalEC2Launch
-tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.pass_spored_profile spore-portal-launch:PortalPassSporedProfile
-tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.ssm_session spore-portal-launch:PortalSSMSession
+tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.read_only spore-portal-launch:PortalReadOnly
 
 tofu import -var="globus_client_id=<uuid>" \
   aws_iam_openid_connect_provider.github arn:aws:iam::435415984226:oidc-provider/token.actions.githubusercontent.com
@@ -148,9 +152,7 @@ tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.portal_iam_audit 
 
 # The e2e roles, once created ("E2E roles" below).
 tofu import -var="globus_client_id=<uuid>" aws_iam_role.portal_e2e spore-portal-e2e
-tofu import -var="globus_client_id=<uuid>" 'aws_iam_role_policy.portal_e2e["PortalEC2Launch"]' spore-portal-e2e:PortalEC2Launch
-tofu import -var="globus_client_id=<uuid>" 'aws_iam_role_policy.portal_e2e["PortalPassSporedProfile"]' spore-portal-e2e:PortalPassSporedProfile
-tofu import -var="globus_client_id=<uuid>" 'aws_iam_role_policy.portal_e2e["PortalSSMSession"]' spore-portal-e2e:PortalSSMSession
+tofu import -var="globus_client_id=<uuid>" 'aws_iam_role_policy.portal_e2e["PortalReadOnly"]' spore-portal-e2e:PortalReadOnly
 tofu import -var="globus_client_id=<uuid>" aws_iam_role.portal_e2e_teardown spore-portal-e2e-teardown
 tofu import -var="globus_client_id=<uuid>" aws_iam_role_policy.portal_e2e_teardown spore-portal-e2e-teardown:PortalE2ETeardown
 ```
@@ -172,18 +174,18 @@ P=web/portal/iam/policies
 D="$HOME/.xtmp/e2e-iam"; mkdir -p "$D"
 r() { sed -e 's/[$]{ACCOUNT_ID}/435415984226/g' -e 's/[$]{SPORED_INSTANCE_ROLE}/spored-instance-role/g'; }
 
-# spore-portal-e2e: the portal role's three policies, verbatim.
+# spore-portal-e2e: the portal role's policy, verbatim.
 jq '.roles["spore-portal-e2e"].trust' "$P/portal-e2e-roles.json" | r > "$D/e2e-trust.json"
 aws iam create-role --role-name spore-portal-e2e --max-session-duration 3600 \
   --description "Portal real-AWS e2e: the portal role's policies, assumable by same-account operators and the e2e teardown role (spore-host#683). Deleter: infra/tofu/portal-oidc." \
   --tags Key=spore-host:component,Value=portal-e2e \
   --assume-role-policy-document "file://$D/e2e-trust.json"
-for n in PortalEC2Launch PortalPassSporedProfile PortalSSMSession; do
+for n in PortalReadOnly; do
   jq ".policies.$n" "$P/portal-launch-role.json" | r > "$D/$n.json"
   aws iam put-role-policy --role-name spore-portal-e2e --policy-name "$n" --policy-document "file://$D/$n.json"
 done
 
-# spore-portal-e2e-teardown: CI's observer and teardown.
+# spore-portal-e2e-teardown: CI's setup, observer and teardown.
 jq '.roles["spore-portal-e2e-teardown"].trust' "$P/portal-e2e-roles.json" | r > "$D/teardown-trust.json"
 jq '.roles["spore-portal-e2e-teardown"].policies.PortalE2ETeardown' "$P/portal-e2e-roles.json" | r > "$D/teardown-policy.json"
 aws iam create-role --role-name spore-portal-e2e-teardown --max-session-duration 3600 \
