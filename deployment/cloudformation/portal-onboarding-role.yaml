@@ -213,16 +213,26 @@ Resources:
                 Condition:
                   StringEquals:
                     'ssm:resourceTag/spawn:managed': 'true'
-              # The session document, deliberately NOT tag-conditioned and so a
+              # The session documents, deliberately NOT tag-conditioned and so a
               # separate statement: a document carries no spawn:managed tag, so
               # folding it into the statement above would deny every session. This
               # grants the use of a shell document; the statement above decides which
               # targets it may be pointed at.
+              #
+              # SSM-SessionManagerRunShell is THIS account's Session Manager
+              # preferences document, so its ARN carries the account ID. The
+              # account-less form (arn:aws:ssm:*::document/...) names only
+              # AWS-owned documents and denied every StartSession (#726), the
+              # same bug infra/tofu/portal-oidc fixed for the live portal role.
+              # The two must grant the same documents:
+              # web/portal/gates/iam-onboarding-template.test.ts fails otherwise.
               - Sid: SSMSessionDocument
                 Effect: Allow
                 Action:
                   - ssm:StartSession
-                Resource: 'arn:aws:ssm:*::document/SSM-SessionManagerRunShell'
+                Resource:
+                  - 'arn:aws:ssm:*:*:document/AWS-StartInteractiveCommand'
+                  - !Sub 'arn:aws:ssm:*:${AWS::AccountId}:document/SSM-SessionManagerRunShell'
               - Sid: SSMSessionManage
                 Effect: Allow
                 Action:
