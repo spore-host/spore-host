@@ -1,0 +1,5 @@
+# OpenTofu — never commit state (contains resource metadata / potential secrets) or local caches
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
