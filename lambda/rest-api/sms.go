@@ -70,8 +70,15 @@ func handleSMSIncoming(ctx context.Context, req events.APIGatewayV2HTTPRequest) 
 		return twilioResp("")
 	}
 
-	pending, err := fetchPending(ctx, smsPendingKey(to, from))
-	if err != nil || pending == nil {
+	pending, err := fetchPending(ctx, nil, smsPendingKey(to, from))
+	if err != nil {
+		// A failed lookup is not "no row" (#727): a table created with the wrong
+		// key schema failed every GetItem, and each reply was told nothing was
+		// pending while the cause went unlogged.
+		log.Printf("sms: pending-reply lookup failed: %v", err)
+		return twilioResp("Could not look up your notification. Try again, or use the spore.host CLI.")
+	}
+	if pending == nil {
 		return twilioResp("No pending notification. Use the spore.host CLI or Slack bot to manage your instances.")
 	}
 
@@ -356,15 +363,33 @@ func validateTwilioSignature(req events.APIGatewayV2HTTPRequest, authToken strin
 	return hmac.Equal([]byte(expected), []byte(sig))
 }
 
-func fetchPending(ctx context.Context, key string) (*smsPendingNotification, error) {
-	cfg, _ := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
-	out, err := dynamodb.NewFromConfig(cfg).GetItem(ctx, &dynamodb.GetItemInput{
+// pendingGetter is the one DynamoDB call fetchPending makes.
+type pendingGetter interface {
+	GetItem(ctx context.Context, in *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
+}
+
+// fetchPending reads the pending reply stored under key. (nil, nil) means no
+// row; an error means the lookup itself failed (AWS config, permissions, or a
+// table whose partition key is not pending_key) and must not be reported to the
+// user as "nothing pending". A nil client uses the default AWS config.
+func fetchPending(ctx context.Context, client pendingGetter, key string) (*smsPendingNotification, error) {
+	if client == nil {
+		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+		if err != nil {
+			return nil, fmt.Errorf("load AWS config: %w", err)
+		}
+		client = dynamodb.NewFromConfig(cfg)
+	}
+	out, err := client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(smsPendingTable),
 		Key: map[string]dynamodbtypes.AttributeValue{
 			"pending_key": &dynamodbtypes.AttributeValueMemberS{Value: key},
 		},
 	})
-	if err != nil || out.Item == nil {
+	if err != nil {
+		return nil, fmt.Errorf("get %s: %w", smsPendingTable, err)
+	}
+	if out.Item == nil {
 		return nil, nil
 	}
 	get := func(k string) string {
