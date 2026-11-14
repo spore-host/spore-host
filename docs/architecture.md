@@ -61,16 +61,24 @@ experimental chat control and notifications, whose hosted deployment is
 decommissioned) in the spore.host-infra account. They never run your workloads and
 never hold your credentials — for chat control they **assume a narrow
 cross-account IAM role you explicitly create**, scoped to specific EC2 actions.
-You can run entirely without them (`lagotto poll --daemon`, no chat integration),
-in which case nothing leaves your account at all.
+You can run entirely without them (`lagotto poll --daemon`, no chat integration,
+`--no-dns` or a [self-hosted DNS updater](/guides/self-hosting)), in which case
+nothing leaves your account at all.
 
 **What metadata leaves my account?**
-Only what you opt into. If you enable chat notifications (experimental, not part
-of 1.0, and only with a [self-hosted spore-bot](/spore-bot-self-hosting) now that
-the hosted one is decommissioned), spored sends lifecycle *events* (instance
-nickname, state, TTL countdown — no credentials, no data from the instance) to
-that notification Lambda so it can DM you. With no integrations enabled, nothing
-leaves your account.
+- **DNS registration, on by default.** At boot spored registers
+  `<name>.<account-label>.spore.host` with spore.host's DNS updater: the record
+  name and the instance's public IP, in a request signed with the instance role,
+  so the updater also learns the account and instance. `spawn launch --no-dns`
+  or `dns.enabled: false` turns it off, and a
+  [self-hosted updater](/guides/self-hosting) keeps it in your account.
+- **Chat notifications, only if you opt in** (experimental, not part of 1.0, and
+  only with a [self-hosted spore-bot](/spore-bot-self-hosting) now that the hosted
+  one is decommissioned). spored sends lifecycle *events* (instance nickname,
+  state, TTL countdown — no credentials, no data from the instance) to that
+  notification Lambda so it can DM you.
+
+Nothing else: no telemetry, no credentials, no workload data.
 
 **Does the HTTP API change this?**
 Yes. The [Python SDK](/guides/python-sdk) talks to a beta HTTP API that

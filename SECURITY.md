@@ -1,901 +1,448 @@
 # Security Overview for spore.host
 
-**Audience:** CISOs, Cloud Administrators, Security Engineers
+**Audience:** CISOs, cloud administrators, security engineers.
 
-**Purpose:** Security assessment and operational guidance for deploying spore.host tools in AWS environments.
+This page describes what the spore.host tools can do in your AWS account, as
+the code stands today. Each section ends with **Where to check**: the repo and
+path that does what the section describes. The releases named here are the
+first ones that behave this way. Every spore.host component is pre-1.0 (0.x).
 
-> **The name is spore.host, but spore.host is not the host.** It never holds your
-> AWS credentials and never runs your compute. Everything runs in **your own AWS
-> account** with **your own credentials**. For the full trust/data-flow map, see
-> [Security, credentials & data flow](docs/architecture.md).
-
----
-
-## Executive Summary
-
-**spore.host** is a suite of command-line tools (plus one in-instance agent) for
-AWS EC2 instance discovery and ephemeral, self-terminating compute. Its
-components:
-
-- **truffle** — EC2 instance-type / price / quota search (read-only).
-- **spawn** — EC2 instance launcher and lifecycle manager (read/write).
-- **spored** — the in-instance agent spawn installs on every instance; enforces
-  TTL, idle, completion, and cost rules from *inside* the instance.
-- **lagotto** — capacity watcher that waits for scarce instance types and launches
-  when they appear.
-- **spore-bot** — optional chat control (Slack/Teams) via a hosted Lambda.
-- **MCP server** — exposes a read-mostly subset of operations to AI assistants
-  (search, status, stop, terminate, extend — **no launch**).
-- **plugin registry** ([spore-plugins](https://github.com/spore-host/spore-plugins)) —
-  optional post-launch software installers; official plugins are **cosign-signed**
-  and verified by spawn before install (see §4).
-
-**Security Model:** your credentials never leave your machine; least-privilege
-IAM; explicit resource tagging; in-instance lifecycle enforcement with an
-out-of-band backstop; automatic cleanup of ephemeral resources.
-
-**Risk Profile:** Medium — requires EC2 launch permissions and one-time IAM role
-creation for the spored instance profile.
-
-**Compliance:** spore.host does not centrally receive or store workload data.
-Supports CloudTrail auditing and resource tagging; compliance obligations remain
-with the user's AWS environment, configuration, and controls (see §5).
+> **Reporting a vulnerability:** use GitHub private vulnerability reporting.
+> See [Reporting a vulnerability](#reporting-a-vulnerability). Please don't
+> open a public issue.
 
 ---
 
-## 1. Architecture Overview
+## Summary
 
-### truffle (Read-Only Tool)
+spore.host is a set of command-line tools, plus one in-instance agent, for
+finding EC2 capacity and running ephemeral instances that end themselves. The
+tools act in **your** AWS account with **your** credentials. spore.host holds
+no credentials of yours and runs none of your compute.
 
-**Purpose:** Search and compare EC2 instance types across regions
-
-**AWS Services Used:**
-- EC2 DescribeInstanceTypes (read-only)
-- EC2 DescribeRegions (read-only)
-- EC2 DescribeAvailabilityZones (read-only)
-
-**Security Posture:** Zero write permissions, no resource creation
-
-**Data Access:** Only AWS service metadata (pricing, specifications)
-
-**Risk Assessment:** **LOW** - Cannot modify infrastructure
-
----
-
-### spawn (Instance Launcher)
-
-**Purpose:** Launch ephemeral EC2 instances with automatic termination
-
-**AWS Services Used:**
-- **EC2:** Launch, terminate, and query instances
-- **IAM:** Create service role for spored agent (once per account)
-- **SSM Parameter Store:** Query latest Amazon Linux AMI IDs
-- **S3:** Download spored agent binary (public read, SHA256-verified)
-
-**Security Posture:** Requires EC2 launch permissions and limited IAM role creation
-
-**Resource Lifecycle:** Automatic cleanup via TTL and idle detection
-
-**Risk Assessment:** **MEDIUM** - Can launch instances (cost implications)
+| Component | What it does | Can it change your account? |
+|---|---|---|
+| **truffle** | Instance-type, price, quota and capacity search | No. Read-only calls only. |
+| **spawn** | Launches and manages instances; creates the instance roles they run under | Yes |
+| **spored** | Agent on every spawn instance: TTL, idle, completion and cost limits, DNS registration | Yes, but only on its own instance (below) |
+| **lagotto** | Watches for capacity and launches when it appears; optional hosted poller in your account | Yes, through the launch settings you give a watch |
+| **spore-host-mcp** | MCP server for AI assistants: truffle search, spawn list/status/stop/extend/terminate, `spawn_task_run`, lagotto watches | Yes. It can launch billable instances (TTL required), stop and terminate (terminate needs a confirming second call), and create watches |
+| **spore-bot** | Chat control and notifications (Slack, Teams, Discord) | **Experimental, off by default; the hosted bot is decommissioned** (below) |
+| **plugins** ([spore-plugins](https://github.com/spore-host/spore-plugins)) | Optional post-launch installers | Run as root on the instance you install them on |
 
 ---
 
-## 2. IAM Permissions Required
+## What leaves your account
 
-### For truffle (Read-Only)
+- **AWS APIs** in the regions you choose, called with your credentials.
+- **The spored binary** is downloaded from a public, regional S3 bucket
+  (`spawn-binaries-<region>`) and verified before it runs (see
+  [Supply chain](#supply-chain)).
+- **DNS registration, on by default.** At boot spored registers
+  `<name>.<account-slug>.spore.host` with spore.host's DNS updater, a Lambda
+  in the spore.host infra account (966362334030). The request carries the
+  record name, the instance's public IP and the action. It is SigV4-signed with
+  the instance role, so the updater also learns the caller's account and
+  instance. `spawn launch --no-dns` (or `dns.enabled: false` in
+  `~/.spawn/config.yaml`) turns it off, and a
+  [self-hosted updater](docs/guides/self-hosting.md) keeps it in your account.
+- **Chat notifications**, only if you opt into the experimental chat
+  integration and run your own spore-bot (see [spore-bot](#spore-bot)).
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeInstanceTypes",
-        "ec2:DescribeRegions",
-        "ec2:DescribeAvailabilityZones"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+There is no telemetry or analytics.
 
-**Compatible with:** ReadOnlyAccess, ViewOnlyAccess, PowerUserAccess
-
----
-
-### For spawn (Minimum Required)
-
-See `spawn/IAM_PERMISSIONS.md` for complete policy.
-
-**Summary:**
-- **EC2:** Launch, terminate, describe instances (standard compute access)
-- **IAM:** Create `spored-instance-role` and `spored-instance-profile` (one-time setup)
-- **SSM:** Read `/aws/service/ami-amazon-linux-latest/*` (AMI auto-detection)
-
-**Compatible with:** the least-privilege baseline in `docs/reference/iam-permissions.md` (see below). Not with PowerUserAccess plus IAM grants.
-
-**NOT Compatible with:** PowerUserAccess alone (missing IAM permissions)
+**Where to check:** `spawn/pkg/dns/client.go` (`DNSUpdateRequest`,
+`signRequest`); `spawn/pkg/config/endpoints.go` (`DefaultDNSFunctionARN`);
+`spawn/cmd/launch_flags.go` (`--no-dns`); [docs/architecture.md](docs/architecture.md).
 
 ---
 
-### PowerUser + spawn IAM Policy
+## Permissions for your own identity
 
-Don't pair `PowerUserAccess` with spawn's IAM grants. `PowerUserAccess`
-grants `ec2:CreateTags` on every resource with no condition, which defeats
-spawn's grants that are scoped by the `spawn:managed` tag. Use the
-[recommended least-privilege baseline](docs/reference/iam-permissions.md#recommended-least-privilege-baseline)
-instead.
+### truffle
 
-An earlier version of this section gave a supplementary policy granting
-`iam:CreateRole`, `iam:PutRolePolicy` and `iam:PassRole` on
-`spored-instance-role` with no permissions boundary. Remove it if you
-applied it. Holding those three together with `ec2:RunInstances` lets a
-caller give an instance any permissions. The baseline grants spawn's role
-writes only on roles carrying spawn's permissions boundary.
+truffle calls only read APIs:
 
----
+- **EC2:** `DescribeInstanceTypes`, `DescribeInstanceTypeOfferings`,
+  `DescribeRegions`, `DescribeAvailabilityZones`, `DescribeInstances`,
+  `DescribeSpotPriceHistory`, `DescribeCapacityReservations`,
+  `DescribeCapacityBlockOfferings` and `GetSpotPlacementScores`;
+- **Price List:** `pricing:GetProducts`;
+- **Service Quotas:** `servicequotas:GetServiceQuota` and `ListServiceQuotas`.
 
-## 3. IAM Role Created by spawn
+It makes no write call. `ReadOnlyAccess` covers it.
 
-### spored-instance-role
+**Where to check:** `truffle/pkg/aws/` (every SDK call); the quota statement in
+[docs/reference/iam-permissions.md](docs/reference/iam-permissions.md#service-quotas).
 
-**Purpose:** Allows spored agent (running on EC2 instances) to self-manage based on tags
+### spawn
 
-**Trust Policy:**
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "ec2.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-```
+Use the
+[recommended least-privilege baseline](docs/reference/iam-permissions.md#recommended-least-privilege-baseline).
+Each of its actions is traced to the spawn code that calls it. Its properties:
 
-**Permissions Policy:**
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeTags",
-        "ec2:DescribeInstances"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:TerminateInstances",
-        "ec2:StopInstances"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "ec2:ResourceTag/spawn:managed": "true"
-        }
-      }
-    }
-  ]
-}
-```
+- **IAM writes need spawn's permissions boundary.** `iam:CreateRole`,
+  `iam:PutRolePolicy` and `iam:AttachRolePolicy` on spawn's instance roles are
+  allowed only when the role carries the boundary
+  `arn:aws:iam::<account>:policy/spore-host/spawn-instance-boundary`. Explicit
+  Denies refuse edits to the boundary and `DeleteRolePermissionsBoundary`.
+- **Ownership tags are written only at creation.** `ec2:CreateTags` is allowed
+  only inside the request that creates a resource (`ec2:CreateAction`), except
+  for spawn's own `spawn:*` and `spore:plugin:*` keys on instances already
+  tagged `spawn:managed=true`. An explicit Deny refuses writing or deleting the
+  ownership keys (`spawn:managed` and the others listed on the page) on an
+  existing resource.
+- **Stop, start, terminate and `ssm:SendCommand` are conditioned on
+  `spawn:managed=true`.** The scoping above keeps that tag from being added to
+  an instance spawn didn't launch.
 
-**Security Controls:**
-- ✅ Can only terminate/stop instances tagged `spawn:managed=true`
-- ✅ Cannot terminate instances launched by other tools
-- ✅ Cannot modify IAM policies
-- ✅ Cannot access S3, databases, or other AWS services
-- ✅ Scoped to EC2 instance lifecycle only
+**Don't use `PowerUserAccess` for spawn.** It grants `ec2:CreateTags` on every
+resource with no condition, so its holder can put `spawn:managed=true` on any
+instance, and every tag-scoped grant stops being scoped. An earlier version of
+this page and of the baseline allowed IAM role writes with no boundary, which
+let a holder give an instance any permissions
+([GHSA-grc9-fj4x-rx6w](https://github.com/spore-host/spore-host/security/advisories/GHSA-grc9-fj4x-rx6w)).
+Remove it if you applied it.
+
+**One-time administrator step.** An administrator creates the boundary once per
+account with `spawn setup-account` (spawn v0.164.0+), or the first launch an
+administrator runs creates it. The baseline cannot create it, on purpose. Until it exists, a launch that must create or update an
+instance role is refused, and the error names the command.
+`spawn cleanup --instance-roles` deletes the boundary once no role uses it.
+
+**Which instances spawn acts on.** spawn's list, stop, terminate and cleanup
+commands select instances tagged `spawn:managed=true`. Under the baseline,
+IAM enforces this as well, for the reasons above. Under a broader policy, such
+as administrator credentials, spawn can do whatever that policy allows. The
+tag filter is a CLI convention, not a guarantee.
+
+**Where to check:** [docs/reference/iam-permissions.md](docs/reference/iam-permissions.md);
+`scripts/check_iam_doc_policies.py` (CI: no unconditioned `ec2:CreateTags`, no
+role write without a boundary condition); `spawn/cmd/setup_account.go`;
+`spawn/pkg/aws/iam_boundary.go`; `spawn/pkg/aws/client.go` (`ListInstancesInRegions`,
+filter `tag:spawn:managed`).
 
 ---
 
-## 4. Security Features
+## Roles spawn creates for instances
 
-### Automatic Resource Cleanup
+spawn creates `spored-instance-role` (with `spored-instance-profile`), the
+`spawn-instance-*` family (for `--iam-*` launches), `spawn-instance-app` (for
+`spawn app launch`), worker-pool roles and the cross-account sweep role. Since
+spawn v0.164.0, **every one of them carries the permissions boundary**: at
+`CreateRole` for a new role, and with `PutRolePermissionsBoundary`, before any
+policy is written, for an existing one.
 
-**TTL (Time-To-Live):**
-- User specifies maximum instance lifetime (e.g., `--ttl 8h`)
-- spored agent monitors uptime
-- Terminates instance when TTL expires
-- **Benefit:** Prevents forgotten instances running indefinitely
+### The permissions boundary
 
-**Idle Detection:**
-- User specifies idle timeout (e.g., `--idle-timeout 30m`)
-- spored monitors SSH sessions and CPU utilization
-- Terminates or hibernates when idle threshold reached
-- **Benefit:** Reduces cost for intermittent workloads
+The boundary allows a broad data-plane ceiling, and denies:
 
-**Laptop Independence:**
-- spored runs as systemd service on the instance (not laptop)
-- Auto-termination works even if laptop is off or disconnected
-- **Benefit:** Prevents orphaned resources from VPN disconnections
+- IAM administration;
+- `organizations:*` and `account:*`;
+- `sts:AssumeRole` into another account (`aws:ResourceAccount` differs from
+  `${aws:PrincipalAccount}`).
 
----
+Whatever is written onto a role, including your own `--iam-policy-file` or
+`--iam-managed-policies`, an instance can't use it to escalate in IAM or reach
+another account.
 
-### Resource Tagging
+**What it doesn't do:** within the ceiling, a caller can still give an instance
+data-plane access the caller doesn't hold, for example S3 on a bucket their own
+identity can't read. IAM can't express "role ⊆ caller". If that matters to you,
+narrow the boundary's resource scopes, or launch with `--instance-profile`
+naming a profile you manage.
 
-All instances launched by spawn are tagged:
+### What spored's role can reach
 
-```
-spawn:managed = true
-spawn:root = true
-spawn:created-by = spawn
-spawn:version = <spawn version that launched it>
-spawn:ttl = <duration>           (if specified)
-spawn:idle-timeout = <duration>  (if specified)
-```
+`spored-instance-role` (grant schema 3, spawn v0.164.0+) holds:
 
-**Benefits:**
-- Cost allocation and chargeback
-- Automated cleanup policies (AWS Config, Lambda)
-- Compliance reporting (which instances have TTL?)
-- Security auditing (CloudTrail queries by tag)
+- **EC2 reads on `*`:** `DescribeTags`, `DescribeInstances`, `DescribeVolumes`
+  and `DescribeSpotPriceHistory`. Describe calls can't be resource-scoped, so
+  an instance can read every instance's tags in the account.
+- **Changes to its own instance only:** `CreateTags`/`DeleteTags`,
+  `StopInstances` and `TerminateInstances`, all conditioned on
+  `aws:ARN == ${ec2:SourceInstanceARN}`. Explicit Denies retire the account-wide
+  forms that CLIs up to v0.161.0 still write.
+  - An instance can't write the keys the reaper and the dashboard act on, even
+    on itself: `spawn:managed`, `spawn:launch-time`, `spawn:pre-stop`,
+    `spawn:pre-stop-timeout`, `spawn:local-username`, `spawn:config`,
+    `spawn:iam-user`, `spawn:nested-parent` and the Elastic IP ownership keys.
+  - `CancelSpotInstanceRequests` is allowed on `spawn:managed=true` requests.
+  - It may release only an Elastic IP tagged with its own instance ARN.
+- **S3 reads:**
+  - the public `spawn-binaries-*` buckets;
+  - `spawn-schedules-*`;
+  - `dcv-license.*` objects;
+  - its own launch-config object. spored refuses an object that doesn't hash
+    to the instance's `spawn:config` tag.
+- **Other services:**
+  - `lambda:InvokeFunctionUrl` on spore.host's DNS updater;
+  - ECR image pull;
+  - FSx describe and `CreateDataRepositoryAssociation`, plus
+    `iam:CreateServiceLinkedRole` limited to the FSx-S3 service;
+  - four item-level DynamoDB actions on `spawn-hybrid-registry` in its own
+    account.
+- **SSM:** the AWS-managed `AmazonSSMManagedInstanceCore`, so the instance
+  registers with Session Manager.
+- **An explicit Deny on the account's wildcard TLS key.** Only
+  `spawn-instance-app` may read it.
 
----
+So code running on a spawn instance can read the account's instance metadata
+and tags and the S3 objects above. It can't stop, terminate or retag another
+instance, and it can't change IAM. `--nested-spawn` heads may also manage the
+children they launched, which are tagged at launch with the head's
+`aws:userid`, and nothing else.
 
-### Binary Distribution Security
-
-**How spored reaches an instance:** at boot, the instance's user-data downloads
-the spored binary and a `.sha256` checksum from a public, regional S3 bucket
-(`spawn-binaries-<region>`), verifies the checksum, then installs and runs it.
-
-**Two layers protect the download:**
-
-- ✅ **Publisher signature (authenticity).** As of spawn v0.91.1, each spored
-  binary is signed with a spore.host-held **KMS asymmetric key** (ECDSA_SHA_256,
-  `kms:Sign` — the private key never leaves KMS), and the `.sig` is published
-  alongside the binary. The bootstrap verifies that signature with `openssl`
-  against a public key **compiled into spawn** — whose own release is
-  independently trusted via Homebrew / GitHub Releases — *before executing
-  spored*, and **fails closed** on a missing or invalid signature. Because the
-  trust root is the spawn binary, **not** the S3 bucket, an attacker who rewrites
-  the bucket cannot forge a signature without the KMS key. (spore-host#440)
-- ✅ **Corruption detection.** The `.sha256` still guards against an incomplete or
-  corrupted download (truncated transfer, bit-rot) as a cheap first check.
-
-Why the checksum alone was not enough (and why the signature was added): the
-`.sha256` is served from the **same bucket** as the binary, so an attacker who
-could modify the binary could also replace the checksum — a same-origin checksum
-proves integrity (not corrupted) but **not authenticity** (from the real
-publisher). The signature closes that gap by moving the trust root out of the
-bucket.
-
-> **Related — plugin signing.** Official **plugins** in the registry are also
-> signed, but with cosign/sigstore keyless (GitHub Actions OIDC → Fulcio/Rekor),
-> verified by spawn before install (§4, *Plugin supply chain*). Plugins use
-> keyless; the spored *binaries* use the KMS key above, because the bootstrap
-> verifies at boot in bash before any sigstore tooling exists.
-
-**S3 Bucket Policy (public read, restricted write):**
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "PublicReadSporedBinaries",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::spawn-binaries-*/spored-*"
-    }
-  ]
-}
-```
-Write access to the bucket is restricted to the release pipeline; public access
-is read-only for the binary objects.
+**Where to check:** `spawn/pkg/aws/iam.go` (`sporedDCVRolePolicy`,
+`sporedSelfManagementStatements`, `reaperControlTagKeys`);
+`spawn/pkg/aws/iam_instance_scope.go`; `spawn/pkg/aws/iam_policy_schema.go`
+(schema history); `spawn/pkg/aws/iam_boundary.go`; `spawn/CHANGELOG.md` 0.164.0.
 
 ---
 
-### Plugin supply chain
+## Instance hardening
 
-Optional plugins (post-launch software installers) are resolved and, for official
-plugins, cryptographically verified before anything runs:
+- **IMDSv2 on every launch** (spawn v0.165.0+): `HttpTokens=required` with a
+  hop limit of 1. That covers `spawn launch`, sweeps, pipeline stages, nested
+  spawn, `spawn app`, `spawn task run` and `pkg/launcher` callers such as
+  lagotto. The exceptions are hop limit 2 for a `spawn task run` container and
+  for `pkg/launcher` container launches, whose bridged container needs the
+  instance role, and `--imds-hop-limit` when you set it. Web-app containers
+  keep 1, so a publicly reachable app can't fetch the role's credentials.
+- **Security groups spawn creates** (spawn v0.165.0+):
+  - The DCV (`spawn-dcv`), web (`spawn-web`) and MPI (`spawn-mpi-*`) groups
+    don't open SSH to the internet. When spawn reuses such a group created by
+    an older release, it removes a `0.0.0.0/0` or `::/0` SSH rule.
+  - The DCV and web groups do open their service ports (DCV 8443, HTTPS 443)
+    to the internet. That's what they're for.
+  - `spawn app launch` refuses an existing `spawn-dcv`/`spawn-web` group that
+    isn't tagged `spawn:managed=true`.
+  - **Windows:** with no `--security-group-ids`, a Windows launch creates
+    `spawn-windows-<name>`, opening RDP (3389) and SSH (22) to `--allow-cidr`.
+    The default is `0.0.0.0/0`, with a printed warning. Pass
+    `--allow-cidr <your-ip>/32`, or your own group.
+  - `spawn connect` uses SSM Session Manager when no group admits SSH.
+- **No session tokens in tags** (spawn v0.164.0+). DCV and web-app session
+  tokens are minted on your machine. Only their SHA-256 is registered on the
+  instance, over SSM. Each expires (12 hours by default), and a stop/start
+  clears them all. spored deletes the token-bearing tags an older spored left.
+- **Plugin values sealed over SSM** (spawn v0.164.0+). `spawn plugin` calls that
+  go over SSM are encrypted end to end to a single-use key held only in
+  spored's memory (HPKE, ML-KEM-768 + X25519), so plugin config never sits in
+  clear in SSM command history. spawn refuses the SSM path to a spored too old
+  to support it.
+- **Secrets stay out of user data** (spawn v0.165.0+). A launch refuses a
+  plugin declaration whose config sets a secret-looking key, because user data
+  is readable with `ec2:DescribeInstanceAttribute`. Set secrets after launch
+  with `spawn plugin install … --config`. `/etc/spawn/plugins.json` is 0600.
+- **`spawn connect --rdp`** (spawn v0.165.0+). The instance generates the
+  Administrator password and returns it encrypted to a single-use key held by
+  your running `spawn`, so the SSM command history holds no password.
+- **Local files** (spawn v0.165.0+): `~/.spawn`, `~/.spawn/sessions` and
+  `~/.spawn/sweeps` are 0700, and session files are 0600.
 
-- Official plugin releases are **cosign-signed keyless** in CI (a GitHub Actions
-  OIDC identity → Fulcio certificate + Rekor transparency-log entry).
-- `spawn` verifies the signature by default for an official versioned reference,
-  pinning the signing identity to the spore-plugins release workflow. A missing or
-  invalid signature is a hard failure (`--insecure` bypasses it for local dev).
-- Each plugin also ships a checksum manifest verified against the fetched
-  `plugin.yaml`, and a plugin's declared `permissions:` block is enforced against
-  its steps at publish time.
-
-This closes the "who authored this code that runs on my instance" question for
-plugins. See the [registry supply-chain design](https://github.com/spore-host/spore-plugins).
+**Where to check:** `spawn/pkg/aws/imds.go`; `spawn/pkg/aws/securitygroup.go`
+(`retireWorldSSH`, `CreateOrGetWindowsSecurityGroup`); `spawn/cmd/launch_single.go`;
+`spawn/cmd/spored/access_token.go`; `spawn/pkg/pushseal/`; `spawn/CHANGELOG.md`
+0.164.0 and 0.165.0.
 
 ---
 
-### SSH Key Management
+## Supply chain
 
-**Fingerprint-Based Key Reuse:**
-- spawn calculates MD5 fingerprint of local SSH public key
-- Searches AWS EC2 for existing key pair with matching fingerprint
-- Reuses existing key if found (no duplicate uploads)
-- Only uploads if no matching key exists
+- **spored binaries.** Each release is signed with a spore.host KMS asymmetric
+  key (ECDSA P-256; the private key never leaves KMS). The bootstrap verifies
+  the signature with `openssl`, against a public key compiled into spawn,
+  before spored runs, and fails closed (spawn v0.91.1+). The trust root is the
+  spawn binary, not the bucket. Since v0.165.0, each release also signs a
+  manifest of the binary's name, version and SHA-256 (`<name>.msig`). The Linux
+  and Windows installers rebuild it from what they asked for and what they
+  downloaded, so an older signed spored, or another architecture's, at the
+  current path is refused. The `.sha256` beside each binary catches a corrupt
+  download, and only that: it comes from the same bucket.
+- **Windows bootstrap** (v0.165.0+). It runs the AWS CLI MSI and the SSM agent
+  installer only if they carry a valid Amazon Authenticode signature.
+- **Amazon DCV install** (v0.165.0+). The signing key must import and every
+  RPM must pass `rpm -K`. Otherwise nothing installs.
+- **Plugins.** Official plugin releases are signed keyless with cosign in the
+  spore-plugins release workflow. spawn verifies the signature for every
+  official install, pinning the issuer (GitHub Actions) and the SAN (that repo's
+  `release.yml`). A missing or invalid signature fails. A bare plugin name is
+  verified too
+  ([GHSA-54x4-pc23-4m6j](https://github.com/spore-host/spawn/security/advisories/GHSA-54x4-pc23-4m6j)).
+  A spec whose `fetch` step has no `sha256` is refused for every source, and
+  `--insecure` doesn't bypass that.
+- **This repo's CI** pins every Action by commit SHA and every container image
+  by digest, and checks a pinned sha256 for each downloaded tool
+  (`scripts/check_workflow_pins.py`). Dependabot covers every manifest
+  (`scripts/check_dependabot_coverage.py`).
 
-**Benefits:**
-- No duplicate keys cluttering AWS account
-- Consistent key usage across multiple launches
-- User can pre-import keys with custom names
-
-**Security:**
-- Only public keys handled (private keys never leave laptop)
-- Keys stored in AWS EC2 KeyPairs (standard AWS service)
-- No custom key storage or management
+**Where to check:** `spawn/pkg/sporedinstall/` (`manifest`, `windows.go`);
+`spawn/scripts/install-spored.ps1`; `spawn/pkg/plugin/signature.go`;
+`.github/workflows/`, `scripts/` in this repo.
 
 ---
 
-## 5. Audit and Compliance
+## Lifecycle enforcement
 
-### CloudTrail Events
+- **spored enforces TTL, idle timeout, completion and `--cost-limit` from
+  inside the instance**, so they work with your laptop off. `spawn extend`
+  moves the deadline. A user with root on the instance can stop spored, so
+  spored alone doesn't guarantee termination.
+- **The out-of-band TTL reaper** (`spawn/lambda/ttl-reaper`) is the backstop.
+  It terminates past-deadline `spawn:managed` instances even if spored has
+  stopped. It's optional, deployed in your account or against a narrow
+  cross-account role you create, and its template defaults to `DryRun=true`
+  (it logs "WOULD reap" and terminates nothing until you flip it). The instance
+  can't write the tags the reaper relies on (see
+  [What spored's role can reach](#what-sporeds-role-can-reach)).
+- AWS-side controls remain yours: Budgets, SCPs, Cost Anomaly Detection. Cost
+  allocation can use the `spawn:*` tags.
 
-All spawn operations generate CloudTrail events:
+### Lifecycle guarantee by deployment mode
 
-**IAM Role Creation:**
-```
-CreateRole (spored-instance-role)
-PutRolePolicy (spored-policy)
-CreateInstanceProfile (spored-instance-profile)
-AddRoleToInstanceProfile
-```
+| Mode | spored (in-instance) | Out-of-band reaper | What happens if spored is stopped |
+|---|:---:|:---:|---|
+| **CLI only** (default) | yes | no | Nothing ends the instance at its deadline. Only your AWS-side controls (Budgets, SCPs) remain. |
+| **With the reaper**, enforcing | yes | yes, in your account or through the cross-account role you grant | The reaper terminates past-deadline `spawn:managed` instances. |
+| **With the reaper**, `DryRun=true` (its default) | yes | logs only | As for CLI only: the reaper reports "WOULD reap" and terminates nothing. |
 
-**Instance Launch:**
-```
-RunInstances
-  - Tags: spawn:managed=true, spawn:ttl=8h
-  - IamInstanceProfile: spored-instance-profile
-  - UserData: <base64-encoded script>
-```
+With no reaper, spored is the whole guarantee. `spawn status` shows whether it
+is running and which deadline it holds. What leaves your account doesn't depend
+on the mode: see [What leaves your account](#what-leaves-your-account).
 
-**Instance Termination (by spored):**
-```
-TerminateInstances
-  - InitiatedBy: spored (via instance profile role)
-  - Reason: TTL expired / idle timeout
-```
+**Where to check:** `spawn/pkg/agent/`; `spawn/lambda/ttl-reaper/template.yaml`
+(`DryRun`); [docs/safety.md](docs/safety.md).
 
-**Query Examples:**
+---
 
-Find all spawn-launched instances:
+## lagotto
+
+From lagotto v0.70.0:
+
+- **The hosted poller doesn't create or modify IAM roles.**
+  - Its runtime policy has no `iam:CreateRole`, `iam:PutRolePolicy`,
+    `iam:AttachRolePolicy` or instance-profile writes.
+  - `iam:PassRole` is granted only on exact role ARNs: `lagotto-instance-role`
+    and the roles an administrator authorizes with
+    `lagotto setup --instance-role` (to EC2) or `--sagemaker-role` (to
+    SageMaker).
+  - SageMaker job actions are limited to `training-job/lagotto-*`.
+- **Launch settings are validated** when a watch is created and again by the
+  poller before each launch.
+  - Inline IAM policies are refused.
+  - `iam_role` can't name a `spored*` role, a nested-spawn role or a poller
+    role.
+  - A stored watch that breaks these rules fails without launching.
+- **Watches are isolated per owner by IAM, not by the client.** Every watch,
+  group, history row and scheduled launch is keyed under its creator's
+  principal id. `lagotto-cli-user` allows DynamoDB item access only under the
+  caller's own `${aws:userid}` (`dynamodb:LeadingKeys`), with no `Scan`.
+- A watch with no `iam_role` launches with `lagotto-instance-role`, which
+  carries spawn's spored/SSM baseline, not spawn's shared `spored-instance-role`.
+
+Upgrade order matters: deploy the new poller, run `lagotto setup`, then upgrade
+the CLI. See `lagotto/CHANGELOG.md` 0.70.0.
+
+**Where to check:** `lagotto/pkg/runtimeiam/runtimeiam.go`;
+`lagotto/pkg/cliiam/cliiam.go`; `lagotto/pkg/watcher/keys.go`.
+
+---
+
+## spore-bot
+
+Chat integrations (Slack, Teams, Discord) and the SMS notifications that go
+through spore-bot are **experimental and outside the supported surface**.
+
+- Since spawn v0.163.0, every spawn entry point for them refuses unless you set
+  `SPAWN_EXPERIMENTAL_CHAT=1` (or `experimental: {chat: true}` in
+  `~/.spawn/config.yaml`), and a launch without it configures no
+  notifications.
+- **spore.host's hosted spore-bot is decommissioned.** Its Function URL is
+  removed (`public_endpoint_enabled = false` in `infra/tofu/spore-bot`), and
+  spawn has no default bot endpoint: an opted-in launch needs
+  `SPORE_NOTIFY_URL` pointing at your own deployment.
+- If you self-host it, spore-bot assumes a narrow cross-account role you create
+  (`spawn/deployment/cloudformation/bot-cross-account-role.yaml`). That
+  template refuses account 942542972736.
+- Workspace credentials are sealed with KMS at rest.
+
+**Where to check:** `spawn/CHANGELOG.md` 0.163.0; `spawn/cmd/launch_flags.go`;
+`infra/tofu/spore-bot/main.tf` (`public_endpoint_enabled`); `lambda/spore-bot/`.
+
+---
+
+## Audit and compliance
+
+spawn's AWS calls are made with your credentials, so CloudTrail records them
+under your identity. spored's are recorded under the instance role, with the
+instance id as the session name.
+
 ```bash
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=ResourceType,AttributeValue=AWS::EC2::Instance \
-  --query 'Events[?contains(CloudTrailEvent, `spawn:managed`)]'
-```
+# Instances spawn launched
+aws ec2 describe-instances --filters "Name=tag:spawn:managed,Values=true" \
+  --query 'Reservations[].Instances[].[InstanceId,LaunchTime,State.Name]'
 
-Find instances terminated by spored:
-```bash
+# Terminations by an instance role (session name = instance id)
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=EventName,AttributeValue=TerminateInstances \
   --query 'Events[?contains(CloudTrailEvent, `spored-instance-role`)]'
 ```
 
----
+spawn also writes a structured JSON audit log of its own operations to stderr
+(`spawn/pkg/audit`).
 
-### Cost Control
-
-**Built-In Mechanisms:**
-1. **TTL Enforcement:** Hard limit on instance runtime
-2. **Idle Detection:** Automatic termination of unused instances
-3. **Resource Tagging:** Cost allocation via `spawn:*` tags
-4. **Spot Instance Support:** `--spot` flag for 70% savings
-
-**Recommended Controls:**
-1. **AWS Budgets:** Alert on `spawn:managed=true` tag spend
-2. **Service Control Policies:** Limit instance types per OU
-3. **IAM Conditions:** Require `--ttl` flag via policy conditions
-4. **Cost Anomaly Detection:** Alert on unusual spawn usage patterns
-
-**Example Budget:**
-```bash
-aws budgets create-budget \
-  --account-id 123456789012 \
-  --budget file://spawn-budget.json
-```
-
-```json
-{
-  "BudgetName": "spawn-instances-monthly",
-  "BudgetLimit": {
-    "Amount": "1000",
-    "Unit": "USD"
-  },
-  "TimeUnit": "MONTHLY",
-  "BudgetType": "COST",
-  "CostFilters": {
-    "TagKeyValue": ["user:spawn:managed$true"]
-  }
-}
-```
+**Compliance:** spore.host doesn't receive or store your workload data, so it
+can't make a workload compliant. CloudTrail, tags and automatic cleanup are
+inputs to your controls, not attestations.
 
 ---
 
-### Compliance Considerations
+## Published advisories
 
-**The key fact:** spore.host does **not** centrally receive, process, or store
-your workload data. Instances run in your VPC, under your account, with your
-credentials; any data on them is placed there by you. spore.host therefore cannot
-confer compliance — compliance obligations remain with your AWS environment, the
-services you enable, your configuration, your data handling, and your
-institutional controls. Do not assume a workload is compliant merely because the
-instance runs in your own VPC.
+The 2026-11 pre-release audit
+([spore-host#649](https://github.com/spore-host/spore-host/issues/649)) is
+published as:
 
-What spore.host *does* provide that supports a compliance program:
+| Advisory | Repo | Severity | Fixed in |
+|---|---|---|---|
+| [GHSA-2wr7-4wpw-vr72](https://github.com/spore-host/spawn/security/advisories/GHSA-2wr7-4wpw-vr72): session bearer tokens and plugin secrets in account-readable metadata (EC2 tags, SSM command parameters) | spawn | high | v0.164.0 |
+| [GHSA-7p5f-6x8r-9f82](https://github.com/spore-host/spawn/security/advisories/GHSA-7p5f-6x8r-9f82): spored and nested-spawn roles allowed lateral movement between instances | spawn | high | v0.164.0 |
+| [GHSA-8p8w-pxv2-36xf](https://github.com/spore-host/spawn/security/advisories/GHSA-8p8w-pxv2-36xf): DNS records repointable by any principal in an account; instances could read the wildcard TLS key | spawn | medium | v0.164.0 |
+| [GHSA-2c3j-89xf-ph78](https://github.com/spore-host/spawn/security/advisories/GHSA-2c3j-89xf-ph78): dashboard-api accepted any valid AWS credentials as a user | spawn | low | v0.164.0 |
+| [GHSA-cwvg-2289-jmv3](https://github.com/spore-host/lagotto/security/advisories/GHSA-cwvg-2289-jmv3): poller as confused deputy for arbitrary instance IAM policies | lagotto | high | v0.70.0 |
+| [GHSA-8mcw-8jh4-9hmg](https://github.com/spore-host/lagotto/security/advisories/GHSA-8mcw-8jh4-9hmg): watch ownership enforced client-side only | lagotto | medium | v0.70.0 |
+| [GHSA-grc9-fj4x-rx6w](https://github.com/spore-host/spore-host/security/advisories/GHSA-grc9-fj4x-rx6w): documented spawn baseline allowed escalation to account admin | spore-host | high | docs, main@6ac3fad |
+| [GHSA-h4qv-6m56-mgxp](https://github.com/spore-host/spawn-ts/security/advisories/GHSA-h4qv-6m56-mgxp): demo portal ran an unauthenticated launch/terminate/SSM broker | spawn-ts | high | demo removed, main@73f4153 |
 
-**GDPR / Data Residency:**
-- spawn respects the region you choose (`--region`); no cross-region movement of
-  your data by spore.host.
-
-**PCI-DSS / HIPAA:**
-- No workload data flows to spore.host; instances run in your VPC under your
-  network controls. EBS encryption is supported. Meeting these frameworks depends
-  on *your* configuration and BAAs/controls, not on spore.host.
-
-**SOC 2 / ISO 27001:**
-- CloudTrail captures all spawn operations; resource tagging supports inventory;
-  automatic cleanup reduces standing surface area. These are inputs to your
-  controls, not attestations by spore.host.
+Earlier advisories are listed on each repo's Security tab, for example
+[spawn](https://github.com/spore-host/spawn/security/advisories) and
+[spore-host](https://github.com/spore-host/spore-host/security/advisories).
+Findings from the audit that are still open are tracked privately or as
+Hardening issues.
 
 ---
 
-### Lifecycle guarantee by deployment mode
+## Reporting a vulnerability
 
-The TTL guarantee ("every protected instance has a hard termination deadline") is
-enforced in two layers: **spored** inside the instance, and an optional
-**out-of-band reaper** that acts as a backstop if spored can't. What you get
-depends on which you deploy:
+Report privately through GitHub's **private vulnerability reporting**:
 
-| Mode | spored (in-instance) | Out-of-band reaper | Workload data leaves account | Failure guarantee |
-|------|:---:|:---:|:---:|---|
-| **CLI only** (default) | Yes | No | No | Instance-local enforcement: spored terminates at TTL. If spored itself is disabled/killed, only your AWS-side controls (Budgets/SCPs) remain. |
-| **Self-hosted backstop** | Yes | Yes (in your account) | No | Dual enforcement: the reaper terminates past-deadline instances even if spored fails. |
-| **Hosted integrations** | Yes | Yes / optional | Selected metadata only (never credentials or workload data) | Dual enforcement when the reaper is enabled. |
+- this repo:
+  [spore-host/spore-host → Report a vulnerability](https://github.com/spore-host/spore-host/security/advisories/new);
+- or the Security tab of the affected component's own repo (spawn, truffle,
+  lagotto, spore-host-mcp, and the others), where it is also enabled.
 
-Notes on the reaper (see
-[spawn/lambda/ttl-reaper](https://github.com/spore-host/spawn/tree/main/lambda/ttl-reaper)):
-
-- It is **not enabled by default** and ships in **dry-run** (logs "would reap" +
-  notifies; does not terminate) until an operator flips it to enforce mode after
-  verification.
-- It assumes a **narrow per-account cross-account role you grant** (scoped to
-  terminating past-deadline `spawn:managed` instances) — it never holds your
-  credentials.
-- With **no reaper configured**, the hard guarantee is provided by spored alone;
-  the reaper is the backstop for the case where spored can't act. Verify spored is
-  running and the deadline is set with `spawn status`.
+Please don't open a public issue, discussion or pull request for a
+vulnerability. Fixes are disclosed as GitHub Security Advisories in the repo
+that ships them.
 
 ---
 
-## 6. Risk Assessment
+## Further reading
 
-### Identified Risks
+- [IAM permissions](docs/reference/iam-permissions.md)
+- [Security, credentials & data flow](docs/architecture.md)
+- [Costs & safety guarantees](docs/safety.md)
 
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Excessive instance launches | Medium | AWS Budgets, SCPs, `--ttl` requirement |
-| IAM role privilege escalation | Low | Role scoped to `spawn:managed=true` only |
-| spored binary corruption | Low | SHA256 verification, HTTPS |
-| spored binary tampering (bucket compromise) | Low | Publisher signature verified at boot against a key compiled into spawn (KMS-signed release, #440); a bucket rewrite can't forge it. Plus S3 bucket write-access controls. |
-| Forgotten instances | Low | TTL enforcement, idle detection |
-| Insider threat (malicious user) | Medium | CloudTrail auditing, IAM least privilege |
-| Credential exposure | Medium | No credentials in user-data, IMDSv2 supported |
-
-### Mitigations Summary
-
-✅ **Least Privilege IAM:** Users only get permissions they need
-✅ **Resource Tagging:** All resources identifiable and auditable
-✅ **Automatic Cleanup:** TTL/idle detection prevents resource leaks
-✅ **Audit Trail:** CloudTrail captures all operations
-✅ **Cost Controls:** Budgets, SCPs, Spot instances
-✅ **Binary Integrity (corruption):** SHA256 verification of spored downloads
-✅ **Plugin Authenticity:** official plugins cosign-signed + verified by spawn
-✅ **spored Binary Authenticity:** each spored binary is KMS-signed at release and its signature is verified at boot against a key compiled into spawn, fail-closed (#440)
-✅ **Network Security:** User controls VPC, security groups, subnets
-
----
-
-## 7. Deployment Recommendations
-
-### For Small Teams (< 50 users)
-
-1. **IAM Users with spawn policy** (see `IAM_PERMISSIONS.md`)
-2. **AWS Budget alert** at $500/month
-3. **CloudTrail enabled** (standard AWS best practice)
-4. **Require `--ttl` via documentation** (not enforced)
-
-### For Enterprises (> 50 users)
-
-1. **IAM Groups:**
-   - `spawn-power-users`: Full spawn access
-   - `spawn-basic-users`: spawn + instance type restrictions via SCP
-
-2. **Service Control Policies:**
-   ```json
-   {
-     "Effect": "Deny",
-     "Action": "ec2:RunInstances",
-     "Resource": "arn:aws:ec2:*:*:instance/*",
-     "Condition": {
-       "StringNotLike": {
-         "ec2:InstanceType": [
-           "t3.*",
-           "t4g.*",
-           "m7i.large",
-           "m7i.xlarge"
-         ]
-       },
-       "StringEquals": {
-         "aws:PrincipalTag/spawn-user": "true"
-       }
-     }
-   }
-   ```
-
-3. **Mandatory TTL via IAM Policy:**
-   ```json
-   {
-     "Effect": "Deny",
-     "Action": "ec2:RunInstances",
-     "Resource": "arn:aws:ec2:*:*:instance/*",
-     "Condition": {
-       "StringNotEquals": {
-         "aws:RequestTag/spawn:ttl": "*"
-       }
-     }
-   }
-   ```
-   *(Note: Requires spawn to always set TTL tag)*
-
-4. **Cost Allocation Tags:**
-   - Enable `spawn:*` tags as cost allocation tags
-   - Monthly reports by team/project
-
-5. **Security Hub Integration:**
-   - Custom AWS Config rule: "Instances must have `spawn:ttl` tag"
-   - Alert on non-compliant spawn instances
-
----
-
-## 8. Incident Response
-
-### Scenario: Unauthorized Instance Launch
-
-**Detection:**
-```bash
-# Find all spawn instances
-aws ec2 describe-instances \
-  --filters "Name=tag:spawn:managed,Values=true" \
-  --query 'Reservations[].Instances[].[InstanceId,LaunchTime,State.Name]'
-
-# Check CloudTrail for who launched
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=ResourceType,AttributeValue=AWS::EC2::Instance
-```
-
-**Response:**
-1. Identify user via CloudTrail `userIdentity`
-2. Terminate instance: `aws ec2 terminate-instances --instance-ids i-xxxxx`
-3. Review user IAM permissions
-4. Check AWS Budget impact
-
----
-
-### Scenario: spored Role Privilege Escalation Attempt
-
-**Detection:** CloudWatch Logs Insights query:
-
-```
-fields @timestamp, errorCode, errorMessage
-| filter eventSource = "ec2.amazonaws.com"
-| filter userIdentity.principalId like /spored-instance-role/
-| filter errorCode like /Unauthorized/
-```
-
-**Response:**
-1. Identify instance: Extract instance ID from CloudTrail
-2. Terminate instance immediately
-3. Review spored role policy (should be read-only except for self-termination)
-4. Check for IAM policy modifications
-
----
-
-## 9. Validation and Testing
-
-### Pre-Deployment Checklist
-
-- [ ] Run `./scripts/validate-permissions.sh <aws-profile>` for each user
-- [ ] Create test AWS Budget for spawn resources
-- [ ] Enable CloudTrail in all regions
-- [ ] Test IAM role creation (first spawn launch)
-- [ ] Verify TTL enforcement (launch instance with `--ttl 5m`)
-- [ ] Verify idle detection (launch instance with `--idle-timeout 10m`)
-- [ ] Test Spot instances (`--spot` flag)
-- [ ] Review CloudTrail events for spawn operations
-
-### Security Testing
-
-```bash
-# Test 1: Verify spored cannot terminate non-spawn instances
-aws ec2 run-instances --image-id ami-xxxxx --instance-type t3.micro
-# (manually launched, no spawn:managed tag)
-# spored should fail to terminate this
-
-# Test 2: Verify TTL enforcement
-echo '[{"instance_type":"t3.micro","region":"us-east-1"}]' | \
-  spawn launch --ttl 5m
-# Wait 6 minutes, verify instance terminated
-
-# Test 3: Verify SHA256 verification
-# Corrupt spored binary on S3, verify instance launch fails
-
-# Test 4: Verify CloudTrail logging
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=RunInstances
-```
-
----
-
-## 10. Code-Level Security Hardening
-
-### Command Injection Protection
-
-spawn implements comprehensive protection against shell command injection attacks:
-
-**Security Package** (`spawn/pkg/security`):
-- `ShellEscape()`: Properly escapes strings for POSIX shell arguments
-- `ValidateUsername()`: Validates usernames against safe patterns
-- `ValidateCommand()`: Detects potentially dangerous shell characters
-
-**Protected Operations**:
-1. **SSH Commands** (`spawn/cmd/config.go`):
-   - Config keys and values properly escaped before SSH execution
-   - Prevents injection via `spawn config set "key" "value; rm -rf /"`
-
-2. **User Data Scripts** (`spawn/cmd/launch.go`):
-   - Usernames validated against regex: `^[a-z][a-z0-9_-]{0,31}$`
-   - SSH keys validated as proper base64
-   - All dynamic values shell-escaped in bash scripts
-
-3. **MPI Templates** (`spawn/pkg/userdata/mpi.go`):
-   - Custom `shellEscape` template function
-   - MPI commands properly escaped: `{{.MPICommand | shellEscape}}`
-
-4. **Storage Mounting** (`spawn/pkg/userdata/storage.go`):
-   - Mount paths validated and escaped
-   - Filesystem DNS names escaped in mount commands
-
-**Test Coverage**: security-critical paths are covered by unit tests with
-attack-pattern fuzzing; current coverage is reported by CI on each repo.
-
----
-
-### Path Traversal Protection
-
-All file path operations are validated to prevent directory traversal attacks:
-
-**Validation Functions**:
-- `ValidatePathForReading()`: Blocks `../../etc/passwd` style attacks
-- `ValidateMountPath()`: Restricts mounts to `/mnt`, `/data`, `/scratch`
-- `SanitizePath()`: Removes traversal sequences for safe logging
-
-**Blocked Paths**:
-- `/etc/` - System configuration
-- `/sys/` - System kernel interface
-- `/proc/` - Process information
-- `/root/` - Root home directory
-- `/boot/` - Boot loader files
-- `/dev/` - Device files
-- `/var/lib/` - System libraries
-
-**Protected Operations**:
-1. **User Data File Reads** (`spawn/cmd/launch.go`):
-   - Both `--user-data-file` and `--user-data @file` validated
-   - Prevents reading system files
-
-2. **Job Result Uploads** (`spawn/pkg/agent/queue_runner.go`):
-   - Glob patterns validated before expansion
-   - Prevents uploading sensitive files
-
----
-
-### Credential Protection
-
-Sensitive credentials are protected from exposure:
-
-**Security Functions**:
-- `MaskSecret()`: Masks secrets showing only first/last 4 chars
-- `MaskURL()`: Shows scheme and domain, masks path
-- `SanitizeForLog()`: Removes AWS keys from log messages
-- `EncryptSecret()`/`DecryptSecret()`: KMS-based encryption (ready for use)
-
-**Use Cases**:
-- Webhook URLs in alert configurations
-- API tokens in logs
-- AWS access keys accidentally logged
-
----
-
-### Audit Logging Infrastructure
-
-Structured audit logging for security-sensitive operations:
-
-**Audit Package** (`spawn/pkg/audit`):
-
-**AuditLogger** - Structured JSON logging:
-```go
-logger := audit.NewLogger(os.Stderr, userID, correlationID)
-logger.LogOperation("terminate_instances", sweepID, "success", nil)
-```
-
-**Context Propagation**:
-```go
-ctx = audit.NewContextWithAudit(ctx, userID)
-logger := audit.NewLoggerFromContext(ctx)
-```
-
-**Audit Event Fields**:
-- `timestamp`: UTC timestamp
-- `level`: info/error
-- `operation`: Action performed
-- `user_id`: AWS account/user ID
-- `instance_id`: Resource identifier
-- `region`: AWS region
-- `correlation_id`: Trace requests across systems
-- `result`: success/failed/initiated
-- `error`: Error message if failed
-- `additional_data`: Structured metadata
-
-**Ready for CloudWatch Logs Integration**:
-- JSON format for CloudWatch Logs Insights
-- Correlation IDs for distributed tracing
-- User attribution for compliance
-
-**Test Coverage**: audit paths are unit-tested; current coverage is reported by CI.
-
----
-
-### Security Testing
-
-**Test Suites**:
-1. **Attack Pattern Tests** (`pkg/security/shell_test.go`):
-   - Command injection: `; rm -rf /`, `$(whoami)`, backticks
-   - Path traversal: `../../etc/passwd`
-   - Variable expansion: `${IFS}malicious`
-
-2. **Path Validation Tests** (`pkg/security/path_test.go`):
-   - System directory blocking
-   - Mount point restrictions
-   - Traversal detection
-
-3. **Audit Logger Tests** (`pkg/audit/logger_test.go`):
-   - JSON formatting
-   - Context propagation
-   - Error logging
-
-**Coverage Targets**: security and audit packages target ≥80% coverage, enforced
-by a CI ratchet floor; current figures are shown by each repo's coverage badge.
-
----
-
-### Vulnerability Reporting
-
-**Security Contact**: scott@spore.host
-
-**Please Report**:
-- Command injection bypasses
-- Path traversal attacks
-- Credential exposure
-- Privilege escalation
-- Any security vulnerability
-
-**Do NOT report via public GitHub issues**
-
-Response time: 48 hours
-
----
-
-## 11. Frequently Asked Questions (Security)
-
-### Q: Can spawn access my existing EC2 instances?
-
-**A:** No. spawn can only launch new instances and terminate instances tagged `spawn:managed=true`. It cannot access, modify, or terminate instances launched by other tools.
-
----
-
-### Q: What data does spawn send to external services?
-
-**A:** None. spawn only communicates with:
-- AWS APIs (EC2, IAM, SSM)
-- S3 buckets for spored binary download (public, read-only)
-
-No telemetry, analytics, or user data leaves your AWS account.
-
----
-
-### Q: Can spored access my S3 buckets or databases?
-
-**A:** No. The `spored-instance-role` only has permissions for:
-- Reading its own EC2 tags
-- Terminating/stopping itself
-
-It cannot access S3, RDS, DynamoDB, or any other AWS services.
-
----
-
-### Q: What if someone modifies the spored binary on S3?
-
-**A:** Both cases are covered. **Accidental corruption** (truncated download,
-bit-rot) is caught by the SHA-256 check. **Malicious replacement by an attacker
-with write access to the bucket** is caught by the **publisher signature**: each
-spored binary is KMS-signed at release, and the bootstrap verifies the `.sig`
-against a public key compiled into spawn before executing spored, failing closed
-on a mismatch (spawn v0.91.1+, [#440](https://github.com/spore-host/spore-host/issues/440)).
-Because the verifying key lives in the spawn binary (not the bucket), rewriting
-the bucket can't forge a valid signature. See §4, *Binary Distribution Security*.
-
----
-
-### Q: Can users extend or bypass TTL limits?
-
-**A:** Users can extend the TTL of a running instance with `spawn extend <name> <duration>`. This updates the EC2 tag and spored picks up the new deadline live. They cannot remove the TTL entirely once set.
-
-They could also:
-- Manually terminate the instance and launch a new one (new TTL starts)
-- SSH in and stop the spored service (instance won't auto-terminate)
-
-**Mitigation:** CloudWatch Events rule to detect spored service failures.
-
----
-
-### Q: How do I audit spawn usage?
-
-**A:** Use CloudTrail:
-
-```bash
-# All spawn launches (last 7 days)
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=ResourceType,AttributeValue=AWS::EC2::Instance \
-  --max-results 1000 \
-  --query 'Events[?contains(CloudTrailEvent, `spawn:managed`)].{Time:EventTime,User:Username,Instance:Resources[0].ResourceName}'
-
-# Cost by user (requires Cost Allocation Tags)
-aws ce get-cost-and-usage \
-  --time-period Start=2025-12-01,End=2025-12-31 \
-  --granularity MONTHLY \
-  --group-by Type=TAG,Key=spawn:created-by \
-  --metrics BlendedCost
-```
-
----
-
-## 11. Contact and Support
-
-**Security Issues:** Report to project maintainers (see CONTRIBUTING.md)
-
-**Documentation:**
-- IAM permissions reference: [docs/reference/iam-permissions.md](docs/reference/iam-permissions.md)
-- Security, credentials & data flow: [docs/architecture.md](docs/architecture.md)
-- Costs & safety guarantees: [docs/safety.md](docs/safety.md)
-
-**Reporting a vulnerability:** please use the private
-[GitHub Security Advisory](https://github.com/spore-host/spore-host/security/advisories/new)
-rather than a public issue.
-
-**References:**
-- [AWS IAM Best Practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)
-- [AWS Well-Architected Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/welcome.html)
-- [CloudTrail Event Reference](https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html)
-
----
-
-This document tracks the current design; it is not pinned to a specific release.
-Component behavior is versioned in each repo's `CHANGELOG.md`.
+This page tracks the current code, not a specific release. Component behaviour
+is versioned in each repo's `CHANGELOG.md`.

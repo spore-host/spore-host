@@ -31,17 +31,19 @@ and no reach into instances spawn didn't launch:
   that say which resources spawn owns. That is what keeps the tag-scoped
   statements below (`EC2Manage`, `SendCommand`) scoped.
 
-::: warning Requires spawn to provision the boundary
-spawn sets `spore-host/spawn-instance-boundary` on the roles it creates, and
-creates the boundary once per account
-([below](#the-permissions-boundary)), so you don't write it. **Released spawn
-versions don't do this yet.** Until a spawn release that does, `CreateRole` and every policy
-write on an instance role are refused under this policy, so a launch that has
-to create or update a role fails. The earlier version of this page granted
-those actions without the boundary condition. That version let anyone holding
-it give an instance role any permissions, so it is not a safe stand-in. This
-policy also hasn't yet been checked by a real `spawn launch` (the earlier one
-was, on 2026-10-18 with spawn v0.134.0).
+::: warning An administrator provisions the boundary once per account
+spawn sets `spore-host/spawn-instance-boundary` on the roles it creates, so you
+don't write it, but this policy can't create it ([below](#the-permissions-boundary)).
+An administrator runs `spawn setup-account` once per account (spawn v0.164.0+),
+or the first launch an administrator runs creates it. Until then, `CreateRole`
+and every policy write on an instance role are refused under this policy, so a
+launch that has to create or update a role fails, with an error that names
+`spawn setup-account`. The earlier version of this page granted those actions
+without the boundary condition. That version let anyone holding it give an
+instance role any permissions, so it is not a safe stand-in
+([GHSA-grc9-fj4x-rx6w](https://github.com/spore-host/spore-host/security/advisories/GHSA-grc9-fj4x-rx6w)).
+This policy also hasn't yet been checked by a real `spawn launch` (the earlier
+one was, on 2026-10-18 with spawn v0.134.0).
 :::
 
 ```json
@@ -450,8 +452,9 @@ Creating it needs `iam:CreatePolicy` on its name, which the policy above
 refuses on purpose: a caller who could create the boundary could choose its
 contents. So it's created once per account by spawn running under
 administrator credentials, at the point an administrator sets spawn up for the
-account. The spawn release that provisions it will name the command; until
-then, see the warning at the top of this section.
+account: `spawn setup-account` (spawn v0.164.0+), or the first launch an
+administrator runs. `spawn cleanup --instance-roles` deletes it once no role
+uses it.
 
 ### Managed policies on instance roles
 
