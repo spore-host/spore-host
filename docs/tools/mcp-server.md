@@ -31,6 +31,7 @@ Most tools only read or manage what already exists. Two can spend money:
 ## Install
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/spore-host-mcp
 ```
 

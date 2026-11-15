@@ -540,7 +540,7 @@ async function loadDashboard() {
                                 <div style="background: rgba(79, 195, 247, 0.08); border: 1px solid rgba(79, 195, 247, 0.3); border-radius: 8px; padding: 1.5rem; text-align: left;">
                                     <h4 style="color: var(--accent-blue); margin-bottom: 1rem; text-align: center;">🚀 Quick Start</h4>
                                     <ol style="margin-left: 1.5rem; line-height: 2;">
-                                        <li><strong>Install the CLI:</strong> <code style="background: var(--bg-dark); padding: 0.2rem 0.5rem; border-radius: 4px;">brew install spore-host/tap/spawn</code></li>
+                                        <li><strong>Install the CLI:</strong> <code style="background: var(--bg-dark); padding: 0.2rem 0.5rem; border-radius: 4px;">brew tap spore-host/tap &amp;&amp; brew trust spore-host/tap &amp;&amp; brew install spore-host/tap/spawn</code></li>
                                         <li><strong>Launch your first spore:</strong> <code style="background: var(--bg-dark); padding: 0.2rem 0.5rem; border-radius: 4px;">spawn launch</code></li>
                                         <li><strong>Watch it appear here:</strong> Refresh this page in ~30 seconds</li>
                                     </ol>

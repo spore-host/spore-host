@@ -6,6 +6,8 @@ description: "spore.host is five tools that work together."
 
 spore.host is five tools that work together. Each has exactly one job.
 
+Before the first install, add and trust the tap once (Homebrew 7 refuses to load from a tap you haven't trusted): `brew tap spore-host/tap && brew trust spore-host/tap`.
+
 | Tool | Role | Install |
 |------|------|---------|
 | [Truffle](/tools/truffle) | Find instance types, compare prices, check quotas | `brew install spore-host/tap/truffle` |

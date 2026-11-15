@@ -25,6 +25,7 @@ A complete walkthrough from a fresh install to a running EC2 instance and back. 
 ## 1. Install
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/truffle
 brew install spore-host/tap/spawn
 ```

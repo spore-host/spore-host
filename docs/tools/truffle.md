@@ -30,6 +30,7 @@ truffle az p5.48xlarge                 # check per-AZ availability
 ## Install
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/truffle
 ```
 

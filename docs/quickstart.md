@@ -32,6 +32,7 @@ Not sure whether you have the permissions? After installing, run
 ::: code-group
 
 ```sh [macOS / Linux (Homebrew)]
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/truffle
 brew install spore-host/tap/spawn
 ```

@@ -63,6 +63,7 @@ is the exhaustive map of this tier.
 ## Install
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/spawn
 ```
 

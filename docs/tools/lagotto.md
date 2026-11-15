@@ -29,6 +29,7 @@ There is no AWS API that reports "capacity is available right now" — the only 
 ## Install
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/lagotto
 ```
 

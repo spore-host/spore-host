@@ -13,9 +13,12 @@ description: "Verify:"
 
 **Truffle** and **Spawn** are the tools you'll use for every workflow. Install both.
 
+On Homebrew, the first line adds the spore.host tap and trusts it. Homebrew 7 and later refuse to load anything from a tap you haven't trusted ("Refusing to load formula … from untrusted tap"). You only need to do it once per machine.
+
 ::: code-group
 
 ```sh [macOS / Linux (Homebrew)]
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/truffle
 brew install spore-host/tap/spawn
 ```
@@ -60,6 +63,7 @@ Install these as your workflow grows.
 ### Lagotto — capacity watching
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/lagotto   # macOS / Linux
 scoop install lagotto                 # Windows
 ```
@@ -67,6 +71,7 @@ scoop install lagotto                 # Windows
 ### MCP Server — AI assistant integration
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/spore-host-mcp
 ```
 
