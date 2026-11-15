@@ -22,7 +22,7 @@ moment it appears. Allow about 15 minutes.
 
 - [truffle and spawn installed and working](/guides/first-instance) and AWS
   credentials verified
-- lagotto installed: `brew install spore-host/tap/lagotto`
+- lagotto installed: `brew tap spore-host/tap && brew trust spore-host/tap && brew install spore-host/tap/lagotto`
 - Confirm you're actually allowed to launch the type you want *before* you wait for
   it — see the four questions below
 

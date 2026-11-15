@@ -140,7 +140,8 @@ client.UpdateInstanceTags(ctx, result.Region, result.InstanceID,
         <div class="dev-grid">
           <div class="dev-block">
             <h3>Install</h3>
-<pre><code>brew install spore-host/tap/spore-host-mcp</code></pre>
+<pre><code>brew tap spore-host/tap &amp;&amp; brew trust spore-host/tap
+brew install spore-host/tap/spore-host-mcp</code></pre>
             <h3 style="margin-top:1.5rem">Configure (Claude Code)</h3>
 <pre><code>claude mcp add spore-host -- spore-host-mcp</code></pre>
             <h3 style="margin-top:1.5rem">Configure (Claude Desktop, Cursor, Windsurf, …)</h3>

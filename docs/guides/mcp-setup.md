@@ -22,6 +22,7 @@ The assistant has 13 tools covering instance search, status, lifecycle managemen
 ## Install
 
 ```sh
+brew tap spore-host/tap && brew trust spore-host/tap
 brew install spore-host/tap/spore-host-mcp
 ```
 
