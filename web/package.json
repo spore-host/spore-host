@@ -24,14 +24,14 @@
     "portal:e2e-aws:sweep": "vitest run --config portal/vitest.config.ts e2e-aws/sweep.live.test.ts"
   },
   "dependencies": {
-    "@spore-host/lagotto-ts": "^0.2.0",
-    "@spore-host/spawn-ts": "^0.6.1",
-    "@spore-host/truffle-ts": "^0.5.0"
+    "@spore-host/lagotto-ts": "^0.3.0",
+    "@spore-host/spawn-ts": "^0.8.1",
+    "@spore-host/truffle-ts": "^0.6.0"
   },
   "devDependencies": {
-    "@aws-sdk/client-ec2": "3.1095.0",
-    "@aws-sdk/client-ssm": "3.1095.0",
-    "@aws-sdk/client-sts": "3.1095.0",
+    "@aws-sdk/client-ec2": "3.1164.0",
+    "@aws-sdk/client-ssm": "3.1164.0",
+    "@aws-sdk/client-sts": "3.1164.0",
     "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.65.0",
     "@types/node": "^22.0.0",
