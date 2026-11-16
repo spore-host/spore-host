@@ -47,6 +47,19 @@ terraform {
 provider "aws" {
   region  = var.region
   profile = var.aws_profile != "" ? var.aws_profile : null
+
+  # The spore-host:* service tags (#750), on every taggable resource in this
+  # root. The infra account's service mostly carried only spawn:managed=true,
+  # which spawn also puts on workload litter, and a litter classifier marked
+  # live resources as litter. Cleanup never deletes spore-host:role=service.
+  # The resources' own project/component/managedby tags stay.
+  default_tags {
+    tags = {
+      "spore-host:role"        = "service"
+      "spore-host:component"   = "dns-updater"
+      "spore-host:deployed-by" = "infra/tofu/dns-updater"
+    }
+  }
 }
 
 variable "region" {

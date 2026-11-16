@@ -145,12 +145,27 @@ dig NS spore.research.wwps.aws.dev
 
 ---
 
+## Service tags
+
+Every role, table and function the steps below create is tagged
+`spore-host:role=service`, `spore-host:component=<id>` (`dns-updater`,
+`rest-api`) and `spore-host:deployed-by=infra/DEPLOY.md` (#750). Cleanup never
+deletes a resource tagged `spore-host:role=service`, and a litter inventory
+uses the tags to tell the service from workload resources. Keep the `--tags`
+when you adapt a command. To tag a resource created without them, use
+`aws iam tag-role`, `aws dynamodb tag-resource` or `aws lambda tag-resource`.
+(`scripts/retag-service-resources.sh` does this for spore.host's own infra
+account, 966362334030, and refuses any other.)
+
+---
+
 ## Step 2 — IAM role for dns-updater Lambda
 
 ```sh
 # Create execution role
 aws iam create-role \
   --role-name spore-dns-updater-role \
+  --tags Key=spore-host:role,Value=service Key=spore-host:component,Value=dns-updater Key=spore-host:deployed-by,Value=infra/DEPLOY.md \
   --assume-role-policy-document '{
     "Version":"2012-10-17",
     "Statement":[{
@@ -210,6 +225,7 @@ aws lambda create-function \
   }" \
   --timeout 30 \
   --memory-size 128 \
+  --tags spore-host:role=service,spore-host:component=dns-updater,spore-host:deployed-by=infra/DEPLOY.md \
   --region us-east-1
 
 # Create the Function URL with AWS_IAM auth. NEVER --auth-type NONE (see
@@ -249,6 +265,7 @@ in the `spore.research.wwps.aws.dev` hosted zone.
 ```sh
 aws iam create-role \
   --role-name spore-rest-api-role \
+  --tags Key=spore-host:role,Value=service Key=spore-host:component,Value=rest-api Key=spore-host:deployed-by,Value=infra/DEPLOY.md \
   --assume-role-policy-document '{
     "Version":"2012-10-17",
     "Statement":[{
@@ -309,6 +326,7 @@ aws dynamodb create-table \
   --attribute-definitions AttributeName=api_key,AttributeType=S \
   --key-schema AttributeName=api_key,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
+  --tags Key=spore-host:role,Value=service Key=spore-host:component,Value=rest-api Key=spore-host:deployed-by,Value=infra/DEPLOY.md \
   --region us-east-1
 
 # SMS pending notifications table. The partition key must be `pending_key`:
@@ -320,6 +338,7 @@ aws dynamodb create-table \
   --attribute-definitions AttributeName=pending_key,AttributeType=S \
   --key-schema AttributeName=pending_key,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
+  --tags Key=spore-host:role,Value=service Key=spore-host:component,Value=rest-api Key=spore-host:deployed-by,Value=infra/DEPLOY.md \
   --region us-east-1
 
 echo "Waiting for tables to be active..."
@@ -375,6 +394,7 @@ aws lambda create-function \
   }" \
   --timeout 60 \
   --memory-size 256 \
+  --tags spore-host:role=service,spore-host:component=rest-api,spore-host:deployed-by=infra/DEPLOY.md \
   --region us-east-1
 
 # Create Function URL
