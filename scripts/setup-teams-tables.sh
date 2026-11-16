@@ -7,6 +7,22 @@ set -euo pipefail
 AWS_PROFILE="${AWS_PROFILE:-spore-host-infra}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 
+# The spore-host:* service tags (#750). Both tables are part of the dashboard's
+# team sharing; dashboard-api is the component that reads them.
+# shellcheck source=scripts/lib/service-tags.sh
+. "$(dirname "$0")/lib/service-tags.sh"
+read -r -a SERVICE_TAGS <<<"$(spore_service_tags_list dashboard-api scripts/setup-teams-tables.sh)"
+
+# tag_table NAME: add the service tags to an existing table (tag-resource merges).
+tag_table() {
+    local arn
+    arn=$(aws dynamodb describe-table --table-name "$1" \
+        --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+        --query 'Table.TableArn' --output text)
+    aws dynamodb tag-resource --resource-arn "$arn" --tags "${SERVICE_TAGS[@]}" \
+        --profile "$AWS_PROFILE" --region "$AWS_REGION"
+}
+
 echo "==> Setting up teams tables (profile: $AWS_PROFILE, region: $AWS_REGION)"
 
 # Helper: check if DynamoDB table exists
@@ -31,6 +47,7 @@ gsi_exists() {
 # ──────────────────────────────────────────────────────────────────────────────
 if table_exists "spawn-teams"; then
     echo "  ✓ spawn-teams already exists"
+    tag_table "spawn-teams"
 else
     echo "  Creating spawn-teams..."
     aws dynamodb create-table \
@@ -48,6 +65,7 @@ else
             }
         ]' \
         --billing-mode PAY_PER_REQUEST \
+        --tags "${SERVICE_TAGS[@]}" \
         --profile "$AWS_PROFILE" --region "$AWS_REGION" \
         --output text > /dev/null
     echo "  ✓ spawn-teams created"
@@ -58,6 +76,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 if table_exists "spawn-team-memberships"; then
     echo "  ✓ spawn-team-memberships already exists"
+    tag_table "spawn-team-memberships"
 else
     echo "  Creating spawn-team-memberships..."
     aws dynamodb create-table \
@@ -76,6 +95,7 @@ else
             }
         ]' \
         --billing-mode PAY_PER_REQUEST \
+        --tags "${SERVICE_TAGS[@]}" \
         --profile "$AWS_PROFILE" --region "$AWS_REGION" \
         --output text > /dev/null
     echo "  ✓ spawn-team-memberships created"
