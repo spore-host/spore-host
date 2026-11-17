@@ -376,21 +376,29 @@ one was, on 2026-10-18 with spawn v0.134.0).
 Before spawn creates anything an idle teardown could later delete (an
 instance, a security group, a key pair, an IAM role, a bucket, a pool queue,
 an FSx filesystem), it marks spawn active in the account's shared lifecycle
-lease, the DynamoDB table `spore-host-lifecycle` (one per region, plus
-`us-east-1` for account-wide IAM), creating the table, tagged, the first time
+lease. That lease is the DynamoDB table `spore-host-lifecycle` (one per
+region, plus `us-east-1` for account-wide IAM), and spawn creates it, tagged,
+the first time
 ([spawn#1654](https://github.com/spore-host/spawn/issues/1654), part of
 [leave no trace](https://github.com/spore-host/spore-host/issues/752)). The
 lease is what stops one user's idle teardown from deleting what another user
 is setting up in a shared account.
 
-The statement is **optional for launch**: if the mark is refused, spawn warns
-once and carries on, and nothing fails. But an account whose users can't write
-the table is "lease unavailable", and spore.host's idle teardown never tears it
-down, so what spawn leaves there stays until someone runs `spawn teardown` by
-hand. `dynamodb:GetItem` is used only by `spawn reaper teardown --if-idle-for`,
-which reads the reaper's verdict from the table. `DeleteItem` removes only a
-closing marker a crashed teardown left behind. The exact actions each command
-needs are in spawn's
+**Nothing depends on it for a launch, and nothing is printed without it.** A
+refused mark goes only to spawn's diagnostic log (`~/.spawn/spawn.log`, or
+stderr with `--verbose`), and the launch carries on. `spawn doctor` shows
+whether the lease is writable, in its "idle teardown" check. An account
+whose users can't write the table is "lease unavailable": spore.host's idle
+teardown never tears it down, so what spawn leaves there stays until someone
+runs `spawn teardown`.
+
+spore.host does not yet provision this statement for you
+([spawn#1666](https://github.com/spore-host/spawn/issues/1666) tracks doing
+so). Until it does, an administrator who wants idle teardown in an account
+adds the statement above to the baseline. `dynamodb:GetItem` is used only by
+`spawn reaper teardown --if-idle-for`, which reads the reaper's verdict.
+`DeleteItem` removes only a closing marker that a crashed teardown left
+behind. The exact actions each command needs are in spawn's
 [`cli-iam-actions.md`](https://github.com/spore-host/spawn/blob/main/docs/reference/cli-iam-actions.md).
 :::
 
