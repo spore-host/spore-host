@@ -86,6 +86,8 @@ spawn reaper deploy [flags]
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
+| `--account-idle-grace` |  | string |  | How long nothing spawn manages may be active before the account-idle sweep reports the teardown, REAPER_ACCOUNT_IDLE_GRACE, e.g. 24h or 30d; also the longest 'teardown --if-idle-for' can wait for (default: keep; the reaper's default is 24h) |
+| `--account-idle` |  | string |  | Account-idle sweep (judges this account idle from every activity signal and, after the grace, logs the teardown it would do; never deletes yet), REAPER_ACCOUNT_IDLE: off\|report\|reap (default: keep; the reaper's default is report, and reap reports until spawn#1657) |
 | `--artifact` |  | string |  | Use this Lambda zip instead of downloading a release asset (local path or URL) |
 | `--bucket` |  | string |  | S3 bucket in THIS account to hold the artifact (default: spawn-reaper-artifacts-&lt;account&gt;-&lt;region&gt;) |
 | `--elastic-ips` |  | string |  | Orphaned launch Elastic IP sweep, REAPER_ELASTIC_IPS: off\|report\|reap (default: keep; the reaper's default is reap, or off when REAPER_NET_RESOURCES=off) |
@@ -100,6 +102,7 @@ spawn reaper deploy [flags]
 | `--regions` |  | string |  | Comma-separated regions for the reaper to scan (default: keep the existing reaper's; the deploy region for a new one) |
 | `--schedule-params` |  | string |  | Orphaned schedule params sweep (spawn-schedules-*/schedules/&lt;id&gt;/params.yaml with no schedule record, 30 days old), REAPER_SCHEDULE_PARAMS: off\|report\|reap (default: keep; the reaper's default is report) |
 | `--schedule` |  | string |  | EventBridge schedule expression (default: keep the existing reaper's; rate(10 minutes) for a new one) |
+| `--self-removal` |  | string |  | The reaper's removal of itself once every scope it scans has been idle past the account-idle grace (logs the plan: one-shot jobs delete its function, role and log group, and it deletes its rules and artifact bucket; never deletes yet), REAPER_SELF_REMOVAL: off\|report\|reap (default: keep; the reaper's default is report, and reap reports until spawn#1657) |
 | `--spot-requests` |  | string |  | Orphaned Spot-request sweep, REAPER_SPOT_REQUESTS: off\|report\|reap (default: keep; the reaper's default is report) |
 | `--ttl-grace` |  | string |  | How long past its TTL deadline a running instance whose spored still checks in is left for spored to end itself, REAPER_TTL_GRACE, 0 to 1h (default: keep; the reaper's default is 10m) |
 | `--version` |  | string |  | spawn release to take the reaper artifact from (default: this binary's version) |
@@ -143,7 +146,7 @@ spawn reaper teardown [flags]
 |------|-------|------|---------|-------------|
 | `--bucket` |  | string |  | Artifact bucket to remove (default: the one recorded on the function at deploy time, else spawn-reaper-artifacts-&lt;account&gt;-&lt;region&gt;) |
 | `--force-artifacts` |  | bool |  | Remove the artifact bucket even if it is not tagged spawn:managed=true (for buckets created before the tag existed) |
-| `--if-idle-for` |  | duration | `0s` | Only tear down if the reaper has reclaimed nothing for at least this long, at most 720h (the logs it reads); otherwise report and exit 0 |
+| `--if-idle-for` |  | duration | `0s` | Only tear down if nothing spawn manages has been active in this account for at least this long, by the reaper's lifecycle verdict, and at most the reaper's account-idle grace (24h unless deployed with --account-idle-grace) and 720h; otherwise report and exit 0 |
 | `--keep-artifacts` |  | bool |  | Leave the artifact bucket in place (it is removed by default) |
 | `--keep-logs` |  | bool |  | Leave the reaper's CloudWatch log group in place (it is removed by default) |
 

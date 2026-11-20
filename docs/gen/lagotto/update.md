@@ -31,8 +31,17 @@ every region and provably can't hold the fleet.
 
 --dry-run shows the change, after every check, without writing anything.
 
+A scheduled launch (sl-…, from 'lagotto launch') takes only --spawn-config
+(#309): the new config is checked exactly as 'lagotto launch' checks one (its
+reservation re-applied, its iam_role checked against the deployed poller), and
+only then swapped in with one conditional write. Its EventBridge schedule is
+not touched, so a refused config leaves the launch armed with the old one, and
+the update fails, writing nothing, if the launch fired, was cancelled or was
+updated since it was read. Use it instead of cancelling and re-launching: a
+re-launch that is refused leaves nothing armed.
+
 ```
-lagotto update <watch-id> [flags]
+lagotto update <watch-id | sl-id> [flags]
 ```
 
 **Flags:**
