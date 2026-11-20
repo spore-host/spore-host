@@ -21,6 +21,12 @@ fleet's total), "30m@$X/hr" for a hold's reservation (billed even if unused),
 says when it was collected and why), "?" that some types or regions have no
 price. The CLI never calls the live Price List.
 
+Below the table, it lists every active spawn watch whose stored spawn config
+the hosted poller will refuse when the watch matches, with the fix: one armed
+with iam_policy, iam_policy_file or iam_policy_document (refused since 0.70.0),
+or one whose iam_role the deployed poller is not authorized to use. -o json
+carries it as launch_config_problem.
+
 Use -o wide for the full latest error, or -o json for every field.
 "lagotto status &lt;watch-id&gt;" shows the full errors and when they happened.
 
