@@ -35,7 +35,8 @@ and no reach into instances spawn didn't launch:
 spawn sets `spore-host/spawn-instance-boundary` on the roles it creates, so you
 don't write it, but this policy can't create it ([below](#the-permissions-boundary)).
 An administrator runs `spawn setup-account` once per account (spawn v0.164.0+),
-or the first launch an administrator runs creates it. Until then, `CreateRole`
+or the first launch an administrator runs creates it. It also creates the
+policy users need for the [lifecycle lease](#the-lifecycle-lease). Until then, `CreateRole`
 and every policy write on an instance role are refused under this policy, so a
 launch that has to create or update a role fails, with an error that names
 `spawn setup-account`. The earlier version of this page granted those actions
@@ -346,21 +347,6 @@ one was, on 2026-10-18 with spawn v0.134.0).
       ]
     },
     {
-      "Sid": "LifecycleLease",
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:ConditionCheckItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:PutItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:GetItem",
-        "dynamodb:DescribeTable",
-        "dynamodb:CreateTable",
-        "dynamodb:TagResource"
-      ],
-      "Resource": "arn:aws:dynamodb:*:*:table/spore-host-lifecycle"
-    },
-    {
       "Sid": "Identity",
       "Effect": "Allow",
       "Action": [
@@ -372,34 +358,12 @@ one was, on 2026-10-18 with spawn v0.134.0).
 }
 ```
 
-::: info The lifecycle lease (`LifecycleLease`)
-Before spawn creates anything an idle teardown could later delete (an
-instance, a security group, a key pair, an IAM role, a bucket, a pool queue,
-an FSx filesystem), it marks spawn active in the account's shared lifecycle
-lease. That lease is the DynamoDB table `spore-host-lifecycle` (one per
-region, plus `us-east-1` for account-wide IAM), and spawn creates it, tagged,
-the first time
-([spawn#1654](https://github.com/spore-host/spawn/issues/1654), part of
-[leave no trace](https://github.com/spore-host/spore-host/issues/752)). The
-lease is what stops one user's idle teardown from deleting what another user
-is setting up in a shared account.
-
-**Nothing depends on it for a launch, and nothing is printed without it.** A
-refused mark goes only to spawn's diagnostic log (`~/.spawn/spawn.log`, or
-stderr with `--verbose`), and the launch carries on. `spawn doctor` shows
-whether the lease is writable, in its "idle teardown" check. An account
-whose users can't write the table is "lease unavailable": spore.host's idle
-teardown never tears it down, so what spawn leaves there stays until someone
-runs `spawn teardown`.
-
-spore.host does not yet provision this statement for you
-([spawn#1666](https://github.com/spore-host/spawn/issues/1666) tracks doing
-so). Until it does, an administrator who wants idle teardown in an account
-adds the statement above to the baseline. `dynamodb:GetItem` is used only by
-`spawn reaper teardown --if-idle-for`, which reads the reaper's verdict.
-`DeleteItem` removes only a closing marker that a crashed teardown left
-behind. The exact actions each command needs are in spawn's
-[`cli-iam-actions.md`](https://github.com/spore-host/spawn/blob/main/docs/reference/cli-iam-actions.md).
+::: info The lifecycle lease is provisioned, not part of this baseline
+Since [spawn#1666](https://github.com/spore-host/spawn/issues/1666), the
+lease permissions come from a policy `spawn setup-account` creates,
+`spore-host/spawn-user-lifecycle`, which an administrator attaches to the
+groups or roles spawn users sign in with. They're no longer a statement you
+copy into this policy. See [The lifecycle lease](#the-lifecycle-lease) below.
 :::
 
 ::: warning Why the extra statements are required
@@ -454,7 +418,7 @@ verification used only SSM, and a caller without these actions was told spored
 never came up.)
 `pricing:GetProducts` sets the instance's price tag. Without it, a launch with
 `--cost-limit` is refused, because a limit that can't be priced can't be
-enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`. `spawn cleanup --instance-roles` also deletes spored managed policies no role has attached; that needs `iam:ListPolicies` (on `"*"`, as IAM offers no narrower resource for it), `iam:ListPolicyTags` on `spore-host/spored-*` (a policy whose tags it can't read, or that is tagged `spore-host:permanent=true`, is kept), and the `iam:DeletePolicy` above. It never deletes the `spore-host/spawn-instance-boundary` boundary, which is permanent ([spawn#1664](https://github.com/spore-host/spawn/issues/1664)); only an administrator's explicit removal will ([spawn#1656](https://github.com/spore-host/spawn/issues/1656), not yet implemented).
+enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`. `spawn cleanup --instance-roles` also deletes spored managed policies no role has attached; that needs `iam:ListPolicies` (on `"*"`, as IAM offers no narrower resource for it), `iam:ListPolicyTags` on `spore-host/spored-*` (a policy whose tags it can't read, or that is tagged `spore-host:permanent=true`, is kept), and the `iam:DeletePolicy` above. It never deletes the `spore-host/spawn-instance-boundary` boundary, which is permanent ([spawn#1664](https://github.com/spore-host/spawn/issues/1664)); only an administrator's `spawn setup-account --remove` does ([spawn#1656](https://github.com/spore-host/spawn/issues/1656), [below](#removing-what-spawn-setup-account-provisioned)).
 
 The **default AMI** is found through AWS's public SSM parameters, so `ssm:GetParameter` on `/aws/service/...` is needed unless you always pass `--ami`. The `/spawn/dns/*` parameters are where an administrator can set a [custom DNS](../guides/self-hosting.md#step-3-point-launches-at-your-updater) domain for a whole account. If spawn can't read them, it uses spore.host's DNS instead, without warning ([spawn#1121](https://github.com/spore-host/spawn/issues/1121)).
 :::
@@ -498,8 +462,109 @@ refuses on purpose: a caller who could create the boundary could choose its
 contents. So it's created once per account by spawn running under
 administrator credentials, at the point an administrator sets spawn up for the
 account: `spawn setup-account` (spawn v0.164.0+), or the first launch an
-administrator runs. `spawn cleanup --instance-roles` deletes it once no role
-uses it.
+administrator runs. It's tagged `spore-host:permanent=true`, and no cleanup,
+teardown or idle teardown deletes it
+([spawn#1664](https://github.com/spore-host/spawn/issues/1664)). Only
+`spawn setup-account --remove` does ([below](#removing-what-spawn-setup-account-provisioned)).
+
+### The lifecycle lease
+
+Before spawn creates anything an idle teardown could later delete (an
+instance, a security group, a key pair, an IAM role, a bucket, a pool queue,
+an FSx filesystem), it marks spawn active in the account's shared lifecycle
+lease. That lease is the DynamoDB table `spore-host-lifecycle` (one per
+region, plus `us-east-1` for account-wide IAM), and spawn creates it, tagged,
+the first time
+([spawn#1654](https://github.com/spore-host/spawn/issues/1654), part of
+[leave no trace](../leave-no-trace.md)). The lease is what stops one user's
+idle teardown from deleting what another user is setting up in a shared
+account.
+
+**spore.host provisions the permissions.** `spawn setup-account` creates the
+customer-managed policy
+`arn:aws:iam::<account>:policy/spore-host/spawn-user-lifecycle`
+([spawn#1666](https://github.com/spore-host/spawn/issues/1666)), tagged
+`spore-host:managed-by=spawn` and `spore-host:permanent=true`. An
+administrator attaches it to the groups or roles spawn users sign in with:
+
+```sh
+aws iam attach-group-policy --group-name <group> \
+  --policy-arn arn:aws:iam::<account>:policy/spore-host/spawn-user-lifecycle
+```
+
+It holds one statement, on the lease table in this account only:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SporeHostLifecycleLease",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:TagResource",
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": "arn:aws:dynamodb:*:<account>:table/spore-host-lifecycle"
+    }
+  ]
+}
+```
+
+All but `GetItem` are what spawn's lease mark can call; a spawn test holds the
+policy to what the code calls. `GetItem` is for
+`spawn reaper teardown --if-idle-for`, which reads the reaper's verdict.
+`DeleteItem` removes only a closing marker that a crashed teardown left
+behind. Re-running `spawn setup-account` upgrades the policy when spawn's
+document changes. With a spawn older than the release that ships spawn#1666,
+grant the same statement by hand.
+
+**Nothing depends on it for a launch, and nothing is printed without it.** A
+refused mark goes only to spawn's diagnostic log (`~/.spawn/spawn.log`, or
+stderr with `--verbose`), and the launch carries on. `spawn doctor` shows
+whether the lease is writable, in its "idle teardown" check, and names this
+policy when it isn't. An account whose users can't write the table is "lease
+unavailable": spore.host's idle teardown never tears it down, so what spawn
+leaves there stays until someone runs `spawn teardown`.
+
+### Removing what `spawn setup-account` provisioned
+
+`spawn setup-account --remove` is the one command that deletes the boundary
+and the user lifecycle policy
+([spawn#1656](https://github.com/spore-host/spawn/issues/1656)). Without
+`--yes` it prints the plan and deletes nothing:
+
+```sh
+spawn setup-account --remove                       # the plan
+spawn setup-account --remove --yes                 # delete both policies
+spawn setup-account --remove --offboard --yes      # and the spore-portal-onboard role
+```
+
+- It refuses, deleting nothing, while any role or user still has the boundary
+  as its permissions boundary, and lists them. Deleting the boundary would
+  leave them uncapped. Delete those roles first.
+- It refuses in spore.host's infra account.
+- It detaches the user policy from every group, user and role it's attached
+  to, deletes its older versions, then the policy. It deletes the boundary
+  last, after reading again what uses it: older versions, then the policy.
+- `--offboard` also deletes `spore-portal-onboard`: its inline policies, its
+  attachments, then the role. A role made by the portal's CloudFormation
+  quick-create is refused, naming the stack to delete instead.
+
+It needs `iam:GetPolicy`, `iam:ListPolicyVersions`, `iam:ListEntitiesForPolicy`,
+`iam:DetachGroupPolicy`, `iam:DetachUserPolicy`, `iam:DetachRolePolicy`,
+`iam:DeletePolicyVersion` and `iam:DeletePolicy` on the two policies. With
+`--offboard` it also needs `iam:GetRole`, `iam:ListRolePolicies`,
+`iam:ListAttachedRolePolicies`, `iam:DeleteRolePolicy` and `iam:DeleteRole` on
+`spore-portal-onboard`. That's administrator work, like `spawn setup-account`
+itself. What stays in an account, and why, is on
+[Leave no trace](../leave-no-trace.md).
 
 ### Managed policies on instance roles
 

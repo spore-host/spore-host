@@ -255,9 +255,28 @@ portal's endpoint.
 
 ### Disconnecting an account
 
-There's no command for this yet
-([spore-host#602](https://github.com/spore-host/spore-host/issues/602)). Removing the role
-cuts off the portal's access:
+`spawn setup-account --remove --offboard` removes the role, which cuts off the
+portal's access
+([spawn#1656](https://github.com/spore-host/spawn/issues/1656)). Without
+`--yes` it only prints what it would delete:
+
+```sh
+spawn setup-account --remove --offboard          # the plan
+spawn setup-account --remove --offboard --yes    # delete
+```
+
+It deletes the role's inline policies, its attachments, then the role. It
+refuses a role named `spore-portal-onboard` that isn't tagged
+`Purpose=spore-portal-onboard`. If the CloudFormation quick-create made the
+role, it refuses and names the stack; delete that stack instead
+(`aws cloudformation delete-stack --stack-name spore-portal-onboard`).
+
+It also removes spawn's account setup: the permissions boundary, once no role
+uses it, and the user lifecycle policy. It refuses, deleting nothing, while any
+role still has the boundary. What stays in an account, and why, is on
+[Leave no trace](../leave-no-trace.md).
+
+To remove only the role and keep using spawn in the account, delete it by hand:
 
 ```sh
 aws iam delete-role-policy --role-name spore-portal-onboard --policy-name PortalEC2Launch
@@ -265,7 +284,7 @@ aws iam delete-role-policy --role-name spore-portal-onboard --policy-name Portal
 aws iam delete-role --role-name spore-portal-onboard
 ```
 
-Deleting the role doesn't remove the portal's record of the account; that's
+Removing the role doesn't remove the portal's record of the account; that's
 what spore-host#602 is about.
 
 ## See also
