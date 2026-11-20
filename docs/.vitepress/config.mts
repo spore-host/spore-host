@@ -34,6 +34,7 @@ const sidebar = {
         { text: 'How the pieces fit together', link: '/how-it-works' },
         { text: 'Security, credentials & data flow', link: '/architecture' },
         { text: 'Costs & safety guarantees', link: '/safety' },
+        { text: 'Leave no trace: what remains and why', link: '/leave-no-trace' },
       ]
     },
     {
@@ -146,6 +147,7 @@ const sidebar = {
         { text: 'Deployment packet (for admins)', link: '/reference/deployment-packet' },
         { text: 'Checking your account', link: '/guides/account-health' },
         { text: 'The TTL reaper (backstop)', link: '/guides/reaper' },
+        { text: 'Leave no trace: what remains', link: '/leave-no-trace' },
         { text: 'Custom DNS', link: '/guides/custom-dns' },
         { text: 'Self-Hosting', link: '/guides/self-hosting' },
       ]
