@@ -346,6 +346,21 @@ one was, on 2026-10-18 with spawn v0.134.0).
       ]
     },
     {
+      "Sid": "LifecycleLease",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:GetItem",
+        "dynamodb:DescribeTable",
+        "dynamodb:CreateTable",
+        "dynamodb:TagResource"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/spore-host-lifecycle"
+    },
+    {
       "Sid": "Identity",
       "Effect": "Allow",
       "Action": [
@@ -356,6 +371,36 @@ one was, on 2026-10-18 with spawn v0.134.0).
   ]
 }
 ```
+
+::: info The lifecycle lease (`LifecycleLease`)
+Before spawn creates anything an idle teardown could later delete (an
+instance, a security group, a key pair, an IAM role, a bucket, a pool queue,
+an FSx filesystem), it marks spawn active in the account's shared lifecycle
+lease. That lease is the DynamoDB table `spore-host-lifecycle` (one per
+region, plus `us-east-1` for account-wide IAM), and spawn creates it, tagged,
+the first time
+([spawn#1654](https://github.com/spore-host/spawn/issues/1654), part of
+[leave no trace](https://github.com/spore-host/spore-host/issues/752)). The
+lease is what stops one user's idle teardown from deleting what another user
+is setting up in a shared account.
+
+**Nothing depends on it for a launch, and nothing is printed without it.** A
+refused mark goes only to spawn's diagnostic log (`~/.spawn/spawn.log`, or
+stderr with `--verbose`), and the launch carries on. `spawn doctor` shows
+whether the lease is writable, in its "idle teardown" check. An account
+whose users can't write the table is "lease unavailable": spore.host's idle
+teardown never tears it down, so what spawn leaves there stays until someone
+runs `spawn teardown`.
+
+spore.host does not yet provision this statement for you
+([spawn#1666](https://github.com/spore-host/spawn/issues/1666) tracks doing
+so). Until it does, an administrator who wants idle teardown in an account
+adds the statement above to the baseline. `dynamodb:GetItem` is used only by
+`spawn reaper teardown --if-idle-for`, which reads the reaper's verdict.
+`DeleteItem` removes only a closing marker that a crashed teardown left
+behind. The exact actions each command needs are in spawn's
+[`cli-iam-actions.md`](https://github.com/spore-host/spawn/blob/main/docs/reference/cli-iam-actions.md).
+:::
 
 ::: warning Why the extra statements are required
 A launch does more than `RunInstances`. spawn **imports your SSH public key** (`ec2:ImportKeyPair`), may **create a security group** for the instance (`ec2:CreateSecurityGroup` / `AuthorizeSecurityGroupIngress`), and — so the in-instance `spored` daemon can manage the instance's lifecycle — **creates a `spored` IAM role + instance profile and passes it to EC2 at launch** (the `iam:*` on `spored*` + `iam:PassRole`). Roles and profiles are created with tags, which IAM authorises separately (`iam:TagRole`, `iam:TagInstanceProfile`). spored's own grants go on that role as a customer-managed policy, `arn:aws:iam::<account>:policy/spore-host/spored-policy-v<N>` (or `spored-baseline-policy-v<N>`, `spored-nested-baseline-policy-v<N>`), because a role's inline policies share one 10,240-character limit with whatever else is on the role (since spawn v0.163.1, [spawn#1573](https://github.com/spore-host/spawn/issues/1573)). That is what `SporedManagedPolicy`, `SporedManagedPolicyRead` and `DetachSporedManagedPolicy` are for: spawn creates the policy once per account, attaches it, and detaches and deletes an older version when a newer spawn replaces it. Without them spawn warns and writes the grants inline instead, which fails on a role whose inline policies are near the limit. `iam:ListRolePolicies`, `iam:GetRolePolicy` and `iam:DeleteRolePolicy` let spawn remove the inline copies older versions wrote, and list their sizes if the inline limit is ever hit. A launch that grants the instance extra access (`--iam-policy`, `--s3-read`, `--s3-write`, and every `spawn task run`) creates a role named `spawn-instance-<hash>` instead, which is why that pattern is included. Omit these and `spawn launch` fails partway.
@@ -409,7 +454,7 @@ verification used only SSM, and a caller without these actions was told spored
 never came up.)
 `pricing:GetProducts` sets the instance's price tag. Without it, a launch with
 `--cost-limit` is refused, because a limit that can't be priced can't be
-enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`. `spawn cleanup --instance-roles` also deletes spored managed policies no role has attached; that needs `iam:ListPolicies` (on `"*"`, as IAM offers no narrower resource for it) and the `iam:DeletePolicy` above.
+enforced. `iam:ListInstanceProfiles` is used by `spawn doctor`. `spawn cleanup --instance-roles` also deletes spored managed policies no role has attached; that needs `iam:ListPolicies` (on `"*"`, as IAM offers no narrower resource for it), `iam:ListPolicyTags` on `spore-host/spored-*` (a policy whose tags it can't read, or that is tagged `spore-host:permanent=true`, is kept), and the `iam:DeletePolicy` above. It never deletes the `spore-host/spawn-instance-boundary` boundary, which is permanent ([spawn#1664](https://github.com/spore-host/spawn/issues/1664)); only an administrator's explicit removal will ([spawn#1656](https://github.com/spore-host/spawn/issues/1656), not yet implemented).
 
 The **default AMI** is found through AWS's public SSM parameters, so `ssm:GetParameter` on `/aws/service/...` is needed unless you always pass `--ami`. The `/spawn/dns/*` parameters are where an administrator can set a [custom DNS](../guides/self-hosting.md#step-3-point-launches-at-your-updater) domain for a whole account. If spawn can't read them, it uses spore.host's DNS instead, without warning ([spawn#1121](https://github.com/spore-host/spawn/issues/1121)).
 :::
