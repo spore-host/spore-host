@@ -13,8 +13,12 @@ component that can see every activity signal decides that a tool is idle, and
 one user's teardown can't race another user's setup in a shared account (see
 [the lease](#shared-accounts-the-lifecycle-lease)).
 
-A few things stay on purpose. Each is listed below with the reason and the
-command that removes it.
+While an account is set up for spore.host, exactly two things stay
+permanently: the permissions boundary `spore-host/spawn-instance-boundary` and
+the user lifecycle policy `spore-host/spawn-user-lifecycle`. Both are
+removed by `spawn setup-account --remove`. A few other things persist only
+while you're onboarded, or until a later step removes them. Each is listed
+below with the reason and the command that removes it.
 
 ::: warning Status: report mode
 Most of what this page describes is merged but not yet released: it came after
@@ -70,7 +74,8 @@ still reports).
 
 What the plan may delete is narrow. A resource must be tagged
 `spore-host:managed-by=spawn`, have a name spawn's teardown registers, and
-not be in use, permanent or user data.
+not be in use, permanent or user data. It never includes the two permanent
+pieces.
 
 **A self-hosted reaper removes itself** once every scope it scans has been
 idle past the grace and its artifact bucket holds only its own code. It never
@@ -139,26 +144,27 @@ prices, quotas, capacity).
 
 ## What stays, and why
 
-### The permanent pieces: what `spawn setup-account` provisions
+### The two permanent pieces: what `spawn setup-account` provisions
 
-`spawn setup-account` is the one admin step. It creates two customer-managed
-policies, both tagged `spore-host:managed-by=spawn` and
-`spore-host:permanent=true`:
+`spawn setup-account` is the one admin step. It creates the only two things
+spore.host keeps in an account while it's set up: two customer-managed
+policies, both permanent account setup, tagged `spore-host:managed-by=spawn`
+and `spore-host:permanent=true`:
 
 - **`spore-host/spawn-instance-boundary`**, the permissions boundary that caps
   every role spawn creates (see
   [The permissions boundary](./reference/iam-permissions.md#the-permissions-boundary)).
-  It's the one piece kept on purpose. Deleting it while any role still uses it
-  would leave those roles uncapped.
+  Deleting it while any role still uses it would leave those roles uncapped.
 - **`spore-host/spawn-user-lifecycle`**, which grants spawn users the
   lifecycle-lease actions. An administrator attaches it to the groups or roles
   spawn users sign in with (see
   [The lifecycle lease](./reference/iam-permissions.md#the-lifecycle-lease)).
-  It stays for the same reason as the boundary: an administrator attached it,
-  and deleting it would break their setup.
+  Like the boundary, it's permanent account setup: an administrator attached
+  it, and deleting it would break their setup.
 
-No idle teardown, `spawn cleanup` or `spawn teardown` deletes either. To
-remove them, an administrator runs:
+No idle teardown, `spawn cleanup` or `spawn teardown` deletes either.
+`spawn footprint` classes both `permanent`. `spawn setup-account --remove` is
+the only way either goes. An administrator runs:
 
 ```sh
 spawn setup-account --remove          # prints the plan; deletes nothing
@@ -286,7 +292,7 @@ instance-level resources. Other ways to remove things by hand:
 - `lagotto teardown --iam-roles` removes lagotto's poller roles, its instance
   role and `lagotto-cli-user`, detaching it first.
 - `spawn reaper teardown` removes a self-hosted reaper.
-- `spawn setup-account --remove` removes the permanent pieces.
+- `spawn setup-account --remove` removes the two permanent pieces.
 
 ## Shared accounts: the lifecycle lease
 

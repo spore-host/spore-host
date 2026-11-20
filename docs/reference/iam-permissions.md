@@ -462,7 +462,10 @@ refuses on purpose: a caller who could create the boundary could choose its
 contents. So it's created once per account by spawn running under
 administrator credentials, at the point an administrator sets spawn up for the
 account: `spawn setup-account` (spawn v0.164.0+), or the first launch an
-administrator runs. It's tagged `spore-host:permanent=true`, and no cleanup,
+administrator runs. It's permanent account setup, one of exactly two things
+spore.host keeps in an account while it's set up (the other is the
+[user lifecycle policy](#the-lifecycle-lease)). It's tagged
+`spore-host:permanent=true`, and no cleanup,
 teardown or idle teardown deletes it
 ([spawn#1664](https://github.com/spore-host/spawn/issues/1664)). Only
 `spawn setup-account --remove` does ([below](#removing-what-spawn-setup-account-provisioned)).
@@ -484,7 +487,9 @@ account.
 customer-managed policy
 `arn:aws:iam::<account>:policy/spore-host/spawn-user-lifecycle`
 ([spawn#1666](https://github.com/spore-host/spawn/issues/1666)), tagged
-`spore-host:managed-by=spawn` and `spore-host:permanent=true`. An
+`spore-host:managed-by=spawn` and `spore-host:permanent=true`. Like the
+boundary, it's permanent account setup: no cleanup, teardown or idle teardown
+deletes it, and only `spawn setup-account --remove` does. An
 administrator attaches it to the groups or roles spawn users sign in with:
 
 ```sh
@@ -535,8 +540,9 @@ leaves there stays until someone runs `spawn teardown`.
 
 ### Removing what `spawn setup-account` provisioned
 
-`spawn setup-account --remove` is the one command that deletes the boundary
-and the user lifecycle policy
+The boundary and the user lifecycle policy are the only two things spore.host
+keeps in an account while it's set up. `spawn setup-account --remove` is the
+one command that deletes them
 ([spawn#1656](https://github.com/spore-host/spawn/issues/1656)). Without
 `--yes` it prints the plan and deletes nothing:
 

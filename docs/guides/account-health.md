@@ -271,8 +271,9 @@ refuses a role named `spore-portal-onboard` that isn't tagged
 role, it refuses and names the stack; delete that stack instead
 (`aws cloudformation delete-stack --stack-name spore-portal-onboard`).
 
-It also removes spawn's account setup: the permissions boundary, once no role
-uses it, and the user lifecycle policy. It refuses, deleting nothing, while any
+It also removes spawn's account setup, the only two things spore.host keeps in
+an account while it's set up: the permissions boundary, once no role uses it,
+and the user lifecycle policy. It refuses, deleting nothing, while any
 role still has the boundary. What stays in an account, and why, is on
 [Leave no trace](../leave-no-trace.md).
 
