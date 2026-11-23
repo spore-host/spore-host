@@ -1,5 +1,5 @@
-github.com/aws/aws-lambda-go v1.47.0 h1:0H8s0vumYx/YKs4sE7YM0ktwL2eWse+kfopsRI1sXVI=
-github.com/aws/aws-lambda-go v1.47.0/go.mod h1:dpMpZgvWx5vuQJfBt0zqBha60q7Dd7RfgJv23DymV8A=
+github.com/aws/aws-lambda-go v1.55.1 h1:We2cCp4BwqqH/JW+bEEo1FhgG71rslvjfi4y7KmlrR0=
+github.com/aws/aws-lambda-go v1.55.1/go.mod h1:V+NzkHNR6vBC8C1PDloqSLE+7jYWFiPvJJFiCiTm8nE=
 github.com/aws/aws-sdk-go-v2 v1.47.8 h1:fuClo7Un+Bi0EDTnSIPWxVEoJcze+wkGzNA4Vo3jRcQ=
 github.com/aws/aws-sdk-go-v2 v1.47.8/go.mod h1:I8lFSH4MGrZiw2m7miCrRYHsgpC1+HW8uiVGOiPYPcw=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 h1:eBMB84YGghSocM7PsjmmPffTa+1FBUeNvGvFou6V/4o=

@@ -3,7 +3,7 @@ module github.com/spore-host/spore-host/lambda/spore-bot
 go 1.26.0
 
 require (
-	github.com/aws/aws-lambda-go v1.47.0
+	github.com/aws/aws-lambda-go v1.55.1
 	github.com/aws/aws-sdk-go-v2 v1.47.8
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.14
@@ -13,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.62.5
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.88.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.10
+	github.com/aws/smithy-go v1.28.8
 	github.com/google/uuid v1.6.0
 	github.com/scttfrdmn/substrate v0.85.0
 )
@@ -30,7 +31,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.19 // indirect
-	github.com/aws/smithy-go v1.28.8 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
