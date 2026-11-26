@@ -30,6 +30,16 @@ so an AZ that offers the watch's type but has no default subnet is skipped, and
 the watch can never land there. Each such AZ is a warning, with the
 'aws ec2 create-default-subnet' command that fixes it.
 
+It checks every active spawn watch and armed scheduled launch (lagotto#309)
+against the rules the poller applies before it launches, and FAILS for each
+one it will refuse when it fires: a spawn config armed with iam_policy,
+iam_policy_file or iam_policy_document (refused since 0.70.0), an iam_role no
+rule allows, or one the deployed poller is not authorized to use. Each comes
+with the fix: authorize a role ('lagotto setup --instance-role'), name it as
+iam_role, then 'lagotto update &lt;id&gt; --spawn-config &lt;file&gt;'. Scheduled launches
+are listed with a Scan, so administrator credentials; without them the check
+is a warning.
+
 It lists every active --action notify watch as a warning (lagotto#283): notify
 is deprecated and will be removed in a later release, because it reports that a
 type is offered at or under the max price, not that there is capacity. Use

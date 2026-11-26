@@ -16,6 +16,15 @@ Elastic IP limit. This mode touches nothing else, so running instances do not
 block it. spawn list and spawn status warn about these addresses and print the
 command.
 
+--session-keys deletes only the EC2 key pairs a nested-spawn head imported for
+one session (tagged spawn:purpose=ssh-key-session): their private half lived on
+the head, so they are useless once nothing uses them. A key pair goes only when
+no instance in the region (pending through stopped) was launched with it and it
+is at least an hour old, whoever imported it. A workstation key
+(spawn:purpose=ssh-key, the one ~/.spawn/keys holds and every launch from that
+machine reuses) is never touched by this mode. The TTL reaper applies the same
+rule in its network-resource sweep (REAPER_NET_RESOURCES).
+
 --buckets removes only spawn's own spawn-staging-&lt;account&gt;-&lt;region&gt; and
 spawn-results-&lt;account&gt;-&lt;region&gt; buckets, and only once they have been empty
 for 7 days. It never deletes an object: a bucket holding anything at all
@@ -47,8 +56,11 @@ global, so this always checks every enabled region whatever --region says, and
 covers every principal's roles. The TTL reaper applies the same rule
 (REAPER_INSTANCE_ROLES). It also deletes spawn's spored managed policies
 (/spore-host/spored-*-v&lt;N&gt;) that no role has attached and that are at least 24
-hours old; the reaper detaches them from the roles it deletes but does not
-delete them.
+hours old, and not tagged spore-host:permanent=true; the reaper detaches them
+from the roles it deletes but does not delete them. The permissions boundary
+at the same path (spore-host/spawn-instance-boundary) is never deleted: it is
+permanent, and only an administrator's explicit removal will remove it
+(spawn#1656, not yet implemented).
 
 --pool-queues deletes only the SQS queues of pools nobody drained
 (spawn-pool-&lt;run id&gt;) and the task specs their submitters staged in the
@@ -96,5 +108,6 @@ spawn cleanup [flags]
 | `--pool-queues` |  | bool |  | Delete only the SQS queues (and staged task specs) of pools nobody drained: spawn-tagged, empty, 24h old, no instance is the pool's; nothing else is touched |
 | `--region` |  | string |  | AWS region (default: current region from AWS config) |
 | `--schedule-params` |  | bool |  | Delete only schedule params objects no schedule record names (30 days old, tagged as a schedule's params, never a queue config); nothing else is touched |
+| `--session-keys` |  | bool |  | Delete only the EC2 key pairs nested-spawn heads imported for one session (spawn:purpose=ssh-key-session) that no instance uses and that are an hour old; never a workstation key; nothing else is touched |
 | `--yes` | `-y` | bool |  | Skip the confirmation prompt |
 
